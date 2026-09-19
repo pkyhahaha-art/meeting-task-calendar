@@ -13,15 +13,23 @@ export function taskDueDateTime(dueDate: string, dueTime: string) {
 }
 
 export function taskReminderDate(due: Date, key: TaskReminderKey) {
-  const result = new Date(due)
-  if (key === '1_hour') result.setHours(result.getHours() - 1)
-  if (key === '1_day') result.setDate(result.getDate() - 1)
-  if (key === '3_days') result.setDate(result.getDate() - 3)
+  if (key === '1_hour') return new Date(due.getTime() - 60 * 60 * 1000)
+  if (key === '1_day') return new Date(due.getTime() - 24 * 60 * 60 * 1000)
+  if (key === '3_days') return new Date(due.getTime() - 3 * 24 * 60 * 60 * 1000)
+
   if (key === 'overdue') {
-    result.setDate(result.getDate() + 1)
-    result.setHours(9, 0, 0, 0)
+    const bangkokTime = new Date(due.getTime() + 7 * 60 * 60 * 1000)
+    return new Date(
+      Date.UTC(
+        bangkokTime.getUTCFullYear(),
+        bangkokTime.getUTCMonth(),
+        bangkokTime.getUTCDate() + 1,
+        2,
+      ),
+    )
   }
-  return result
+
+  return new Date(due)
 }
 
 export function isGoogleDocumentUrl(value: string) {
