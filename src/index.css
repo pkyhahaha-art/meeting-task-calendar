@@ -1,0 +1,41 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'Noto Sans Thai', system-ui, sans-serif;
+  color: #173238;
+  background: #f5f8f8;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; }
+button, input, textarea, select { font: inherit; }
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: 3px solid rgba(20, 125, 128, 0.28);
+  outline-offset: 2px;
+}
+
+@layer components {
+  .field-label { @apply mb-1.5 block text-sm font-semibold text-slate-700; }
+  .field-input { @apply w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100; }
+  .btn-primary { @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-55; }
+  .btn-secondary { @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55; }
+  .card { @apply rounded-2xl border border-slate-200 bg-white shadow-soft; }
+  .form-error { @apply mt-1.5 text-sm text-red-600; }
+}
+
+.fc { --fc-border-color: #e2e8f0; --fc-button-bg-color: #0f696c; --fc-button-border-color: #0f696c; --fc-button-hover-bg-color: #105558; --fc-button-hover-border-color: #105558; }
+.fc .fc-toolbar-title { font-size: 1.15rem; font-weight: 700; color: #173238; }
+.fc .fc-daygrid-day-number { color: #475569; }
+.fc .fc-event { border-radius: 6px; padding: 1px 3px; cursor: pointer; }
+@media (max-width: 640px) {
+  .fc .fc-toolbar { align-items: flex-start; gap: .75rem; }
+  .fc .fc-toolbar-title { font-size: 1rem; }
+  .fc .fc-button { padding: .35rem .55rem; }
+}
+
