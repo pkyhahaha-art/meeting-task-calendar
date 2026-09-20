@@ -7,6 +7,7 @@ import enGbLocale from '@fullcalendar/core/locales/en-gb'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CalendarPlus, ListTodo, Search } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
+import { useConfirm } from '../components/ConfirmDialogProvider'
 import { EventDialog, type EventDetails, type EventDraft } from '../components/EventDialog'
 import { TaskDialog, type TaskDetails, type TaskDraft } from '../components/TaskDialog'
 import { useLanguage } from '../i18n/LanguageProvider'
@@ -42,6 +43,7 @@ function safeFileName(name: string) {
 export function CalendarPage() {
   const { user, profile } = useAuth()
   const { language } = useLanguage()
+  const confirm = useConfirm()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [showTasks, setShowTasks] = useState(true)
@@ -286,7 +288,7 @@ export function CalendarPage() {
         canEdit={canEditEvent} busy={busy || eventDetailsQuery.isLoading}
         onClose={() => setEventDialog({ open: false, event: null })}
         onSave={(draft) => eventMutation.mutateAsync({ draft, event: selectedEvent })}
-        onDelete={async () => { if (selectedEvent && window.confirm('ย้าย Meeting นี้ไปถังขยะ?')) await deleteEventMutation.mutateAsync(selectedEvent) }}
+        onDelete={async () => { if (selectedEvent && await confirm({ title: 'ย้าย Meeting ไปถังขยะ?', message: `Meeting “${selectedEvent.title}” จะไม่แสดงในปฏิทิน`, confirmLabel: 'ย้ายไปถังขยะ', tone: 'danger' })) await deleteEventMutation.mutateAsync(selectedEvent) }}
       />
       <TaskDialog
         open={taskDialog.open} task={selectedTask} details={taskDetailsQuery.data} selectedDate={taskDialog.date}
@@ -294,8 +296,8 @@ export function CalendarPage() {
         canEdit={canEditTask} canComplete={canCompleteTask} busy={busy || taskDetailsQuery.isLoading}
         onClose={() => setTaskDialog({ open: false, task: null })}
         onSave={(draft) => taskMutation.mutateAsync({ draft, task: selectedTask })}
-        onDelete={async () => { if (selectedTask && window.confirm('ย้าย Task นี้ไปถังขยะ?')) await deleteTaskMutation.mutateAsync(selectedTask) }}
-        onToggleComplete={async () => { if (selectedTask) await toggleTaskMutation.mutateAsync(selectedTask) }}
+        onDelete={async () => { if (selectedTask && await confirm({ title: 'ย้าย Task ไปถังขยะ?', message: `Task “${selectedTask.title}” จะไม่แสดงในรายการงาน`, confirmLabel: 'ย้ายไปถังขยะ', tone: 'danger' })) await deleteTaskMutation.mutateAsync(selectedTask) }}
+        onToggleComplete={async () => { if (selectedTask && await confirm({ title: selectedTask.status === 'completed' ? 'เปิดงานอีกครั้ง?' : 'ยืนยันว่างานเสร็จแล้ว?', message: `Task “${selectedTask.title}” จะถูกเปลี่ยนสถานะ`, confirmLabel: selectedTask.status === 'completed' ? 'เปิดงานอีกครั้ง' : 'ยืนยันงานเสร็จ' })) await toggleTaskMutation.mutateAsync(selectedTask) }}
       />
     </main>
   )

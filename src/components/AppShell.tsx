@@ -2,14 +2,16 @@ import { CalendarDays, LogOut, Settings, ShieldCheck, UserRound } from 'lucide-r
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
 import { useLanguage } from '../i18n/LanguageProvider'
+import { useConfirm } from './ConfirmDialogProvider'
 import { LanguageToggle } from './LanguageToggle'
 
 export function AppShell() {
   const { profile, user, signOut } = useAuth()
   const { t } = useLanguage()
+  const confirm = useConfirm()
   const navigate = useNavigate()
   const logout = async () => {
-    if (!window.confirm('ยืนยันออกจากระบบหรือไม่? หากกดยกเลิก คุณจะยังคงเข้าสู่ระบบอยู่')) return
+    if (!await confirm({ title: 'ออกจากระบบ?', message: 'คุณจะต้องเข้าสู่ระบบใหม่ในครั้งถัดไป', confirmLabel: 'ออกจากระบบ', tone: 'danger' })) return
     await signOut()
     navigate('/login', { replace: true })
   }

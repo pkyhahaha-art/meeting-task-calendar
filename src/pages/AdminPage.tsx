@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Ban, CheckCircle2, Loader2, MailCheck, ShieldCheck, Users } from 'lucide-react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
+import { useConfirm } from '../components/ConfirmDialogProvider'
 import { appUrl } from '../lib/appUrl'
 import type { Database } from '../lib/database.types'
 import { supabase } from '../lib/supabase'
@@ -19,6 +20,7 @@ function formatDate(value: string | null) {
 
 export function AdminPage() {
   const { profile, user } = useAuth()
+  const confirm = useConfirm()
   const queryClient = useQueryClient()
   const [working, setWorking] = useState<string | null>(null)
   const [message, setMessage] = useState('')
@@ -34,7 +36,7 @@ export function AdminPage() {
   if (profile?.role !== 'admin') return <Navigate to="/calendar" replace />
 
   const resendVerification = async (account: Profile) => {
-    if (!window.confirm(`ส่งอีเมลยืนยันการสมัครใหม่ไปที่ ${account.email} หรือไม่?`)) return
+    if (!await confirm({ title: 'ส่งอีเมลยืนยันใหม่?', message: `ระบบจะส่งอีเมลยืนยันการสมัครไปที่ ${account.email}`, confirmLabel: 'ส่งอีเมล' })) return
     setWorking(account.id); setMessage('')
     const { error } = await supabase.auth.resend({ type: 'signup', email: account.email, options: { emailRedirectTo: appUrl('/auth/callback') } })
     setWorking(null)
@@ -43,7 +45,7 @@ export function AdminPage() {
 
   const changeStatus = async (account: Profile, nextStatus: 'active' | 'disabled') => {
     const action = nextStatus === 'disabled' ? 'ระงับ' : 'เปิดใช้งาน'
-    if (!window.confirm(`ยืนยัน${action}บัญชี ${account.email} หรือไม่?`)) return
+    if (!await confirm({ title: `${action}บัญชี?`, message: `${action}การใช้งานบัญชี ${account.email}`, confirmLabel: action, tone: nextStatus === 'disabled' ? 'danger' : 'default' })) return
     setWorking(account.id); setMessage('')
     const { error } = await supabase.rpc('admin_set_profile_status', { target_user_id: account.id, next_status: nextStatus })
     if (!error) await queryClient.invalidateQueries({ queryKey: ['admin-profiles'] })
