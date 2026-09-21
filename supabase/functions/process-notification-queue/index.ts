@@ -34,6 +34,11 @@ function escapeHtml(value: unknown) {
   return text(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!)
 }
 
+function errorMessage(error: unknown) {
+  if (error instanceof Error) return error.message
+  try { return JSON.stringify(error) || 'Unknown error' } catch { return String(error) }
+}
+
 function randomToken() {
   return Array.from(crypto.getRandomValues(new Uint8Array(32)), (value) => value.toString(16).padStart(2, '0')).join('')
 }
@@ -69,7 +74,10 @@ async function payloadWithInternalTaskDetails(delivery: Delivery, payload: Recor
     supabase.from('task_attachments').select('file_name').eq('task_id', taskId).order('uploaded_at'),
     supabase.from('document_links').select('display_name').eq('task_id', taskId).order('created_at'),
   ])
-  if (attachments.error || documentLinks.error) throw attachments.error ?? documentLinks.error
+  if (attachments.error || documentLinks.error) {
+    console.error('Unable to load Task documents for email', errorMessage(attachments.error ?? documentLinks.error))
+    return { ...payload, internal_task_url: internalTaskUrl(publicAppUrl, taskId) }
+  }
   return {
     ...payload,
     internal_task_url: internalTaskUrl(publicAppUrl, taskId),
@@ -182,7 +190,7 @@ Deno.serve(async (request) => {
       await supabase.from('notification_deliveries').update({
         status: retryDelay === null ? 'failed' : 'retry',
         next_attempt_at: retryDelay === null ? null : new Date(Date.now() + retryDelay * 60_000).toISOString(),
-        error_code: 'network_error', error_message: error instanceof Error ? error.message.slice(0, 1000) : 'Unknown network error',
+        error_code: 'network_error', error_message: errorMessage(error).slice(0, 1000),
       }).eq('id', delivery.id)
       continue
     }
