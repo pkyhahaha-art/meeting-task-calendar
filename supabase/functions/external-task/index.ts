@@ -3,11 +3,13 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!
+const publicAppUrl = Deno.env.get('PUBLIC_APP_URL')
 const admin = createClient(supabaseUrl, serviceRoleKey)
 const corsHeaders = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, apikey, content-type', 'access-control-allow-methods': 'GET, POST, OPTIONS' }
 
 function response(body: Record<string, unknown>, status = 200) { return Response.json(body, { status, headers: corsHeaders }) }
 function randomToken() { return Array.from(crypto.getRandomValues(new Uint8Array(32)), (value) => value.toString(16).padStart(2, '0')).join('') }
+function safeFileName(name: string) { return name.normalize('NFKD').replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'attachment' }
 async function hashToken(token: string) {
   const bytes = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token)))
   return Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('')
@@ -38,7 +40,8 @@ async function issueToken(request: Request) {
     taskUrl = new URL(typeof body.publicUrl === 'string' ? body.publicUrl : '')
     if (!['https:', 'http:'].includes(taskUrl.protocol)) throw new Error('unsupported protocol')
   } catch { return response({ error: 'ลิงก์ Task ไม่ถูกต้อง' }, 400) }
-  if (!request.headers.get('origin') || taskUrl.origin !== request.headers.get('origin')) return response({ error: 'โดเมนลิงก์ Task ไม่ถูกต้อง' }, 400)
+  const trustedOrigin = publicAppUrl ? new URL(publicAppUrl).origin : request.headers.get('origin')
+  if (!trustedOrigin || taskUrl.origin !== trustedOrigin) return response({ error: 'โดเมนลิงก์ Task ไม่ถูกต้อง' }, 400)
   const { data: task, error: taskError } = await admin.from('tasks').select('*').eq('id', taskId).maybeSingle()
   if (taskError) throw taskError
   if (!task || task.creator_user_id !== user.id || task.assignee_type !== 'external' || task.deleted_at || task.status !== 'pending') return response({ error: 'ไม่สามารถออกลิงก์สำหรับ Task นี้ได้' }, 403)
@@ -55,10 +58,31 @@ async function issueToken(request: Request) {
   return response({ url: taskUrl.toString() })
 }
 
+async function uploadAttachment(request: Request) {
+  const form = await request.formData()
+  const token = typeof form.get('token') === 'string' ? form.get('token')!.trim() : ''
+  const file = form.get('file')
+  if (!token || !(file instanceof File)) return response({ error: 'กรุณาเลือกไฟล์และใช้ลิงก์ Task ที่ถูกต้อง' }, 400)
+  const task = await taskForToken(token)
+  if (!task) return response({ error: 'ลิงก์งานหมดอายุหรือถูกยกเลิกแล้ว' }, 404)
+  const allowed = new Set(['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'image/jpeg', 'image/png'])
+  if (!allowed.has(file.type) || file.size > 10 * 1024 * 1024) return response({ error: 'รองรับ PDF, Office, JPG, PNG ขนาดไม่เกิน 10 MB' }, 400)
+  const { count, error: countError } = await admin.from('task_attachments').select('*', { count: 'exact', head: true }).eq('task_id', task.id)
+  if (countError) throw countError
+  if ((count ?? 0) >= 10) return response({ error: 'Task นี้มีเอกสารครบ 10 ไฟล์แล้ว' }, 400)
+  const storagePath = `external/${task.id}/${crypto.randomUUID()}-${safeFileName(file.name)}`
+  const { error: uploadError } = await admin.storage.from('task-documents').upload(storagePath, file, { contentType: file.type, upsert: false })
+  if (uploadError) throw uploadError
+  const { error: attachmentError } = await admin.from('task_attachments').insert({ task_id: task.id, file_name: file.name, mime_type: file.type, file_size: file.size, storage_path: storagePath, uploaded_by: null })
+  if (attachmentError) { await admin.storage.from('task-documents').remove([storagePath]); throw attachmentError }
+  return response({ uploaded: true })
+}
+
 Deno.serve(async (request) => {
   try {
     if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
     if (request.method === 'POST') {
+      if (request.headers.get('content-type')?.includes('multipart/form-data')) return await uploadAttachment(request)
       const body = await request.clone().json()
       if (body.action === 'issue') return await issueToken(request)
       if (body.action !== 'complete') return response({ error: 'คำสั่งไม่ถูกต้อง' }, 400)

@@ -41,7 +41,7 @@ function blankDraft(date: string | undefined, userId: string): TaskDraft {
   }
 }
 
-export function TaskDialog({ open, task, details, selectedDate, userId, profiles, events, canEdit, canComplete, busy, onClose, onSave, onDelete, onToggleComplete }: {
+export function TaskDialog({ open, task, details, selectedDate, userId, profiles, events, canEdit, canUpload, canComplete, busy, onClose, onSave, onDelete, onToggleComplete, onUploadFiles }: {
   open: boolean
   task: TaskRow | null
   details?: TaskDetails
@@ -50,16 +50,20 @@ export function TaskDialog({ open, task, details, selectedDate, userId, profiles
   profiles: ProfileRow[]
   events: EventRow[]
   canEdit: boolean
+  canUpload: boolean
   canComplete: boolean
   busy: boolean
   onClose: () => void
   onSave: (draft: TaskDraft) => Promise<void>
   onDelete: () => Promise<void>
   onToggleComplete: () => Promise<void>
+  onUploadFiles: (files: File[]) => Promise<void>
 }) {
   const [draft, setDraft] = useState<TaskDraft>(blankDraft(selectedDate, userId))
   const [error, setError] = useState('')
   const fileInput = useRef<HTMLInputElement>(null)
+  const sharedFileInput = useRef<HTMLInputElement>(null)
+  const [sharedFiles, setSharedFiles] = useState<File[]>([])
 
   useEffect(() => {
     setError('')
@@ -106,7 +110,7 @@ export function TaskDialog({ open, task, details, selectedDate, userId, profiles
     if (draft.reminderKeys.length && !draft.notifyEmail && !draft.notifyLine) return setError('กรุณาเลือกช่องทางแจ้งเตือนอย่างน้อย 1 ช่องทาง')
     setError('')
     try { await onSave({ ...draft, driveLinks: links, notifyLine: draft.assigneeKind === 'external' ? false : draft.notifyLine }) }
-    catch { setError('บันทึก Task ไม่สำเร็จ กรุณาลองใหม่') }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'บันทึก Task ไม่สำเร็จ กรุณาลองใหม่') }
   }
 
   return (
@@ -149,6 +153,8 @@ export function TaskDialog({ open, task, details, selectedDate, userId, profiles
               <div className="space-y-2 border-t border-slate-100 pt-3"><p className="flex items-center gap-2 text-sm font-medium"><Link2 size={16} />ลิงก์ Google Drive</p>{draft.driveLinks.map((link, index) => <div key={index} className="grid gap-2 sm:grid-cols-[0.8fr_1.5fr_auto]"><input className="field-input" placeholder="ชื่อเอกสาร" value={link.displayName} onChange={(event) => setDriveLink(index, { ...link, displayName: event.target.value })} /><input type="url" className="field-input" placeholder="https://drive.google.com/..." value={link.url} onChange={(event) => setDriveLink(index, { ...link, url: event.target.value })} /><button type="button" className="rounded-xl border border-slate-200 p-2 text-slate-500 hover:text-red-600" onClick={() => set('driveLinks', draft.driveLinks.filter((_, itemIndex) => itemIndex !== index))}><X size={18} /></button></div>)}{draft.driveLinks.length < 10 && <button type="button" className="btn-secondary" onClick={() => set('driveLinks', [...draft.driveLinks, { displayName: '', url: '' }])}><Plus size={17} />เพิ่มลิงก์</button>}</div>
             </section>
           </fieldset>
+
+          {task && canUpload && !canEdit && <section className="space-y-3 rounded-xl border border-slate-200 p-4"><h3 className="flex items-center gap-2 font-semibold text-slate-800"><Paperclip size={18} className="text-amber-700" />อัปโหลดเอกสาร</h3><input ref={sharedFileInput} type="file" multiple className="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png" onChange={(event) => { const files = [...(event.target.files ?? [])]; const message = validateAttachments(files, details?.attachments.length ?? 0); if (message) setError(message); else setSharedFiles(files); event.target.value = '' }} />{sharedFiles.map((file) => <div key={file.name} className="rounded-lg bg-slate-50 px-3 py-2 text-sm">{file.name}</div>)}<div className="flex gap-2"><button type="button" className="btn-secondary" onClick={() => sharedFileInput.current?.click()} disabled={busy}>เลือกไฟล์</button><button type="button" className="btn-primary" disabled={busy || !sharedFiles.length} onClick={() => void onUploadFiles(sharedFiles).then(() => setSharedFiles([])).catch(() => setError('อัปโหลดเอกสารไม่สำเร็จ'))}>อัปโหลด</button></div></section>}
 
           {error && <p className="form-error" role="alert">{error}</p>}
           <div className="flex flex-wrap justify-between gap-2 border-t border-slate-100 pt-4">

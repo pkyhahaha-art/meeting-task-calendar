@@ -66,21 +66,25 @@ async function payloadWithGuestLink(delivery: Delivery) {
   return { ...delivery.payload, guest_url: url.toString() }
 }
 
-async function payloadWithInternalTaskDetails(delivery: Delivery, payload: Record<string, unknown>) {
-  if (delivery.channel !== 'email' || delivery.recipient_type !== 'task_assignee' || payload.entity !== 'task' || !publicAppUrl) return payload
+async function payloadWithTaskDocuments(delivery: Delivery, payload: Record<string, unknown>) {
+  if (delivery.channel !== 'email' || payload.entity !== 'task' || !['task_assignee', 'task_creator', 'external_assignee'].includes(delivery.recipient_type)) return payload
   const taskId = text(payload.id)
   if (!taskId) return payload
+  const documentUrl = delivery.recipient_type !== 'external_assignee' && publicAppUrl
+    ? internalTaskUrl(publicAppUrl, taskId)
+    : delivery.recipient_type === 'external_assignee' ? text(payload.external_url) : ''
+  if (!documentUrl.startsWith('http')) return payload
   const [attachments, documentLinks] = await Promise.all([
     supabase.from('task_attachments').select('file_name').eq('task_id', taskId).order('uploaded_at'),
     supabase.from('document_links').select('display_name').eq('task_id', taskId).order('created_at'),
   ])
   if (attachments.error || documentLinks.error) {
     console.error('Unable to load Task documents for email', errorMessage(attachments.error ?? documentLinks.error))
-    return { ...payload, internal_task_url: internalTaskUrl(publicAppUrl, taskId) }
+    return delivery.recipient_type !== 'external_assignee' ? { ...payload, internal_task_url: documentUrl } : payload
   }
   return {
     ...payload,
-    internal_task_url: internalTaskUrl(publicAppUrl, taskId),
+    ...(delivery.recipient_type !== 'external_assignee' ? { internal_task_url: documentUrl } : {}),
     task_documents: [...(attachments.data ?? []).map((file) => file.file_name), ...(documentLinks.data ?? []).map((link) => link.display_name)],
   }
 }
@@ -126,13 +130,14 @@ function html(template: string, payload: Record<string, unknown>) {
 
   const actionUrl = externalUrl || guestUrl || internalTaskUrl
   const action = actionUrl.startsWith('https://') || actionUrl.startsWith('http://')
-    ? `<p><a href="${escapeHtml(actionUrl)}">${externalUrl ? 'เปิด Task ของคุณ' : guestUrl ? 'เปิดรายละเอียด Meeting' : 'เปิด Task ในระบบ'}</a></p>` : ''
-  const documents = Array.isArray(payload.task_documents) && internalTaskUrl.startsWith('http')
+    ? `<p><a style="display:inline-block;background:#0f696c;color:#fff;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:600" href="${escapeHtml(actionUrl)}">${externalUrl ? 'เปิด Task / อัปโหลดเอกสาร' : guestUrl ? 'เปิดรายละเอียด Meeting' : 'เปิด Task / อัปโหลดเอกสาร'}</a></p>` : ''
+  const documentUrl = externalUrl || internalTaskUrl
+  const documents = Array.isArray(payload.task_documents) && documentUrl.startsWith('http')
     ? payload.task_documents.map(text).filter(Boolean).slice(0, 20)
-      .map((name) => `<li><a href="${escapeHtml(internalTaskUrl)}">${escapeHtml(name)}</a></li>`).join('')
+      .map((name) => `<li><a href="${escapeHtml(documentUrl)}">${escapeHtml(name)}</a></li>`).join('')
     : ''
   const documentList = documents ? `<h3>เอกสารประกอบ</h3><ul>${documents}</ul><p>โปรดเข้าสู่ระบบเพื่อเปิดเอกสารตามสิทธิ์ของคุณ</p>` : ''
-  return `<h2>${escapeHtml(subject(template, payload))}</h2>${rows ? `<table>${rows}</table>` : ''}${action}${documentList}`
+  return `<div style="max-width:640px;margin:auto;border:1px solid #e2e8f0;border-radius:14px;padding:24px;font-family:Arial,sans-serif;color:#1e293b"><h2 style="margin-top:0">${escapeHtml(subject(template, payload))}</h2>${rows ? `<table style="width:100%;border-collapse:collapse">${rows}</table>` : ''}${action}${documentList}</div>`
 }
 
 async function send(delivery: Delivery, payload: Record<string, unknown>) {
@@ -183,7 +188,7 @@ Deno.serve(async (request) => {
     let body: string
     try {
       const guestPayload = await payloadWithGuestLink(delivery)
-      const payload = await payloadWithInternalTaskDetails(delivery, guestPayload)
+      const payload = await payloadWithTaskDocuments(delivery, guestPayload)
       response = await send(delivery, payload)
       body = await response.text()
     } catch (error) {

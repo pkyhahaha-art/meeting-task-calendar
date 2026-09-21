@@ -243,13 +243,29 @@ export function CalendarPage() {
         const { error } = await supabase.functions.invoke('external-task', {
           body: { action: 'issue', taskId, publicUrl: appUrl('/external-task') },
         })
-        if (error) throw error
+        if (error) {
+          const response = (error as { context?: Response }).context
+          const details = response ? await response.json().catch(() => null) as { error?: string } | null : null
+          throw new Error(details?.error || error.message)
+        }
       }
     },
     onSuccess: async () => {
       await Promise.all([queryClient.invalidateQueries({ queryKey: ['tasks'] }), queryClient.invalidateQueries({ queryKey: ['task-details'] })])
       setTaskDialog({ open: false, task: null })
     },
+  })
+  const uploadTaskAttachmentsMutation = useMutation({
+    mutationFn: async ({ task, files }: { task: TaskRow; files: File[] }) => {
+      for (const file of files) {
+        const storagePath = `${user!.id}/${task.id}/${crypto.randomUUID()}-${safeFileName(file.name)}`
+        const uploaded = await supabase.storage.from('task-documents').upload(storagePath, file, { contentType: file.type, upsert: false })
+        if (uploaded.error) throw uploaded.error
+        const { error } = await supabase.from('task_attachments').insert({ task_id: task.id, file_name: file.name, mime_type: file.type, file_size: file.size, storage_path: storagePath, uploaded_by: user!.id })
+        if (error) { await supabase.storage.from('task-documents').remove([storagePath]); throw error }
+      }
+    },
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['task-details'] }) },
   })
 
   const deleteEventMutation = useMutation({
@@ -277,7 +293,8 @@ export function CalendarPage() {
   const canEditEvent = !selectedEvent || selectedEvent.owner_user_id === user?.id || profile?.role === 'admin'
   const canEditTask = !selectedTask || selectedTask.creator_user_id === user?.id || profile?.role === 'admin'
   const canCompleteTask = Boolean(selectedTask && (selectedTask.creator_user_id === user?.id || selectedTask.assignee_user_id === user?.id || profile?.role === 'admin'))
-  const busy = eventMutation.isPending || taskMutation.isPending || deleteEventMutation.isPending || deleteTaskMutation.isPending || toggleTaskMutation.isPending
+  const canUploadTask = Boolean(selectedTask && (selectedTask.creator_user_id === user?.id || selectedTask.assignee_user_id === user?.id || profile?.role === 'admin'))
+  const busy = eventMutation.isPending || taskMutation.isPending || uploadTaskAttachmentsMutation.isPending || deleteEventMutation.isPending || deleteTaskMutation.isPending || toggleTaskMutation.isPending
 
   return (
     <main className="mx-auto max-w-[1600px] p-4 sm:p-6">
@@ -326,11 +343,12 @@ export function CalendarPage() {
       <TaskDialog
         open={taskDialog.open} task={selectedTask} details={taskDetailsQuery.data} selectedDate={taskDialog.date}
         userId={user!.id} profiles={profilesQuery.data ?? []} events={eventsQuery.data ?? []}
-        canEdit={canEditTask} canComplete={canCompleteTask} busy={busy || taskDetailsQuery.isLoading}
+        canEdit={canEditTask} canUpload={canUploadTask} canComplete={canCompleteTask} busy={busy || taskDetailsQuery.isLoading}
         onClose={() => setTaskDialog({ open: false, task: null })}
         onSave={(draft) => taskMutation.mutateAsync({ draft, task: selectedTask })}
         onDelete={async () => { if (selectedTask && await confirm({ title: 'ย้าย Task ไปถังขยะ?', message: `Task “${selectedTask.title}” จะไม่แสดงในรายการงาน`, confirmLabel: 'ย้ายไปถังขยะ', tone: 'danger' })) await deleteTaskMutation.mutateAsync(selectedTask) }}
         onToggleComplete={async () => { if (selectedTask && await confirm({ title: selectedTask.status === 'completed' ? 'เปิดงานอีกครั้ง?' : 'ยืนยันว่างานเสร็จแล้ว?', message: `Task “${selectedTask.title}” จะถูกเปลี่ยนสถานะ`, confirmLabel: selectedTask.status === 'completed' ? 'เปิดงานอีกครั้ง' : 'ยืนยันงานเสร็จ' })) await toggleTaskMutation.mutateAsync(selectedTask) }}
+        onUploadFiles={async (files) => { if (selectedTask) await uploadTaskAttachmentsMutation.mutateAsync({ task: selectedTask, files }) }}
       />
     </main>
   )
