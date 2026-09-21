@@ -244,8 +244,10 @@ export function CalendarPage() {
           body: { action: 'issue', taskId, publicUrl: appUrl('/external-task') },
         })
         if (error) {
-          const response = (error as { context?: Response }).context
-          const details = response ? await response.json().catch(() => null) as { error?: string } | null : null
+          const context = (error as { context?: { json?: () => Promise<unknown> } }).context
+          const details = context && typeof context.json === 'function'
+            ? await context.json().catch(() => null) as { error?: string } | null
+            : null
           throw new Error(details?.error || error.message)
         }
       }
