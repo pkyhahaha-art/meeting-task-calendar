@@ -66,13 +66,31 @@ async function payloadWithGuestLink(delivery: Delivery) {
   return { ...delivery.payload, guest_url: url.toString() }
 }
 
+async function issueExternalTaskUrl(delivery: Delivery, taskId: string) {
+  if (!publicAppUrl) return ''
+  const token = randomToken()
+  const { error } = await supabase.from('external_task_tokens').insert({
+    task_id: taskId,
+    external_email: delivery.recipient_reference,
+    token_hash: await hashToken(token),
+  })
+  if (error) throw error
+  const url = new URL(publicAppUrl)
+  url.searchParams.set('token', token)
+  url.hash = '/external-task'
+  return url.toString()
+}
+
 async function payloadWithTaskDocuments(delivery: Delivery, payload: Record<string, unknown>) {
   if (delivery.channel !== 'email' || payload.entity !== 'task' || !['task_assignee', 'task_creator', 'external_assignee'].includes(delivery.recipient_type)) return payload
   const taskId = text(payload.id)
   if (!taskId) return payload
+  const externalUrl = delivery.recipient_type === 'external_assignee'
+    ? text(payload.external_url) || await issueExternalTaskUrl(delivery, taskId)
+    : ''
   const documentUrl = delivery.recipient_type !== 'external_assignee' && publicAppUrl
     ? internalTaskUrl(publicAppUrl, taskId)
-    : delivery.recipient_type === 'external_assignee' ? text(payload.external_url) : ''
+    : externalUrl
   if (!documentUrl.startsWith('http')) return payload
   const [attachments, documentLinks] = await Promise.all([
     supabase.from('task_attachments').select('file_name').eq('task_id', taskId).order('uploaded_at'),
@@ -84,6 +102,7 @@ async function payloadWithTaskDocuments(delivery: Delivery, payload: Record<stri
   }
   return {
     ...payload,
+    ...(externalUrl ? { external_url: externalUrl } : {}),
     ...(delivery.recipient_type !== 'external_assignee' ? { internal_task_url: documentUrl } : {}),
     task_documents: [...(attachments.data ?? []).map((file) => file.file_name), ...(documentLinks.data ?? []).map((link) => link.display_name)],
   }
