@@ -158,6 +158,24 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['document_links']['Insert']>
         Relationships: []
       }
+      notification_deliveries: {
+        Row: { id: string; reminder_id: string | null; task_reminder_id: string | null; event_id: string | null; task_id: string | null; recipient_type: string; recipient_reference: string; channel: 'email' | 'line'; idempotency_key: string; attempt: number; scheduled_at: string; next_attempt_at: string | null; sent_at: string | null; status: 'queued' | 'processing' | 'sent' | 'retry' | 'failed' | 'skipped' | 'deferred_quota'; provider_reference: string | null; error_code: string | null; error_message: string | null; template_key: string; payload: Json; created_at: string; updated_at: string }
+        Insert: Partial<Database['public']['Tables']['notification_deliveries']['Row']> & { recipient_type: string; recipient_reference: string; channel: 'email' | 'line'; idempotency_key: string; scheduled_at: string }
+        Update: Partial<Database['public']['Tables']['notification_deliveries']['Row']>
+        Relationships: []
+      }
+      audit_logs: {
+        Row: { id: number; actor_user_id: string | null; action: string; entity_type: string; entity_id: string | null; metadata: Json; created_at: string }
+        Insert: Omit<Database['public']['Tables']['audit_logs']['Row'], 'id' | 'created_at'> & { created_at?: string }
+        Update: never
+        Relationships: []
+      }
+      system_logs: {
+        Row: { id: number; job_name: string; run_id: string; status: 'started' | 'completed' | 'failed'; processed_count: number; details: Json; created_at: string }
+        Insert: Omit<Database['public']['Tables']['system_logs']['Row'], 'id' | 'run_id' | 'created_at'> & { run_id?: string; created_at?: string }
+        Update: never
+        Relationships: []
+      }
     }
     Views: Record<string, never>
     Functions: {

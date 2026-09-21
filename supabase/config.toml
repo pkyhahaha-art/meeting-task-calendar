@@ -4,6 +4,21 @@
 # working directory name when running `supabase init`.
 project_id = "Meeting_Task_Calendar"
 
+[functions.external-task]
+verify_jwt = false
+
+[functions.process-notification-queue]
+verify_jwt = false
+
+[functions.line-webhook]
+verify_jwt = false
+
+[functions.guest-event]
+verify_jwt = false
+
+[functions.reporting-export]
+verify_jwt = false
+
 [api]
 enabled = true
 # Port to use for the API URL.

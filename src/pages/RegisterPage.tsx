@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { MailWarning, UserPlus, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { AuthLayout } from '../components/AuthLayout'
+import { Captcha } from '../components/Captcha'
 import { FormMessage } from '../components/FormMessage'
 import { useLanguage } from '../i18n/LanguageProvider'
 import { appUrl } from '../lib/appUrl'
@@ -14,6 +15,7 @@ export function RegisterPage() {
   const { t, language } = useLanguage()
   const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null)
   const [showExistingAccount, setShowExistingAccount] = useState(false)
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<RegistrationValues>({ resolver: zodResolver(registrationSchema) })
 
   const submit = async (values: RegistrationValues) => {
@@ -25,6 +27,7 @@ export function RegisterPage() {
       options: {
         emailRedirectTo: appUrl('/auth/callback'),
         data: { full_name: fullName, employee_id: values.employeeId },
+        captchaToken: captchaToken ?? undefined,
       },
     })
     if (data.user?.identities?.length === 0 || error?.message.toLowerCase().includes('already registered')) {
@@ -52,6 +55,7 @@ export function RegisterPage() {
         <div><label className="field-label" htmlFor="email">{t('email')}</label><input id="email" type="email" autoComplete="email" className="field-input" placeholder="name@gmail.com" {...register('email')} />{errors.email && <p className="form-error">{errors.email.message}</p>}</div>
         <div><label className="field-label" htmlFor="password">{t('password')}</label><input id="password" type="password" autoComplete="new-password" className="field-input" {...register('password')} />{errors.password && <p className="form-error">{errors.password.message}</p>}</div>
         <div><label className="field-label" htmlFor="confirmPassword">{t('confirmPassword')}</label><input id="confirmPassword" type="password" autoComplete="new-password" className="field-input" {...register('confirmPassword')} />{errors.confirmPassword && <p className="form-error">{errors.confirmPassword.message}</p>}</div>
+        <Captcha onToken={setCaptchaToken} />
         <button className="btn-primary w-full" disabled={isSubmitting}><UserPlus size={18} />{isSubmitting ? t('loading') : t('createAccount')}</button>
         <p className="text-center text-sm text-slate-600">{t('haveAccount')} <Link to="/login" className="font-semibold text-brand-600 hover:underline">{t('signIn')}</Link></p>
       </form>

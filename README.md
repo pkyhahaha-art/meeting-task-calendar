@@ -15,6 +15,11 @@ Internal shared calendar built with React, TypeScript, Tailwind CSS, FullCalenda
 - UI ownership rules plus database-enforced RLS
 - Initial schema for recurrence, guests, attachments, reminders, delivery logs, audit logs, and system logs
 - Private Storage bucket policies
+- Revocable, single-Task links for external Task assignees
+- Revocable guest Meeting links with short-lived attachment downloads
+- Recurring Meeting occurrence generation and hourly retention/log cleanup
+- LINE linking codes, webhook handling, and queued LINE reminders
+- Admin overview for deliveries, audit events, and scheduled jobs
 
 ## Local setup
 
@@ -37,7 +42,21 @@ Internal shared calendar built with React, TypeScript, Tailwind CSS, FullCalenda
 
 5. Configure a custom SMTP provider before production use.
 
-6. Run:
+6. Deploy the Edge Functions and configure their server-side secrets:
+
+   ```bash
+   supabase functions deploy process-notification-queue --no-verify-jwt
+   supabase functions deploy external-task --no-verify-jwt
+   supabase functions deploy guest-event --no-verify-jwt
+   supabase functions deploy line-webhook --no-verify-jwt
+   supabase functions deploy reporting-export --no-verify-jwt
+   ```
+
+   `external-task` and `guest-event` use the standard Supabase server environment variables. The notification function additionally needs the Brevo and cron secrets documented in its README, plus `PUBLIC_APP_URL` for guest links. LINE needs `LINE_CHANNEL_SECRET` and `LINE_CHANNEL_ACCESS_TOKEN`; set its webhook to `https://YOUR_PROJECT_REF.supabase.co/functions/v1/line-webhook`. Reporting needs a distinct `REPORTING_SYNC_SECRET`.
+
+7. Optionally enable Cloudflare Turnstile in Supabase Auth and set `VITE_TURNSTILE_SITE_KEY` in the frontend environment. The site key is public; the Turnstile secret belongs only in Supabase Auth settings.
+
+8. Run:
 
    ```bash
    npm run dev
@@ -52,6 +71,10 @@ The app uses `HashRouter` and relative Vite assets so project Pages URLs work wi
 3. In GitHub repository settings, set Pages source to **GitHub Actions**.
 4. Push to `main` or `master`; `.github/workflows/deploy-pages.yml` tests, builds, and deploys the site.
 5. Add the resulting Pages URL patterns to Supabase Auth Redirect URLs.
+
+## Google Sheets reporting
+
+The read-only Apps Script template is in [`integrations/google-sheets`](integrations/google-sheets). It syncs safe Users, Audit, Notification, and System reporting fields hourly; it excludes tokens, recipient addresses, attachment paths, and secrets.
 
 ## Security notes
 

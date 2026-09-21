@@ -13,6 +13,8 @@ import { TaskDialog, type TaskDetails, type TaskDraft } from '../components/Task
 import { useLanguage } from '../i18n/LanguageProvider'
 import type { Database } from '../lib/database.types'
 import { parseGuestEmails, recurrenceRule, reminderDate, type ReminderKey } from '../lib/eventForm'
+import { appUrl } from '../lib/appUrl'
+import { expandEvent } from '../lib/recurrence'
 import { taskDueDateTime, taskReminderDate, type TaskReminderKey } from '../lib/taskForm'
 import { supabase } from '../lib/supabase'
 
@@ -220,6 +222,12 @@ export function CalendarPage() {
         const { error } = await supabase.from('task_attachments').insert({ task_id: taskId, file_name: file.name, mime_type: file.type, file_size: file.size, storage_path: storagePath, uploaded_by: user!.id })
         if (error) { await supabase.storage.from('task-documents').remove([storagePath]); throw error }
       }
+      if (external) {
+        const { error } = await supabase.functions.invoke('external-task', {
+          body: { action: 'issue', taskId, publicUrl: appUrl('/external-task') },
+        })
+        if (error) throw error
+      }
     },
     onSuccess: async () => {
       await Promise.all([queryClient.invalidateQueries({ queryKey: ['tasks'] }), queryClient.invalidateQueries({ queryKey: ['task-details'] })])
@@ -232,7 +240,7 @@ export function CalendarPage() {
     onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['events'] }); setEventDialog({ open: false, event: null }) },
   })
   const deleteTaskMutation = useMutation({
-    mutationFn: async (task: TaskRow) => { const { error } = await supabase.from('tasks').update({ deleted_at: new Date().toISOString() }).eq('id', task.id); if (error) throw error },
+    mutationFn: async (task: TaskRow) => { const { error } = await supabase.from('tasks').update({ deleted_at: new Date().toISOString(), status: 'cancelled' }).eq('id', task.id); if (error) throw error },
     onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['tasks'] }); setTaskDialog({ open: false, task: null }) },
   })
   const toggleTaskMutation = useMutation({
@@ -243,8 +251,10 @@ export function CalendarPage() {
   const normalizedSearch = search.trim().toLowerCase()
   const eventRows = useMemo(() => (eventsQuery.data ?? []).filter((event) => `${event.title} ${event.location} ${event.description}`.toLowerCase().includes(normalizedSearch)), [eventsQuery.data, normalizedSearch])
   const taskRows = useMemo(() => (tasksQuery.data ?? []).filter((task) => (showCompletedTasks || task.status !== 'completed') && `${task.title} ${task.description}`.toLowerCase().includes(normalizedSearch)), [normalizedSearch, showCompletedTasks, tasksQuery.data])
+  const occurrenceStart = new Date(); occurrenceStart.setFullYear(occurrenceStart.getFullYear() - 1)
+  const occurrenceEnd = new Date(); occurrenceEnd.setFullYear(occurrenceEnd.getFullYear() + 1)
   const calendarEntries = [
-    ...eventRows.map((event) => ({ id: `event-${event.id}`, title: event.title, start: event.start_datetime, end: event.end_datetime || undefined, allDay: event.all_day, backgroundColor: event.owner_user_id === user?.id ? '#0f696c' : '#64748b', borderColor: 'transparent', extendedProps: { kind: 'event', row: event } })),
+    ...eventRows.flatMap((event) => expandEvent(event, occurrenceStart, occurrenceEnd).map((occurrence) => ({ id: `event-${occurrence.key}`, title: event.title, start: occurrence.start, end: occurrence.end || undefined, allDay: event.all_day, backgroundColor: event.owner_user_id === user?.id ? '#0f696c' : '#64748b', borderColor: 'transparent', extendedProps: { kind: 'event', row: event } }))),
     ...(showTasks ? taskRows.map((task) => ({ id: `task-${task.id}`, title: `${task.status === 'completed' ? '✓' : '☐'} ${task.title}`, start: task.due_time ? `${task.due_date}T${task.due_time.slice(0, 5)}:00+07:00` : task.due_date, allDay: !task.due_time, backgroundColor: task.status === 'completed' ? '#94a3b8' : '#d97706', borderColor: 'transparent', textColor: '#ffffff', extendedProps: { kind: 'task', row: task } })) : []),
   ]
   const canEditEvent = !selectedEvent || selectedEvent.owner_user_id === user?.id || profile?.role === 'admin'

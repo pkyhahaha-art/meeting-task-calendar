@@ -3,7 +3,7 @@
 Deploy this function after applying every notification migration:
 
 ```sh
-supabase functions deploy process-notification-queue
+supabase functions deploy process-notification-queue --no-verify-jwt
 supabase secrets set BREVO_API_KEY=... NOTIFICATION_SENDER_EMAIL=... NOTIFICATION_SENDER_NAME="Meeting & Task Calendar" NOTIFICATION_CRON_SECRET=...
 ```
 
@@ -11,6 +11,6 @@ Invoke it from a Supabase scheduled job every minute (Dashboard > Edge Functions
 
 Brevo must have a verified sender address. Recipients may use Gmail; this integration sends transactional Email through Brevo and does not require Gmail OAuth or a Gmail password. Set the sender and API key only as Supabase Edge Function secrets, never in `.env.local` or browser variables.
 
-Retries run after 5 and 10 minutes. A third retryable failure is recorded as `failed`; a third HTTP 429 is recorded as `deferred_quota` for Admin follow-up. A worker interrupted for more than 20 minutes is returned to the queue (or marked failed if it already used all three attempts).
+Retries run after 5, 15, and 30 minutes. After the third retry fails, delivery is recorded as `failed`; a final HTTP 429 is recorded as `deferred_quota` for Admin follow-up. A worker interrupted for more than 20 minutes is returned to the queue (or marked failed if it already used all three retries).
 
 The function requires a `Bearer` value matching `NOTIFICATION_CRON_SECRET`; store the matching value in Supabase Vault and use it only in the cron job header. Do not expose this secret or the service-role key in the browser or in Apps Script.
