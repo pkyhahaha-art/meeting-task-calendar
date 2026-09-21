@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { retryDelayMinutes } from './retry.ts'
+import { internalTaskUrl } from './taskLink.ts'
 
 type Delivery = {
   id: string
@@ -60,6 +61,22 @@ async function payloadWithGuestLink(delivery: Delivery) {
   return { ...delivery.payload, guest_url: url.toString() }
 }
 
+async function payloadWithInternalTaskDetails(delivery: Delivery, payload: Record<string, unknown>) {
+  if (delivery.channel !== 'email' || delivery.recipient_type !== 'task_assignee' || payload.entity !== 'task' || !publicAppUrl) return payload
+  const taskId = text(payload.id)
+  if (!taskId) return payload
+  const [attachments, documentLinks] = await Promise.all([
+    supabase.from('task_attachments').select('file_name').eq('task_id', taskId).order('uploaded_at'),
+    supabase.from('document_links').select('display_name').eq('task_id', taskId).order('created_at'),
+  ])
+  if (attachments.error || documentLinks.error) throw attachments.error ?? documentLinks.error
+  return {
+    ...payload,
+    internal_task_url: internalTaskUrl(publicAppUrl, taskId),
+    task_documents: [...(attachments.data ?? []).map((file) => file.file_name), ...(documentLinks.data ?? []).map((link) => link.display_name)],
+  }
+}
+
 function formatDateTime(value: unknown) {
   const date = new Date(String(value ?? ''))
   if (Number.isNaN(date.getTime())) return ''
@@ -88,6 +105,7 @@ function html(template: string, payload: Record<string, unknown>) {
   const dueTime = text(payload.due_time)
   const externalUrl = text(payload.external_url)
   const guestUrl = text(payload.guest_url)
+  const internalTaskUrl = text(payload.internal_task_url)
   const rows = [
     ['รายละเอียด', description],
     ['สถานที่', location],
@@ -98,10 +116,15 @@ function html(template: string, payload: Record<string, unknown>) {
     .map(([label, value]) => `<tr><th align="left">${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`)
     .join('')
 
-  const actionUrl = externalUrl || guestUrl
+  const actionUrl = externalUrl || guestUrl || internalTaskUrl
   const action = actionUrl.startsWith('https://') || actionUrl.startsWith('http://')
-    ? `<p><a href="${escapeHtml(actionUrl)}">${externalUrl ? 'เปิด Task ของคุณ' : 'เปิดรายละเอียด Meeting'}</a></p>` : ''
-  return `<h2>${escapeHtml(subject(template, payload))}</h2>${rows ? `<table>${rows}</table>` : ''}${action}`
+    ? `<p><a href="${escapeHtml(actionUrl)}">${externalUrl ? 'เปิด Task ของคุณ' : guestUrl ? 'เปิดรายละเอียด Meeting' : 'เปิด Task ในระบบ'}</a></p>` : ''
+  const documents = Array.isArray(payload.task_documents) && internalTaskUrl.startsWith('http')
+    ? payload.task_documents.map(text).filter(Boolean).slice(0, 20)
+      .map((name) => `<li><a href="${escapeHtml(internalTaskUrl)}">${escapeHtml(name)}</a></li>`).join('')
+    : ''
+  const documentList = documents ? `<h3>เอกสารประกอบ</h3><ul>${documents}</ul><p>โปรดเข้าสู่ระบบเพื่อเปิดเอกสารตามสิทธิ์ของคุณ</p>` : ''
+  return `<h2>${escapeHtml(subject(template, payload))}</h2>${rows ? `<table>${rows}</table>` : ''}${action}${documentList}`
 }
 
 async function send(delivery: Delivery, payload: Record<string, unknown>) {
@@ -151,7 +174,8 @@ Deno.serve(async (request) => {
     let response: Response
     let body: string
     try {
-      const payload = await payloadWithGuestLink(delivery)
+      const guestPayload = await payloadWithGuestLink(delivery)
+      const payload = await payloadWithInternalTaskDetails(delivery, guestPayload)
       response = await send(delivery, payload)
       body = await response.text()
     } catch (error) {

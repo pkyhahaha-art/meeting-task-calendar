@@ -1,16 +1,17 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import FullCalendar from '@fullcalendar/react'
 import dayGridPlugin from '@fullcalendar/daygrid'
 import interactionPlugin from '@fullcalendar/interaction'
 import thLocale from '@fullcalendar/core/locales/th'
 import enGbLocale from '@fullcalendar/core/locales/en-gb'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarPlus, ListTodo, Search } from 'lucide-react'
+import { CalendarDays, CalendarPlus, ListTodo, Search } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import { useConfirm } from '../components/ConfirmDialogProvider'
 import { EventDialog, type EventDetails, type EventDraft } from '../components/EventDialog'
 import { TaskDialog, type TaskDetails, type TaskDraft } from '../components/TaskDialog'
 import { useLanguage } from '../i18n/LanguageProvider'
+import { useLocation } from 'react-router-dom'
 import type { Database } from '../lib/database.types'
 import { parseGuestEmails, recurrenceRule, reminderDate, type ReminderKey } from '../lib/eventForm'
 import { appUrl } from '../lib/appUrl'
@@ -45,6 +46,7 @@ function safeFileName(name: string) {
 export function CalendarPage() {
   const { user, profile } = useAuth()
   const { language } = useLanguage()
+  const { search: locationSearch } = useLocation()
   const confirm = useConfirm()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
@@ -52,6 +54,7 @@ export function CalendarPage() {
   const [showCompletedTasks, setShowCompletedTasks] = useState(false)
   const [eventDialog, setEventDialog] = useState<{ open: boolean; event: EventRow | null; date?: string }>({ open: false, event: null })
   const [taskDialog, setTaskDialog] = useState<{ open: boolean; task: TaskRow | null; date?: string }>({ open: false, task: null })
+  const [openedTaskLink, setOpenedTaskLink] = useState<string | null>(null)
 
   const eventsQuery = useQuery({
     queryKey: ['events'],
@@ -69,6 +72,15 @@ export function CalendarPage() {
       return data
     },
   })
+  const linkedTaskId = useMemo(() => new URLSearchParams(locationSearch).get('task'), [locationSearch])
+
+  useEffect(() => {
+    if (!linkedTaskId || linkedTaskId === openedTaskLink) return
+    const task = tasksQuery.data?.find((item) => item.id === linkedTaskId)
+    if (!task) return
+    setTaskDialog({ open: true, task })
+    setOpenedTaskLink(linkedTaskId)
+  }, [linkedTaskId, openedTaskLink, tasksQuery.data])
   const profilesQuery = useQuery({
     queryKey: ['assignable-profiles'],
     queryFn: async () => {
@@ -111,11 +123,16 @@ export function CalendarPage() {
       if (reminders.error) throw reminders.error
       if (attachments.error) throw attachments.error
       if (documentLinks.error) throw documentLinks.error
+      const attachmentViews = await Promise.all(attachments.data.map(async (file) => {
+        const { data, error } = await supabase.storage.from('task-documents').createSignedUrl(file.storage_path, 300)
+        if (error || !data) throw error ?? new Error('ไม่สามารถเปิดเอกสารประกอบได้')
+        return { ...file, signedUrl: data.signedUrl }
+      }))
       return {
         reminderKeys: [...new Set(reminders.data.map((item) => item.reminder_key))] as TaskReminderKey[],
         notifyEmail: reminders.data.some((item) => item.channel_email),
         notifyLine: reminders.data.some((item) => item.channel_line),
-        attachments: attachments.data,
+        attachments: attachmentViews,
         documentLinks: documentLinks.data,
       }
     },
@@ -255,7 +272,7 @@ export function CalendarPage() {
   const occurrenceEnd = new Date(); occurrenceEnd.setFullYear(occurrenceEnd.getFullYear() + 1)
   const calendarEntries = [
     ...eventRows.flatMap((event) => expandEvent(event, occurrenceStart, occurrenceEnd).map((occurrence) => ({ id: `event-${occurrence.key}`, title: event.title, start: occurrence.start, end: occurrence.end || undefined, allDay: event.all_day, backgroundColor: event.owner_user_id === user?.id ? '#0f696c' : '#64748b', borderColor: 'transparent', extendedProps: { kind: 'event', row: event } }))),
-    ...(showTasks ? taskRows.map((task) => ({ id: `task-${task.id}`, title: `${task.status === 'completed' ? '✓' : '☐'} ${task.title}`, start: task.due_time ? `${task.due_date}T${task.due_time.slice(0, 5)}:00+07:00` : task.due_date, allDay: !task.due_time, backgroundColor: task.status === 'completed' ? '#94a3b8' : '#d97706', borderColor: 'transparent', textColor: '#ffffff', extendedProps: { kind: 'task', row: task } })) : []),
+    ...(showTasks ? taskRows.map((task) => ({ id: `task-${task.id}`, title: task.title, start: task.due_time ? `${task.due_date}T${task.due_time.slice(0, 5)}:00+07:00` : task.due_date, allDay: !task.due_time, backgroundColor: task.status === 'completed' ? '#94a3b8' : '#d97706', borderColor: 'transparent', textColor: '#ffffff', extendedProps: { kind: 'task', row: task } })) : []),
   ]
   const canEditEvent = !selectedEvent || selectedEvent.owner_user_id === user?.id || profile?.role === 'admin'
   const canEditTask = !selectedTask || selectedTask.creator_user_id === user?.id || profile?.role === 'admin'
@@ -285,6 +302,12 @@ export function CalendarPage() {
           eventClick={(info) => {
             if (info.event.extendedProps.kind === 'task') setTaskDialog({ open: true, task: info.event.extendedProps.row as TaskRow })
             else setEventDialog({ open: true, event: info.event.extendedProps.row as EventRow })
+          }}
+          eventContent={(info) => {
+            const isTask = info.event.extendedProps.kind === 'task'
+            const task = isTask ? info.event.extendedProps.row as TaskRow : null
+            const Icon = isTask ? ListTodo : CalendarDays
+            return <div className="flex min-w-0 items-center gap-1 px-1"><Icon size={14} aria-hidden="true" /><div className="fc-event-title truncate">{task?.status === 'completed' ? 'เสร็จแล้ว: ' : ''}{info.event.title}</div></div>
           }}
           events={calendarEntries}
           headerToolbar={{ left: 'prev,next today', center: 'title', right: '' }}

@@ -7,7 +7,7 @@ import { isGoogleDocumentUrl, taskReminderOptions, type TaskReminderKey } from '
 type TaskRow = Database['public']['Tables']['tasks']['Row']
 type ProfileRow = Database['public']['Tables']['profiles']['Row']
 type EventRow = Database['public']['Tables']['events']['Row']
-type TaskAttachmentRow = Database['public']['Tables']['task_attachments']['Row']
+type TaskAttachmentRow = Database['public']['Tables']['task_attachments']['Row'] & { signedUrl?: string }
 type DocumentLinkRow = Database['public']['Tables']['document_links']['Row']
 
 export type DriveLinkDraft = { displayName: string; url: string }
@@ -141,7 +141,8 @@ export function TaskDialog({ open, task, details, selectedDate, userId, profiles
 
             <section className="space-y-3 rounded-xl border border-slate-200 p-4">
               <h3 className="flex items-center gap-2 font-semibold text-slate-800"><Paperclip size={18} className="text-amber-700" />เอกสารประกอบ</h3>
-              {details?.attachments.map((file) => <div key={file.id} className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm"><FileText size={16} /><span className="truncate">{file.file_name}</span><span className="ml-auto text-xs text-slate-400">{(file.file_size / 1024 / 1024).toFixed(1)} MB</span></div>)}
+              {details?.attachments.map((file) => <div key={file.id} className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm"><FileText size={16} /><span className="truncate">{file.file_name}</span><span className="ml-auto text-xs text-slate-400">{(file.file_size / 1024 / 1024).toFixed(1)} MB</span>{file.signedUrl && <a className="font-medium text-brand-600 hover:underline" href={file.signedUrl} target="_blank" rel="noreferrer">เปิด</a>}</div>)}
+              {details?.documentLinks.map((link) => <div key={link.id} className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm"><Link2 size={16} /><a className="truncate font-medium text-brand-600 hover:underline" href={link.url} target="_blank" rel="noreferrer">{link.display_name}</a></div>)}
               {draft.files.map((file, index) => <div key={`${file.name}-${index}`} className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm"><FileText size={16} /><span className="truncate">{file.name}</span><button type="button" className="ml-auto text-slate-500 hover:text-red-600" onClick={() => set('files', draft.files.filter((_, itemIndex) => itemIndex !== index))}><X size={16} /></button></div>)}
               <input ref={fileInput} type="file" multiple className="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png" onChange={(event) => { const files = [...(event.target.files ?? [])]; const message = validateAttachments([...draft.files, ...files], details?.attachments.length ?? 0); if (message) setError(message); else set('files', [...draft.files, ...files]); event.target.value = '' }} />
               <button type="button" className="btn-secondary" onClick={() => fileInput.current?.click()}><Paperclip size={17} />อัปโหลดไฟล์</button>

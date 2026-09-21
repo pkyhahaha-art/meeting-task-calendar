@@ -25,7 +25,8 @@ export function LoginPage() {
 
   if (user && profileLoading) return <div className="flex min-h-screen items-center justify-center text-slate-500">กำลังตรวจสอบสิทธิ์…</div>
   if (user) return <Navigate to={homePathForRole(profile?.role)} replace />
-  const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || '/calendar'
+  const returnTo = (location.state as { from?: { pathname?: string; search?: string } } | null)?.from
+  const from = `${returnTo?.pathname || '/calendar'}${returnTo?.search || ''}`
 
   const submit = async (values: LoginValues) => {
     setMessage(null)
