@@ -17,7 +17,7 @@ Internal shared calendar built with React, TypeScript, Tailwind CSS, FullCalenda
 - Private Storage bucket policies
 - Revocable, single-Task links for external Task assignees
 - Revocable guest Meeting links with short-lived attachment downloads
-- Recurring Meeting occurrence generation and hourly retention/log cleanup
+- Recurring Meeting and Task occurrence generation with hourly storage/retention cleanup
 - LINE linking codes, webhook handling, and queued LINE reminders
 - Admin overview for deliveries, audit events, and scheduled jobs
 
@@ -50,9 +50,10 @@ Internal shared calendar built with React, TypeScript, Tailwind CSS, FullCalenda
    supabase functions deploy guest-event --no-verify-jwt
    supabase functions deploy line-webhook --no-verify-jwt
    supabase functions deploy reporting-export --no-verify-jwt
+   supabase functions deploy scheduled-maintenance --no-verify-jwt
    ```
 
-   `external-task` and `guest-event` use the standard Supabase server environment variables. The notification function additionally needs the Brevo and cron secrets documented in its README, plus `PUBLIC_APP_URL` for guest links. LINE needs `LINE_CHANNEL_SECRET` and `LINE_CHANNEL_ACCESS_TOKEN`; set its webhook to `https://YOUR_PROJECT_REF.supabase.co/functions/v1/line-webhook`. Reporting needs a distinct `REPORTING_SYNC_SECRET`.
+   `external-task` and `guest-event` use the standard Supabase server environment variables. The notification and maintenance functions need the cron secret; the notification function also needs Brevo settings and `PUBLIC_APP_URL` for guest links. LINE needs `LINE_CHANNEL_SECRET` and `LINE_CHANNEL_ACCESS_TOKEN`; set its webhook to `https://YOUR_PROJECT_REF.supabase.co/functions/v1/line-webhook`. Reporting needs a distinct `REPORTING_SYNC_SECRET`.
 
 7. Optionally enable Cloudflare Turnstile in Supabase Auth and set `VITE_TURNSTILE_SITE_KEY` in the frontend environment. The site key is public; the Turnstile secret belongs only in Supabase Auth settings.
 
