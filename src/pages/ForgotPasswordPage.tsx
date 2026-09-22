@@ -4,6 +4,7 @@ import { AuthLayout } from '../components/AuthLayout'
 import { Captcha } from '../components/Captcha'
 import { FormMessage } from '../components/FormMessage'
 import { appUrl } from '../lib/appUrl'
+import { forgotPasswordErrorMessage } from '../lib/authError'
 import { supabase } from '../lib/supabase'
 
 export function ForgotPasswordPage() {
@@ -16,12 +17,9 @@ export function ForgotPasswordPage() {
     const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo: appUrl('/reset-password'), captchaToken: captchaToken ?? undefined })
     setBusy(false)
     if (error) {
-      const rateLimited = error.status === 429 || error.message.toLowerCase().includes('rate limit')
       setMessage({
         type: 'error',
-        text: rateLimited
-          ? 'ส่งอีเมลไม่ได้ในขณะนี้ เนื่องจาก Supabase ฟรีจำกัดรวม 2 ฉบับต่อชั่วโมง กรุณารอประมาณ 1 ชั่วโมงแล้วลองใหม่'
-          : 'ส่งลิงก์ไม่สำเร็จ กรุณารอสักครู่แล้วลองใหม่',
+        text: forgotPasswordErrorMessage(error),
       })
       return
     }
