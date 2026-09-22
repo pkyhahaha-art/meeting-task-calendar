@@ -188,6 +188,12 @@ export function CalendarPage() {
   const taskMutation = useMutation({
     mutationFn: async ({ draft, task }: { draft: TaskDraft; task: TaskRow | null }) => {
       const external = draft.assigneeKind === 'external'
+      let externalAccessToken = ''
+      if (external) {
+        const { data, error } = await supabase.auth.refreshSession()
+        if (error || !data.session) throw new Error('เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง')
+        externalAccessToken = data.session.access_token
+      }
       const assigneeUserId = draft.assigneeKind === 'self' ? user!.id : draft.assigneeUserId
       const payload = {
         title: draft.title.trim(),
@@ -242,6 +248,7 @@ export function CalendarPage() {
       if (external) {
         const { error } = await supabase.functions.invoke('external-task', {
           body: { action: 'issue', taskId, publicUrl: appUrl('/external-task') },
+          headers: { authorization: `Bearer ${externalAccessToken}` },
         })
         if (error) {
           const context = (error as { context?: { json?: () => Promise<unknown> } }).context
