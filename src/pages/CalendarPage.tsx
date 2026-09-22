@@ -104,8 +104,13 @@ export function CalendarPage() {
       if (guests.error) throw guests.error
       if (reminders.error) throw reminders.error
       if (attachments.error) throw attachments.error
+      const attachmentViews = await Promise.all(attachments.data.map(async (file) => {
+        const { data, error } = await supabase.storage.from('meeting-documents').createSignedUrl(file.storage_path, 300, { download: file.file_name })
+        if (error || !data) throw error ?? new Error('ไม่สามารถเปิดไฟล์แนบได้')
+        return { ...file, signedUrl: data.signedUrl }
+      }))
       const keys = reminders.data.map(reminderKey).filter((key): key is ReminderKey => Boolean(key))
-      return { guestEmails: guests.data.map((guest) => guest.email), reminderKeys: keys, notifyEmail: reminders.data.some((item) => item.channel_email), notifyLine: reminders.data.some((item) => item.channel_line), attachments: attachments.data }
+      return { guestEmails: guests.data.map((guest) => guest.email), reminderKeys: keys, notifyEmail: reminders.data.some((item) => item.channel_email), notifyLine: reminders.data.some((item) => item.channel_line), attachments: attachmentViews }
     },
   })
 
