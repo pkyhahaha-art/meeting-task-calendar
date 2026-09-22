@@ -41,7 +41,7 @@ async function reply(replyToken: string, message: string) {
 async function createCode(request: Request) {
   const authorization = request.headers.get('authorization')
   if (!authorization) return json({ error: 'Authentication required' }, 401)
-  const client = createClient(supabaseUrl, anonKey, { global: { headers: { authorization } } })
+  const client = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authorization } } })
   const { data: { user } } = await client.auth.getUser()
   if (!user) return json({ error: 'Invalid session' }, 401)
   const code = Array.from(crypto.getRandomValues(new Uint8Array(4)), (value) => (value % 10).toString()).join('')

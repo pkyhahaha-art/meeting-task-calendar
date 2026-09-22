@@ -30,7 +30,7 @@ async function taskForToken(token: string) {
 async function issueToken(request: Request) {
   const authorization = request.headers.get('authorization')
   if (!authorization) return response({ error: 'ต้องเข้าสู่ระบบก่อน' }, 401)
-  const requester = createClient(supabaseUrl, anonKey, { global: { headers: { authorization } } })
+  const requester = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authorization } } })
   const { data: { user }, error: userError } = await requester.auth.getUser()
   if (userError || !user) return response({ error: 'เซสชันไม่ถูกต้อง' }, 401)
   const body = await request.json()

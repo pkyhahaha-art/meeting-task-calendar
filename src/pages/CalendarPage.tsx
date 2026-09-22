@@ -248,7 +248,7 @@ export function CalendarPage() {
       if (external) {
         const { error } = await supabase.functions.invoke('external-task', {
           body: { action: 'issue', taskId, publicUrl: appUrl('/external-task') },
-          headers: { authorization: `Bearer ${externalAccessToken}` },
+          headers: { Authorization: `Bearer ${externalAccessToken}` },
         })
         if (error) {
           const context = (error as { context?: { json?: () => Promise<unknown> } }).context
