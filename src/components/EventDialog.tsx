@@ -57,7 +57,9 @@ export function EventDialog({ open, event, details, selectedDate, canEdit, busy,
     if (attachmentError) return setError(attachmentError)
     if (draft.reminderKeys.length && !draft.notifyEmail && !draft.notifyLine) return setError('กรุณาเลือกช่องทางแจ้งเตือนอย่างน้อย 1 ช่องทาง')
     setError('')
-    try { await onSave(draft) } catch { setError('บันทึกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง') }
+    try { await onSave(draft) } catch (error) {
+      setError(error instanceof Error && error.message.startsWith('เซสชันหมดอายุ') ? error.message : 'บันทึกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง')
+    }
   }
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/35 p-0 sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="event-title">

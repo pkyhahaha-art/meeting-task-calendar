@@ -140,6 +140,9 @@ export function CalendarPage() {
 
   const eventMutation = useMutation({
     mutationFn: async ({ draft, event }: { draft: EventDraft; event: EventRow | null }) => {
+      const { data: sessionData, error: sessionError } = await supabase.auth.refreshSession()
+      if (sessionError || !sessionData.session) throw new Error('เซสชันหมดอายุ กรุณาออกจากระบบแล้วเข้าสู่ระบบใหม่')
+      const eventUserId = sessionData.session.user.id
       const startIso = toIso(draft.start, draft.all_day)
       const payload = { title: draft.title.trim(), description: draft.description.trim(), location: draft.location.trim(), all_day: draft.all_day, start_datetime: startIso, end_datetime: draft.end ? toIso(draft.end, draft.all_day) : null, recurrence_rule: recurrenceRule(draft.recurrence) }
       let eventId = event?.id
@@ -147,7 +150,7 @@ export function CalendarPage() {
         const { error } = await supabase.from('events').update(payload).eq('id', eventId)
         if (error) throw error
       } else {
-        const { data, error } = await supabase.from('events').insert({ ...payload, owner_user_id: user!.id }).select('*').single<EventRow>()
+        const { data, error } = await supabase.from('events').insert({ ...payload, owner_user_id: eventUserId }).select('*').single<EventRow>()
         if (error) throw error
         eventId = data.id
       }
@@ -172,10 +175,10 @@ export function CalendarPage() {
         if (error) throw error
       }
       for (const file of draft.files) {
-        const storagePath = `${user!.id}/${eventId}/${crypto.randomUUID()}-${safeFileName(file.name)}`
+        const storagePath = `${eventUserId}/${eventId}/${crypto.randomUUID()}-${safeFileName(file.name)}`
         const uploaded = await supabase.storage.from('meeting-documents').upload(storagePath, file, { contentType: file.type, upsert: false })
         if (uploaded.error) throw uploaded.error
-        const { error } = await supabase.from('attachments').insert({ event_id: eventId, file_name: file.name, mime_type: file.type, file_size: file.size, storage_path: storagePath, uploaded_by: user!.id })
+        const { error } = await supabase.from('attachments').insert({ event_id: eventId, file_name: file.name, mime_type: file.type, file_size: file.size, storage_path: storagePath, uploaded_by: eventUserId })
         if (error) { await supabase.storage.from('meeting-documents').remove([storagePath]); throw error }
       }
     },
