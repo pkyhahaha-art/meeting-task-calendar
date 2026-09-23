@@ -32,6 +32,7 @@ export interface Database {
           owner_user_id: string
           title: string
           description: string
+          affiliation: string
           start_datetime: string
           end_datetime: string | null
           all_day: boolean
@@ -48,6 +49,7 @@ export interface Database {
           owner_user_id: string
           title: string
           description?: string
+          affiliation?: string
           start_datetime: string
           end_datetime?: string | null
           all_day?: boolean
@@ -88,6 +90,7 @@ export interface Database {
           linked_event_id: string | null
           title: string
           description: string
+          affiliation: string
           due_date: string
           due_time: string | null
           timezone: string
@@ -109,6 +112,7 @@ export interface Database {
           linked_event_id?: string | null
           title: string
           description?: string
+          affiliation?: string
           due_date: string
           due_time?: string | null
           timezone?: string
@@ -182,6 +186,19 @@ export interface Database {
       admin_set_profile_status: {
         Args: { target_user_id: string; next_status: 'active' | 'disabled' }
         Returns: undefined
+      }
+      create_meeting_event: {
+        Args: {
+          target_title: string
+          target_description: string
+          target_location: string
+          target_affiliation: string
+          target_all_day: boolean
+          target_start_datetime: string
+          target_end_datetime: string | null
+          target_recurrence_rule: string | null
+        }
+        Returns: Database['public']['Tables']['events']['Row']
       }
     }
     Enums: Record<string, never>

@@ -13,8 +13,9 @@ import { TaskDialog, type TaskDetails, type TaskDraft } from '../components/Task
 import { useLanguage } from '../i18n/LanguageProvider'
 import { useLocation } from 'react-router-dom'
 import type { Database } from '../lib/database.types'
-import { parseGuestEmails, recurrenceRule, reminderDate, type ReminderKey } from '../lib/eventForm'
+import { bangkokDate, isPastBangkokDate, parseGuestEmails, recurrenceRule, reminderDate, type ReminderKey } from '../lib/eventForm'
 import { appUrl } from '../lib/appUrl'
+import { canManageMeeting, meetingCreateArgs } from '../lib/meetingAccess'
 import { expandEvent } from '../lib/recurrence'
 import { taskDueDateTime, taskReminderDate, type TaskReminderKey } from '../lib/taskForm'
 import { supabase } from '../lib/supabase'
@@ -29,14 +30,14 @@ type TaskAttachmentRow = Database['public']['Tables']['task_attachments']['Row']
 type DocumentLinkRow = Database['public']['Tables']['document_links']['Row']
 type ProfileRow = Database['public']['Tables']['profiles']['Row']
 
-function toIso(value: string, allDay: boolean) {
-  if (allDay) return new Date(`${value}T00:00:00+07:00`).toISOString()
-  return new Date(`${value}:00+07:00`).toISOString()
+function toIso(date: string, time: string, allDay: boolean) {
+  if (allDay) return new Date(`${date}T00:00:00+07:00`).toISOString()
+  return new Date(`${date}T${time}:00+07:00`).toISOString()
 }
 
 function reminderKey(row: ReminderRow): ReminderKey | null {
-  const key = `${row.offset_value}:${row.offset_unit}`
-  return ['1:month', '1:week', '3:day', '1:day'].includes(key) ? key as ReminderKey : null
+const key = `${row.offset_value}:${row.offset_unit}`
+return ['0:minute', '1:month', '1:week', '3:day', '1:day'].includes(key) ? key as ReminderKey : null
 }
 
 function safeFileName(name: string) {
@@ -54,6 +55,7 @@ export function CalendarPage() {
   const [showCompletedTasks, setShowCompletedTasks] = useState(false)
   const [eventDialog, setEventDialog] = useState<{ open: boolean; event: EventRow | null; date?: string }>({ open: false, event: null })
   const [taskDialog, setTaskDialog] = useState<{ open: boolean; task: TaskRow | null; date?: string }>({ open: false, task: null })
+  const [openedEventLink, setOpenedEventLink] = useState<string | null>(null)
   const [openedTaskLink, setOpenedTaskLink] = useState<string | null>(null)
 
   const eventsQuery = useQuery({
@@ -72,7 +74,16 @@ export function CalendarPage() {
       return data
     },
   })
+  const linkedEventId = useMemo(() => new URLSearchParams(locationSearch).get('event'), [locationSearch])
   const linkedTaskId = useMemo(() => new URLSearchParams(locationSearch).get('task'), [locationSearch])
+
+  useEffect(() => {
+    if (!linkedEventId || linkedEventId === openedEventLink) return
+    const event = eventsQuery.data?.find((item) => item.id === linkedEventId)
+    if (!event) return
+    setEventDialog({ open: true, event })
+    setOpenedEventLink(linkedEventId)
+  }, [eventsQuery.data, linkedEventId, openedEventLink])
 
   useEffect(() => {
     if (!linkedTaskId || linkedTaskId === openedTaskLink) return
@@ -145,17 +156,18 @@ export function CalendarPage() {
 
   const eventMutation = useMutation({
     mutationFn: async ({ draft, event }: { draft: EventDraft; event: EventRow | null }) => {
-      const { data: sessionData, error: sessionError } = await supabase.auth.refreshSession()
-      if (sessionError || !sessionData.session) throw new Error('เซสชันหมดอายุ กรุณาออกจากระบบแล้วเข้าสู่ระบบใหม่')
-      const eventUserId = sessionData.session.user.id
-      const startIso = toIso(draft.start, draft.all_day)
-      const payload = { title: draft.title.trim(), description: draft.description.trim(), location: draft.location.trim(), all_day: draft.all_day, start_datetime: startIso, end_datetime: draft.end ? toIso(draft.end, draft.all_day) : null, recurrence_rule: recurrenceRule(draft.recurrence) }
+      const { data: userData, error: userError } = await supabase.auth.getUser()
+      if (userError || !userData.user) throw new Error('เซสชันหมดอายุ กรุณาออกจากระบบแล้วเข้าสู่ระบบใหม่')
+      const eventUserId = userData.user.id
+      if (!event && isPastBangkokDate(draft.date)) throw new Error('ไม่สามารถสร้าง Meeting ในวันที่ผ่านมาแล้ว')
+      const startIso = toIso(draft.date, draft.start, draft.all_day)
+      const payload = { title: draft.title.trim(), description: draft.description.trim(), location: draft.location.trim(), affiliation: draft.affiliation.trim(), all_day: draft.all_day, start_datetime: startIso, end_datetime: draft.end ? toIso(draft.date, draft.end, draft.all_day) : null, recurrence_rule: recurrenceRule(draft.recurrence) }
       let eventId = event?.id
       if (eventId) {
         const { error } = await supabase.from('events').update(payload).eq('id', eventId)
         if (error) throw error
       } else {
-        const { data, error } = await supabase.from('events').insert({ ...payload, owner_user_id: eventUserId }).select('*').single<EventRow>()
+        const { data, error } = await supabase.rpc('create_meeting_event', meetingCreateArgs(payload)).single<EventRow>()
         if (error) throw error
         eventId = data.id
       }
@@ -173,7 +185,7 @@ export function CalendarPage() {
       if (draft.reminderKeys.length) {
         const start = new Date(startIso)
         const reminders = draft.reminderKeys.map((key) => {
-          const [value, unit] = key.split(':') as [string, 'day' | 'week' | 'month']
+          const [value, unit] = key.split(':') as [string, 'minute' | 'day' | 'week' | 'month']
           return { event_id: eventId!, offset_value: Number(value), offset_unit: unit, scheduled_at: reminderDate(start, key).toISOString(), channel_email: draft.notifyEmail, channel_line: draft.notifyLine }
         })
         const { error } = await supabase.from('reminders').insert(reminders)
@@ -195,6 +207,7 @@ export function CalendarPage() {
 
   const taskMutation = useMutation({
     mutationFn: async ({ draft, task }: { draft: TaskDraft; task: TaskRow | null }) => {
+      if (!task && isPastBangkokDate(draft.dueDate)) throw new Error('ไม่สามารถสร้าง Task ในวันที่ผ่านมาแล้ว')
       const external = draft.assigneeKind === 'external'
       let externalAccessToken = ''
       if (external) {
@@ -206,6 +219,7 @@ export function CalendarPage() {
       const payload = {
         title: draft.title.trim(),
         description: draft.description.trim(),
+        affiliation: draft.affiliation.trim(),
         due_date: draft.dueDate,
         due_time: draft.dueTime || null,
         assignee_type: external ? 'external' as const : 'internal' as const,
@@ -299,19 +313,24 @@ export function CalendarPage() {
   })
 
   const normalizedSearch = search.trim().toLowerCase()
-  const eventRows = useMemo(() => (eventsQuery.data ?? []).filter((event) => `${event.title} ${event.location} ${event.description}`.toLowerCase().includes(normalizedSearch)), [eventsQuery.data, normalizedSearch])
-  const taskRows = useMemo(() => (tasksQuery.data ?? []).filter((task) => (showCompletedTasks || task.status !== 'completed') && `${task.title} ${task.description}`.toLowerCase().includes(normalizedSearch)), [normalizedSearch, showCompletedTasks, tasksQuery.data])
+  const eventRows = useMemo(() => (eventsQuery.data ?? []).filter((event) => `${event.title} ${event.location} ${event.affiliation} ${event.description}`.toLowerCase().includes(normalizedSearch)), [eventsQuery.data, normalizedSearch])
+  const taskRows = useMemo(() => (tasksQuery.data ?? []).filter((task) => (showCompletedTasks || task.status !== 'completed') && `${task.title} ${task.affiliation} ${task.description}`.toLowerCase().includes(normalizedSearch)), [normalizedSearch, showCompletedTasks, tasksQuery.data])
   const occurrenceStart = new Date(); occurrenceStart.setFullYear(occurrenceStart.getFullYear() - 1)
   const occurrenceEnd = new Date(); occurrenceEnd.setFullYear(occurrenceEnd.getFullYear() + 1)
   const calendarEntries = [
     ...eventRows.flatMap((event) => expandEvent(event, occurrenceStart, occurrenceEnd).map((occurrence) => ({ id: `event-${occurrence.key}`, title: event.title, start: occurrence.start, end: occurrence.end || undefined, allDay: event.all_day, backgroundColor: event.owner_user_id === user?.id ? '#0f696c' : '#64748b', borderColor: 'transparent', extendedProps: { kind: 'event', row: event } }))),
     ...(showTasks ? taskRows.map((task) => ({ id: `task-${task.id}`, title: task.title, start: task.due_time ? `${task.due_date}T${task.due_time.slice(0, 5)}:00+07:00` : task.due_date, allDay: !task.due_time, backgroundColor: task.status === 'completed' ? '#94a3b8' : '#d97706', borderColor: 'transparent', textColor: '#ffffff', extendedProps: { kind: 'task', row: task } })) : []),
   ]
-  const canEditEvent = !selectedEvent || selectedEvent.owner_user_id === user?.id || profile?.role === 'admin'
+  const canEditEvent = canManageMeeting(selectedEvent?.owner_user_id, user?.id, profile?.role)
   const canEditTask = !selectedTask || selectedTask.creator_user_id === user?.id || profile?.role === 'admin'
   const canCompleteTask = Boolean(selectedTask && (selectedTask.creator_user_id === user?.id || selectedTask.assignee_user_id === user?.id || profile?.role === 'admin'))
   const canUploadTask = Boolean(selectedTask && (selectedTask.creator_user_id === user?.id || selectedTask.assignee_user_id === user?.id || profile?.role === 'admin'))
   const busy = eventMutation.isPending || taskMutation.isPending || uploadTaskAttachmentsMutation.isPending || deleteEventMutation.isPending || deleteTaskMutation.isPending || toggleTaskMutation.isPending
+  const warnPastCreation = async (date: string) => {
+    if (!isPastBangkokDate(date)) return false
+    await confirm({ title: 'ไม่สามารถสร้างรายการย้อนหลัง', message: `ไม่สามารถสร้าง Meeting หรือ Task ก่อนวันที่ ${bangkokDate()} ได้`, confirmLabel: 'รับทราบ', tone: 'danger' })
+    return true
+  }
 
   return (
     <main className="mx-auto max-w-[1600px] p-4 sm:p-6">
@@ -332,7 +351,7 @@ export function CalendarPage() {
           firstDay={1}
           height="auto"
           selectable
-          dateClick={(info) => setEventDialog({ open: true, event: null, date: info.dateStr })}
+          dateClick={(info) => { void warnPastCreation(info.dateStr).then((isPast) => { if (!isPast) setEventDialog({ open: true, event: null, date: info.dateStr }) }) }}
           eventClick={(info) => {
             if (info.event.extendedProps.kind === 'task') setTaskDialog({ open: true, task: info.event.extendedProps.row as TaskRow })
             else setEventDialog({ open: true, event: info.event.extendedProps.row as EventRow })

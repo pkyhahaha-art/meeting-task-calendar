@@ -1,9 +1,10 @@
 import { subDays, subMonths, subWeeks } from 'date-fns'
 
 export type Recurrence = 'none' | 'daily' | 'weekdays' | 'weekly' | 'monthly' | 'yearly'
-export type ReminderKey = '1:month' | '1:week' | '3:day' | '1:day'
+export type ReminderKey = '0:minute' | '1:month' | '1:week' | '3:day' | '1:day'
 
 export const reminderOptions: { key: ReminderKey; label: string }[] = [
+  { key: '0:minute', label: 'ทันที' },
   { key: '1:month', label: '1 เดือนก่อน' },
   { key: '1:week', label: '1 สัปดาห์ก่อน' },
   { key: '3:day', label: '3 วันก่อน' },
@@ -50,9 +51,23 @@ export function recurrenceFromRule(rule: string | null): Recurrence {
 }
 
 export function reminderDate(start: Date, key: ReminderKey) {
+  if (key === '0:minute') return start
   if (key === '1:month') return subMonths(start, 1)
   if (key === '1:week') return subWeeks(start, 1)
   return subDays(start, key === '3:day' ? 3 : 1)
+}
+
+export function bangkokDate(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(now)
+  const read = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value
+  return `${read('year')}-${read('month')}-${read('day')}`
+}
+
+export function isPastBangkokDate(value: string, now = new Date()) {
+  const selectedDate = value.slice(0, 10)
+  return /^\d{4}-\d{2}-\d{2}$/.test(selectedDate) && selectedDate < bangkokDate(now)
 }
 
 export function validateAttachments(files: File[], existingCount = 0) {

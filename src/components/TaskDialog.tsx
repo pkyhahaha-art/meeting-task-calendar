@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Bell, CheckCircle2, FileText, Link2, Loader2, Mail, Paperclip, Plus, Repeat2, Trash2, UserRound, X } from 'lucide-react'
 import type { Database } from '../lib/database.types'
-import { recurrenceFromRule, validateAttachments, type Recurrence } from '../lib/eventForm'
+import { bangkokDate, isPastBangkokDate, recurrenceFromRule, validateAttachments, type Recurrence } from '../lib/eventForm'
 import { isGoogleDocumentUrl, taskReminderOptions, type TaskReminderKey } from '../lib/taskForm'
 
 type TaskRow = Database['public']['Tables']['tasks']['Row']
@@ -18,7 +18,7 @@ export type TaskDetails = {
   attachments: TaskAttachmentRow[]
   documentLinks: DocumentLinkRow[]
 }
-export type TaskDraft = Pick<TaskRow, 'title' | 'description'> & {
+export type TaskDraft = Pick<TaskRow, 'title' | 'description' | 'affiliation'> & {
   dueDate: string
   dueTime: string
   assigneeKind: 'self' | 'internal' | 'external'
@@ -35,7 +35,7 @@ export type TaskDraft = Pick<TaskRow, 'title' | 'description'> & {
 
 function blankDraft(date: string | undefined, userId: string): TaskDraft {
   return {
-    title: '', description: '', dueDate: date ?? '', dueTime: '', assigneeKind: 'self', assigneeUserId: userId,
+    title: '', description: '', affiliation: '', dueDate: date ?? bangkokDate(), dueTime: '', assigneeKind: 'self', assigneeUserId: userId,
     externalEmail: '', linkedEventId: '', recurrence: 'none', reminderKeys: ['1_day'], notifyEmail: true,
     notifyLine: false, files: [], driveLinks: [{ displayName: '', url: '' }],
   }
@@ -75,6 +75,7 @@ export function TaskDialog({ open, task, details, selectedDate, userId, profiles
     setDraft({
       title: task.title,
       description: task.description,
+      affiliation: task.affiliation,
       dueDate: task.due_date,
       dueTime: task.due_time?.slice(0, 5) ?? '',
       assigneeKind,
@@ -96,10 +97,12 @@ export function TaskDialog({ open, task, details, selectedDate, userId, profiles
   const set = <K extends keyof TaskDraft>(key: K, value: TaskDraft[K]) => setDraft((current) => ({ ...current, [key]: value }))
   const toggleReminder = (key: TaskReminderKey) => set('reminderKeys', draft.reminderKeys.includes(key) ? draft.reminderKeys.filter((item) => item !== key) : [...draft.reminderKeys, key])
   const setDriveLink = (index: number, value: DriveLinkDraft) => set('driveLinks', draft.driveLinks.map((item, itemIndex) => itemIndex === index ? value : item))
+  const creationDateInPast = !task && isPastBangkokDate(draft.dueDate)
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
     if (!draft.title.trim() || !draft.dueDate) return setError('กรุณากรอกชื่องานและวันที่ครบกำหนด')
+    if (creationDateInPast) return setError('ไม่สามารถสร้าง Task ในวันที่ผ่านมาแล้ว')
     if (draft.assigneeKind === 'internal' && !draft.assigneeUserId) return setError('กรุณาเลือกผู้รับมอบหมาย')
     if (draft.assigneeKind === 'external' && !/^[^\s@]+@gmail\.com$/i.test(draft.externalEmail.trim())) return setError('ผู้รับภายนอกต้องเป็น Gmail ที่ถูกต้อง')
     const links = draft.driveLinks.filter((link) => link.displayName.trim() || link.url.trim())
@@ -126,8 +129,9 @@ export function TaskDialog({ open, task, details, selectedDate, userId, profiles
             <section className="space-y-4 rounded-xl border border-slate-200 p-4">
               <h3 className="flex items-center gap-2 font-semibold text-slate-800"><FileText size={18} className="text-amber-700" />ข้อมูลงาน</h3>
               <div><label className="field-label" htmlFor="task-name">ชื่องาน *</label><input id="task-name" className="field-input" value={draft.title} onChange={(event) => set('title', event.target.value)} maxLength={180} /></div>
+              <div><label className="field-label" htmlFor="task-affiliation">หน่วยงาน / สังกัด</label><input id="task-affiliation" className="field-input" placeholder="กคน.ฝลส." value={draft.affiliation} onChange={(event) => set('affiliation', event.target.value)} maxLength={250} /></div>
               <div><label className="field-label" htmlFor="task-description">รายละเอียด / คำสั่งงาน</label><textarea id="task-description" className="field-input min-h-28 resize-y" value={draft.description} onChange={(event) => set('description', event.target.value)} maxLength={10000} /></div>
-              <div className="grid gap-4 sm:grid-cols-2"><div><label className="field-label" htmlFor="task-date">วันครบกำหนด *</label><input id="task-date" type="date" className="field-input" value={draft.dueDate} onChange={(event) => set('dueDate', event.target.value)} /></div><div><label className="field-label" htmlFor="task-time">เวลา (ไม่บังคับ)</label><input id="task-time" type="time" className="field-input" value={draft.dueTime} onChange={(event) => set('dueTime', event.target.value)} /></div></div>
+              <div className="grid gap-4 sm:grid-cols-2"><div><label className="field-label" htmlFor="task-date">วันครบกำหนด *</label><input id="task-date" type="date" className="field-input" value={draft.dueDate} min={task ? undefined : bangkokDate()} onChange={(event) => set('dueDate', event.target.value)} />{creationDateInPast && <p className="mt-1 text-sm text-red-600" role="alert">ไม่สามารถสร้าง Task ในวันที่ผ่านมาแล้ว</p>}</div><div><label className="field-label" htmlFor="task-time">เวลา (ไม่บังคับ)</label><input id="task-time" type="time" className="field-input" value={draft.dueTime} onChange={(event) => set('dueTime', event.target.value)} /></div></div>
             </section>
 
             <section className="space-y-4 rounded-xl border border-slate-200 p-4">
@@ -159,7 +163,7 @@ export function TaskDialog({ open, task, details, selectedDate, userId, profiles
           {error && <p className="form-error" role="alert">{error}</p>}
           <div className="flex flex-wrap justify-between gap-2 border-t border-slate-100 pt-4">
             {task && canEdit ? <button type="button" onClick={onDelete} className="btn-secondary border-red-200 text-red-600" disabled={busy}><Trash2 size={17} />ย้ายไปถังขยะ</button> : <span />}
-            <div className="ml-auto flex flex-wrap gap-2"><button type="button" onClick={onClose} className="btn-secondary">ปิด</button>{task && canComplete && <button type="button" className="btn-secondary" disabled={busy} onClick={onToggleComplete}><CheckCircle2 size={17} />{task.status === 'completed' ? 'เปิดงานอีกครั้ง' : 'ทำเครื่องหมายว่าเสร็จ'}</button>}{canEdit && <button className="btn-primary" disabled={busy}>{busy && <Loader2 className="animate-spin" size={17} />}{task ? 'บันทึกการแก้ไข' : 'สร้าง Task'}</button>}</div>
+            <div className="ml-auto flex flex-wrap gap-2"><button type="button" onClick={onClose} className="btn-secondary">ปิด</button>{task && canComplete && <button type="button" className="btn-secondary" disabled={busy} onClick={onToggleComplete}><CheckCircle2 size={17} />{task.status === 'completed' ? 'เปิดงานอีกครั้ง' : 'ทำเครื่องหมายว่าเสร็จ'}</button>}{canEdit && <button className="btn-primary" disabled={busy || creationDateInPast}>{busy && <Loader2 className="animate-spin" size={17} />}{task ? 'บันทึกการแก้ไข' : 'สร้าง Task'}</button>}</div>
           </div>
         </form>
       </section>

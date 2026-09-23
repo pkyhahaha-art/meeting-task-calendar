@@ -1,4 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { html, subject, text } from './emailTemplate.ts'
+import { internalMeetingUrl } from './meetingLink.ts'
 import { retryDelayMinutes } from './retry.ts'
 import { internalTaskUrl } from './taskLink.ts'
 
@@ -13,8 +15,9 @@ type Delivery = {
   attempt: number
 }
 
+const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 const supabase = createClient(
-  Deno.env.get('SUPABASE_URL')!,
+  supabaseUrl,
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
 )
 
@@ -25,14 +28,6 @@ const apiKey = Deno.env.get('BREVO_API_KEY')
 const cronSecret = Deno.env.get('NOTIFICATION_CRON_SECRET')
 const lineAccessToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN')
 const publicAppUrl = Deno.env.get('PUBLIC_APP_URL')
-
-function text(value: unknown) {
-  return String(value ?? '').replace(/[\r\n]+/g, ' ').trim()
-}
-
-function escapeHtml(value: unknown) {
-  return text(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!)
-}
 
 function errorMessage(error: unknown) {
   if (error instanceof Error) return error.message
@@ -63,7 +58,64 @@ async function payloadWithGuestLink(delivery: Delivery) {
   if (error) throw error
   const url = new URL(publicAppUrl)
   url.hash = `/guest-event?token=${encodeURIComponent(token)}`
-  return { ...delivery.payload, guest_url: url.toString() }
+  return { ...delivery.payload, guest_url: url.toString(), guest_token: token }
+}
+
+async function payloadWithMeetingDetails(delivery: Delivery, payload: Record<string, unknown>) {
+  if (delivery.channel !== 'email' || !delivery.event_id) return payload
+  const { data: event, error: eventError } = await supabase.from('events')
+    .select('id, owner_user_id, title, description, affiliation, start_datetime, end_datetime, all_day, location, timezone, recurrence_rule, status')
+    .eq('id', delivery.event_id).maybeSingle()
+  if (eventError || !event) {
+    console.error('Unable to load Meeting details for email', errorMessage(eventError))
+    return payload
+  }
+  const [owner, attachments] = await Promise.all([
+    supabase.from('profiles').select('full_name, email').eq('id', event.owner_user_id).maybeSingle(),
+    supabase.from('attachments').select('id, file_name, file_size, storage_path').eq('event_id', event.id).order('uploaded_at'),
+  ])
+  if (owner.error || attachments.error) {
+    console.error('Unable to load Meeting organizer or documents for email', errorMessage(owner.error ?? attachments.error))
+  }
+  const meetingUrl = delivery.recipient_type !== 'guest' && publicAppUrl
+    ? internalMeetingUrl(publicAppUrl, event.id)
+    : ''
+  const organizer = owner.data
+    ? `${text(owner.data.full_name)} (${text(owner.data.email)})`
+    : ''
+  const guestToken = delivery.recipient_type === 'guest' ? text(payload.guest_token) : ''
+  const meetingDocuments = await Promise.all((attachments.data ?? []).map(async (file) => {
+    if (guestToken) {
+      const url = new URL('/functions/v1/guest-event', supabaseUrl)
+      url.searchParams.set('token', guestToken)
+      url.searchParams.set('attachment_id', file.id)
+      return { name: file.file_name, size: file.file_size, url: url.toString() }
+    }
+    const { data, error } = await supabase.storage.from('meeting-documents').createSignedUrl(file.storage_path, 7 * 24 * 60 * 60)
+    if (error || !data) {
+      console.error('Unable to create Meeting attachment download URL', errorMessage(error))
+      return { name: file.file_name, size: file.file_size, url: '' }
+    }
+    return { name: file.file_name, size: file.file_size, url: data.signedUrl }
+  }))
+  return {
+    ...payload,
+    entity: 'meeting',
+    id: event.id,
+    title: event.title,
+    description: event.description,
+    affiliation: event.affiliation,
+    start_datetime: event.start_datetime,
+    end_datetime: event.end_datetime,
+    all_day: event.all_day,
+    location: event.location,
+    timezone: event.timezone,
+    recurrence_rule: event.recurrence_rule,
+    status: event.status,
+    organizer,
+    ...(meetingUrl ? { meeting_url: meetingUrl } : {}),
+    meeting_documents: meetingDocuments,
+  }
 }
 
 async function issueExternalTaskUrl(delivery: Delivery, taskId: string) {
@@ -106,57 +158,6 @@ async function payloadWithTaskDocuments(delivery: Delivery, payload: Record<stri
     ...(delivery.recipient_type !== 'external_assignee' ? { internal_task_url: documentUrl } : {}),
     task_documents: [...(attachments.data ?? []).map((file) => file.file_name), ...(documentLinks.data ?? []).map((link) => link.display_name)],
   }
-}
-
-function formatDateTime(value: unknown) {
-  const date = new Date(String(value ?? ''))
-  if (Number.isNaN(date.getTime())) return ''
-  return new Intl.DateTimeFormat('th-TH', {
-    dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Bangkok',
-  }).format(date)
-}
-
-function subject(template: string, payload: Record<string, unknown>) {
-  const title = text(payload.title)
-  const labels: Record<string, string> = {
-    meeting_created: 'Meeting ใหม่', meeting_updated: 'Meeting ถูกแก้ไข', meeting_cancelled: 'Meeting ถูกยกเลิก',
-    meeting_guest_added: 'คุณได้รับเชิญเข้าร่วม Meeting', meeting_reminder: 'แจ้งเตือน Meeting', task_assigned: 'คุณได้รับมอบหมาย Task',
-    task_reminder: 'แจ้งเตือน Task',
-    task_updated: 'Task ถูกแก้ไข', task_cancelled: 'Task ถูกยกเลิก', task_completed: 'Task เสร็จแล้ว',
-  }
-  return `${labels[template] ?? 'การแจ้งเตือน'}${title ? `: ${title}` : ''}`
-}
-
-function html(template: string, payload: Record<string, unknown>) {
-  const description = text(payload.description)
-  const location = text(payload.location)
-  const startsAt = formatDateTime(payload.start_datetime)
-  const endsAt = formatDateTime(payload.end_datetime)
-  const dueDate = text(payload.due_date)
-  const dueTime = text(payload.due_time)
-  const externalUrl = text(payload.external_url)
-  const guestUrl = text(payload.guest_url)
-  const internalTaskUrl = text(payload.internal_task_url)
-  const rows = [
-    ['รายละเอียด', description],
-    ['สถานที่', location],
-    ['เริ่ม', startsAt],
-    ['สิ้นสุด', endsAt],
-    ['กำหนดส่ง', [dueDate, dueTime].filter(Boolean).join(' ')],
-  ].filter(([, value]) => value)
-    .map(([label, value]) => `<tr><th align="left">${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`)
-    .join('')
-
-  const actionUrl = externalUrl || guestUrl || internalTaskUrl
-  const action = actionUrl.startsWith('https://') || actionUrl.startsWith('http://')
-    ? `<p><a style="display:inline-block;background:#0f696c;color:#fff;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:600" href="${escapeHtml(actionUrl)}">${externalUrl ? 'เปิด Task / อัปโหลดเอกสาร' : guestUrl ? 'เปิดรายละเอียด Meeting' : 'เปิด Task / อัปโหลดเอกสาร'}</a></p>` : ''
-  const documentUrl = externalUrl || internalTaskUrl
-  const documents = Array.isArray(payload.task_documents) && documentUrl.startsWith('http')
-    ? payload.task_documents.map(text).filter(Boolean).slice(0, 20)
-      .map((name) => `<li><a href="${escapeHtml(documentUrl)}">${escapeHtml(name)}</a></li>`).join('')
-    : ''
-  const documentList = documents ? `<h3>เอกสารประกอบ</h3><ul>${documents}</ul><p>โปรดเข้าสู่ระบบเพื่อเปิดเอกสารตามสิทธิ์ของคุณ</p>` : ''
-  return `<div style="max-width:640px;margin:auto;border:1px solid #e2e8f0;border-radius:14px;padding:24px;font-family:Arial,sans-serif;color:#1e293b"><h2 style="margin-top:0">${escapeHtml(subject(template, payload))}</h2>${rows ? `<table style="width:100%;border-collapse:collapse">${rows}</table>` : ''}${action}${documentList}</div>`
 }
 
 async function send(delivery: Delivery, payload: Record<string, unknown>) {
@@ -207,7 +208,8 @@ Deno.serve(async (request) => {
     let body: string
     try {
       const guestPayload = await payloadWithGuestLink(delivery)
-      const payload = await payloadWithTaskDocuments(delivery, guestPayload)
+      const meetingPayload = await payloadWithMeetingDetails(delivery, guestPayload)
+      const payload = await payloadWithTaskDocuments(delivery, meetingPayload)
       response = await send(delivery, payload)
       body = await response.text()
     } catch (error) {
