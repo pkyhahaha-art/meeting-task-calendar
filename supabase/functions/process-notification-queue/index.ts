@@ -66,17 +66,13 @@ async function payloadWithMeetingDetails(delivery: Delivery, payload: Record<str
   const { data: event, error: eventError } = await supabase.from('events')
     .select('id, owner_user_id, title, description, affiliation, start_datetime, end_datetime, all_day, location, timezone, recurrence_rule, status')
     .eq('id', delivery.event_id).maybeSingle()
-  if (eventError || !event) {
-    console.error('Unable to load Meeting details for email', errorMessage(eventError))
-    return payload
-  }
+  if (eventError) throw new Error(`Unable to load Meeting details for email: ${errorMessage(eventError)}`)
+  if (!event) throw new Error(`Unable to load Meeting details for email: event ${delivery.event_id} was not found`)
   const [owner, attachments] = await Promise.all([
     supabase.from('profiles').select('full_name, email').eq('id', event.owner_user_id).maybeSingle(),
     supabase.from('attachments').select('id, file_name, file_size, storage_path').eq('event_id', event.id).order('uploaded_at'),
   ])
-  if (owner.error || attachments.error) {
-    console.error('Unable to load Meeting organizer or documents for email', errorMessage(owner.error ?? attachments.error))
-  }
+  if (owner.error || attachments.error) throw new Error(`Unable to load Meeting organizer or documents for email: ${errorMessage(owner.error ?? attachments.error)}`)
   const meetingUrl = delivery.recipient_type !== 'guest' && publicAppUrl
     ? internalMeetingUrl(publicAppUrl, event.id)
     : ''
