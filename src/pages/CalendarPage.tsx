@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import FullCalendar from '@fullcalendar/react'
+import type { EventHoveringArg } from '@fullcalendar/core'
 import dayGridPlugin from '@fullcalendar/daygrid'
 import interactionPlugin from '@fullcalendar/interaction'
 import thLocale from '@fullcalendar/core/locales/th'
@@ -29,6 +30,7 @@ type TaskReminderRow = Database['public']['Tables']['task_reminders']['Row']
 type TaskAttachmentRow = Database['public']['Tables']['task_attachments']['Row']
 type DocumentLinkRow = Database['public']['Tables']['document_links']['Row']
 type ProfileRow = Database['public']['Tables']['profiles']['Row']
+type CalendarTooltip = { kind: 'event' | 'task'; title: string; affiliation: string; date: Date; x: number; y: number }
 
 function toIso(date: string, time: string, allDay: boolean) {
   if (allDay) return new Date(`${date}T00:00:00+07:00`).toISOString()
@@ -44,6 +46,10 @@ function safeFileName(name: string) {
   return name.normalize('NFKD').replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'attachment'
 }
 
+function calendarDateLabel(date: Date, language: 'th' | 'en') {
+  return new Intl.DateTimeFormat(language === 'th' ? 'th-TH' : 'en-GB', { dateStyle: 'medium', timeZone: 'Asia/Bangkok' }).format(date)
+}
+
 export function CalendarPage() {
   const { user, profile } = useAuth()
   const { language } = useLanguage()
@@ -57,6 +63,7 @@ export function CalendarPage() {
   const [taskDialog, setTaskDialog] = useState<{ open: boolean; task: TaskRow | null; date?: string }>({ open: false, task: null })
   const [openedEventLink, setOpenedEventLink] = useState<string | null>(null)
   const [openedTaskLink, setOpenedTaskLink] = useState<string | null>(null)
+  const [calendarTooltip, setCalendarTooltip] = useState<CalendarTooltip | null>(null)
 
   const eventsQuery = useQuery({
     queryKey: ['events'],
@@ -321,6 +328,19 @@ export function CalendarPage() {
     ...eventRows.flatMap((event) => expandEvent(event, occurrenceStart, occurrenceEnd).map((occurrence) => ({ id: `event-${occurrence.key}`, title: event.title, start: occurrence.start, end: occurrence.end || undefined, allDay: event.all_day, backgroundColor: event.owner_user_id === user?.id ? '#0f696c' : '#64748b', borderColor: 'transparent', extendedProps: { kind: 'event', row: event } }))),
     ...(showTasks ? taskRows.map((task) => ({ id: `task-${task.id}`, title: task.title, start: task.due_time ? `${task.due_date}T${task.due_time.slice(0, 5)}:00+07:00` : task.due_date, allDay: !task.due_time, backgroundColor: task.status === 'completed' ? '#94a3b8' : '#d97706', borderColor: 'transparent', textColor: '#ffffff', extendedProps: { kind: 'task', row: task } })) : []),
   ]
+  const showCalendarTooltip = (info: EventHoveringArg) => {
+    const isTask = info.event.extendedProps.kind === 'task'
+    const row = info.event.extendedProps.row as EventRow | TaskRow
+    if (!info.event.start) return
+    setCalendarTooltip({
+      kind: isTask ? 'task' : 'event',
+      title: info.event.title,
+      affiliation: row.affiliation || '-',
+      date: info.event.start,
+      x: Math.max(12, Math.min(info.jsEvent.clientX + 14, window.innerWidth - 308)),
+      y: Math.max(12, Math.min(info.jsEvent.clientY + 14, window.innerHeight - 180)),
+    })
+  }
   const canEditEvent = canManageMeeting(selectedEvent?.owner_user_id, user?.id, profile?.role)
   const canEditTask = !selectedTask || selectedTask.creator_user_id === user?.id || profile?.role === 'admin'
   const canCompleteTask = Boolean(selectedTask && (selectedTask.creator_user_id === user?.id || selectedTask.assignee_user_id === user?.id || profile?.role === 'admin'))
@@ -344,6 +364,7 @@ export function CalendarPage() {
           <div className="flex flex-wrap gap-4 text-sm text-slate-600"><label className="flex items-center gap-2"><input type="checkbox" checked={showTasks} onChange={(event) => setShowTasks(event.target.checked)} />แสดง Task</label><label className="flex items-center gap-2"><input type="checkbox" checked={showCompletedTasks} onChange={(event) => setShowCompletedTasks(event.target.checked)} />แสดง Task ที่เสร็จแล้ว</label></div>
         </div>
         {(eventsQuery.isError || tasksQuery.isError || profilesQuery.isError) && <p className="mb-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">โหลดข้อมูลไม่สำเร็จ กรุณาตรวจสอบว่าได้รัน migration ล่าสุดแล้ว</p>}
+        <div className="relative">
         <FullCalendar
           plugins={[dayGridPlugin, interactionPlugin]}
           locale={language === 'th' ? thLocale : enGbLocale}
@@ -353,9 +374,12 @@ export function CalendarPage() {
           selectable
           dateClick={(info) => { void warnPastCreation(info.dateStr).then((isPast) => { if (!isPast) setEventDialog({ open: true, event: null, date: info.dateStr }) }) }}
           eventClick={(info) => {
+            setCalendarTooltip(null)
             if (info.event.extendedProps.kind === 'task') setTaskDialog({ open: true, task: info.event.extendedProps.row as TaskRow })
             else setEventDialog({ open: true, event: info.event.extendedProps.row as EventRow })
           }}
+          eventMouseEnter={showCalendarTooltip}
+          eventMouseLeave={() => setCalendarTooltip(null)}
           eventContent={(info) => {
             const isTask = info.event.extendedProps.kind === 'task'
             const task = isTask ? info.event.extendedProps.row as TaskRow : null
@@ -366,6 +390,15 @@ export function CalendarPage() {
           headerToolbar={{ left: 'prev,next today', center: 'title', right: '' }}
           dayMaxEvents
         />
+        {calendarTooltip && <div role="tooltip" className="pointer-events-none fixed z-50 w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-xl" style={{ left: calendarTooltip.x, top: calendarTooltip.y }}>
+          <p className={`mb-2 text-xs font-bold ${calendarTooltip.kind === 'task' ? 'text-amber-700' : 'text-brand-700'}`}>{calendarTooltip.kind === 'task' ? 'Task' : 'Meeting'}</p>
+          <dl className="space-y-1.5 text-sm text-slate-700">
+            <div><dt className="inline font-semibold text-slate-500">ชื่อ: </dt><dd className="inline break-words">{calendarTooltip.title}</dd></div>
+            <div><dt className="inline font-semibold text-slate-500">หน่วยงาน: </dt><dd className="inline break-words">{calendarTooltip.affiliation}</dd></div>
+            <div><dt className="inline font-semibold text-slate-500">{calendarTooltip.kind === 'task' ? 'วันครบกำหนด: ' : 'วันนัดหมาย: '}</dt><dd className="inline">{calendarDateLabel(calendarTooltip.date, language)}</dd></div>
+          </dl>
+        </div>}
+        </div>
       </div>
       {(eventMutation.isError || taskMutation.isError || deleteEventMutation.isError || deleteTaskMutation.isError || toggleTaskMutation.isError) && <p className="fixed bottom-4 right-4 rounded-xl bg-red-600 px-4 py-3 text-sm text-white shadow-lg">ดำเนินการไม่สำเร็จ กรุณาตรวจสอบข้อมูลและลองใหม่</p>}
 
