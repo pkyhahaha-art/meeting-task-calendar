@@ -30,7 +30,8 @@ type TaskReminderRow = Database['public']['Tables']['task_reminders']['Row']
 type TaskAttachmentRow = Database['public']['Tables']['task_attachments']['Row']
 type DocumentLinkRow = Database['public']['Tables']['document_links']['Row']
 type ProfileRow = Database['public']['Tables']['profiles']['Row']
-type CalendarTooltip = { kind: 'event' | 'task'; title: string; affiliation: string; date: Date; x: number; y: number }
+type CalendarTooltipItem = { kind: 'event' | 'task'; title: string; affiliation: string; date: Date }
+type CalendarTooltip = { items: CalendarTooltipItem[]; x: number; y: number }
 
 function toIso(date: string, time: string, allDay: boolean) {
   if (allDay) return new Date(`${date}T00:00:00+07:00`).toISOString()
@@ -48,6 +49,12 @@ function safeFileName(name: string) {
 
 function calendarDateLabel(date: Date, language: 'th' | 'en') {
   return new Intl.DateTimeFormat(language === 'th' ? 'th-TH' : 'en-GB', { dateStyle: 'medium', timeZone: 'Asia/Bangkok' }).format(date)
+}
+
+function calendarDayKey(date: Date | string) {
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(date))
+  const value = (type: Intl.DateTimeFormatPart['type']) => parts.find((part) => part.type === type)?.value
+  return `${value('year')}-${value('month')}-${value('day')}`
 }
 
 export function CalendarPage() {
@@ -328,18 +335,23 @@ export function CalendarPage() {
     ...eventRows.flatMap((event) => expandEvent(event, occurrenceStart, occurrenceEnd).map((occurrence) => ({ id: `event-${occurrence.key}`, title: event.title, start: occurrence.start, end: occurrence.end || undefined, allDay: event.all_day, backgroundColor: event.owner_user_id === user?.id ? '#0f696c' : '#64748b', borderColor: 'transparent', extendedProps: { kind: 'event', row: event } }))),
     ...(showTasks ? taskRows.map((task) => ({ id: `task-${task.id}`, title: task.title, start: task.due_time ? `${task.due_date}T${task.due_time.slice(0, 5)}:00+07:00` : task.due_date, allDay: !task.due_time, backgroundColor: task.status === 'completed' ? '#94a3b8' : '#d97706', borderColor: 'transparent', textColor: '#ffffff', extendedProps: { kind: 'task', row: task } })) : []),
   ]
+  const setCalendarTooltipAt = (items: CalendarTooltipItem[], clientX: number, clientY: number) => {
+    setCalendarTooltip({
+      items,
+      x: Math.max(12, Math.min(clientX + 14, window.innerWidth - 308)),
+      y: Math.max(12, Math.min(clientY + 14, window.innerHeight - 180)),
+    })
+  }
   const showCalendarTooltip = (info: EventHoveringArg) => {
     const isTask = info.event.extendedProps.kind === 'task'
     const row = info.event.extendedProps.row as EventRow | TaskRow
     if (!info.event.start) return
-    setCalendarTooltip({
+    setCalendarTooltipAt([{
       kind: isTask ? 'task' : 'event',
       title: info.event.title,
       affiliation: row.affiliation || '-',
       date: info.event.start,
-      x: Math.max(12, Math.min(info.jsEvent.clientX + 14, window.innerWidth - 308)),
-      y: Math.max(12, Math.min(info.jsEvent.clientY + 14, window.innerHeight - 180)),
-    })
+    }], info.jsEvent.clientX, info.jsEvent.clientY)
   }
   const canEditEvent = canManageMeeting(selectedEvent?.owner_user_id, user?.id, profile?.role)
   const canEditTask = !selectedTask || selectedTask.creator_user_id === user?.id || profile?.role === 'admin'
@@ -373,6 +385,13 @@ export function CalendarPage() {
           height="auto"
           selectable
           dateClick={(info) => { void warnPastCreation(info.dateStr).then((isPast) => { if (!isPast) setEventDialog({ open: true, event: null, date: info.dateStr }) }) }}
+          dayCellContent={(info) => {
+            const items = calendarEntries.filter((entry) => calendarDayKey(entry.start) === calendarDayKey(info.date)).map((entry) => {
+              const row = entry.extendedProps.row as EventRow | TaskRow
+              return { kind: entry.extendedProps.kind as CalendarTooltipItem['kind'], title: entry.title, affiliation: row.affiliation || '-', date: info.date }
+            })
+            return <span className={items.length ? 'cursor-help' : undefined} onMouseEnter={(event) => { if (items.length) setCalendarTooltipAt(items, event.clientX, event.clientY) }} onMouseLeave={() => setCalendarTooltip(null)}>{info.dayNumberText}</span>
+          }}
           eventClick={(info) => {
             setCalendarTooltip(null)
             if (info.event.extendedProps.kind === 'task') setTaskDialog({ open: true, task: info.event.extendedProps.row as TaskRow })
@@ -390,13 +409,15 @@ export function CalendarPage() {
           headerToolbar={{ left: 'prev,next today', center: 'title', right: '' }}
           dayMaxEvents
         />
-        {calendarTooltip && <div role="tooltip" className="pointer-events-none fixed z-50 w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-xl" style={{ left: calendarTooltip.x, top: calendarTooltip.y }}>
-          <p className={`mb-2 text-xs font-bold ${calendarTooltip.kind === 'task' ? 'text-amber-700' : 'text-brand-700'}`}>{calendarTooltip.kind === 'task' ? 'Task' : 'Meeting'}</p>
-          <dl className="space-y-1.5 text-sm text-slate-700">
-            <div><dt className="inline font-semibold text-slate-500">ชื่อ: </dt><dd className="inline break-words">{calendarTooltip.title}</dd></div>
-            <div><dt className="inline font-semibold text-slate-500">หน่วยงาน: </dt><dd className="inline break-words">{calendarTooltip.affiliation}</dd></div>
-            <div><dt className="inline font-semibold text-slate-500">{calendarTooltip.kind === 'task' ? 'วันครบกำหนด: ' : 'วันนัดหมาย: '}</dt><dd className="inline">{calendarDateLabel(calendarTooltip.date, language)}</dd></div>
-          </dl>
+        {calendarTooltip && <div role="tooltip" className="pointer-events-none fixed z-50 max-h-[70vh] w-72 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-xl" style={{ left: calendarTooltip.x, top: calendarTooltip.y }}>
+          {calendarTooltip.items.map((item, index) => <section key={`${item.kind}-${item.title}-${index}`} className={index ? 'mt-3 border-t border-slate-100 pt-3' : undefined}>
+            <p className={`mb-2 text-xs font-bold ${item.kind === 'task' ? 'text-amber-700' : 'text-brand-700'}`}>{item.kind === 'task' ? 'Task' : 'Meeting'}</p>
+            <dl className="space-y-1.5 text-sm text-slate-700">
+              <div><dt className="inline font-semibold text-slate-500">ชื่อ: </dt><dd className="inline break-words">{item.title}</dd></div>
+              <div><dt className="inline font-semibold text-slate-500">หน่วยงาน: </dt><dd className="inline break-words">{item.affiliation}</dd></div>
+              <div><dt className="inline font-semibold text-slate-500">{item.kind === 'task' ? 'วันครบกำหนด: ' : 'วันนัดหมาย: '}</dt><dd className="inline">{calendarDateLabel(item.date, language)}</dd></div>
+            </dl>
+          </section>)}
         </div>}
         </div>
       </div>
