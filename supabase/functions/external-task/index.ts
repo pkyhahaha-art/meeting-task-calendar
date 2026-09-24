@@ -10,6 +10,10 @@ const corsHeaders = { 'access-control-allow-origin': '*', 'access-control-allow-
 function response(body: Record<string, unknown>, status = 200) { return Response.json(body, { status, headers: corsHeaders }) }
 function randomToken() { return Array.from(crypto.getRandomValues(new Uint8Array(32)), (value) => value.toString(16).padStart(2, '0')).join('') }
 function safeFileName(name: string) { return name.normalize('NFKD').replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'attachment' }
+function isLocalDevelopmentUrl(url: URL, requestOrigin: string | null) {
+  if (url.origin !== requestOrigin) return false
+  return url.hostname === 'localhost' || url.hostname === '127.0.0.1'
+}
 async function hashToken(token: string) {
   const bytes = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token)))
   return Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('')
@@ -40,22 +44,29 @@ async function issueToken(request: Request) {
     taskUrl = new URL(typeof body.publicUrl === 'string' ? body.publicUrl : '')
     if (!['https:', 'http:'].includes(taskUrl.protocol)) throw new Error('unsupported protocol')
   } catch { return response({ error: 'ลิงก์ Task ไม่ถูกต้อง' }, 400) }
-  const trustedOrigin = publicAppUrl ? new URL(publicAppUrl).origin : request.headers.get('origin')
-  if (!trustedOrigin || taskUrl.origin !== trustedOrigin) return response({ error: 'โดเมนลิงก์ Task ไม่ถูกต้อง' }, 400)
+  const configuredOrigin = publicAppUrl ? new URL(publicAppUrl).origin : null
+  const requestOrigin = request.headers.get('origin')
+  if (taskUrl.origin !== configuredOrigin && !isLocalDevelopmentUrl(taskUrl, requestOrigin)) return response({ error: 'โดเมนลิงก์ Task ไม่ถูกต้อง' }, 400)
   const { data: task, error: taskError } = await admin.from('tasks').select('*').eq('id', taskId).maybeSingle()
   if (taskError) throw taskError
   if (!task || task.creator_user_id !== user.id || task.assignee_type !== 'external' || task.deleted_at || task.status !== 'pending') return response({ error: 'ไม่สามารถออกลิงก์สำหรับ Task นี้ได้' }, 403)
-  const token = randomToken()
-  const tokenHash = await hashToken(token)
   const now = new Date().toISOString()
-  const { error: revokeError } = await admin.from('external_task_tokens').update({ revoked_at: now }).eq('task_id', task.id).is('revoked_at', null)
-  if (revokeError) throw revokeError
-  const { error: tokenError } = await admin.from('external_task_tokens').insert({ task_id: task.id, external_email: task.external_assignee_email, token_hash: tokenHash })
-  if (tokenError) throw tokenError
-  taskUrl.searchParams.set('token', token)
-  const { error: queueError } = await admin.from('notification_deliveries').insert({ task_id: task.id, recipient_type: 'external_assignee', recipient_reference: task.external_assignee_email, channel: 'email', idempotency_key: `external-task-assigned:${task.id}:${tokenHash}`, scheduled_at: now, template_key: 'task_assigned', payload: { entity: 'task', id: task.id, title: task.title, description: task.description, due_date: task.due_date, due_time: task.due_time, external_url: taskUrl.toString() } })
+  const { data: recipients, error: recipientsError } = await admin.from('task_external_recipients').select('email').eq('task_id', task.id).order('email')
+  if (recipientsError) throw recipientsError
+  if (!recipients?.length) return response({ error: 'ไม่พบอีเมลผู้รับภายนอกสำหรับ Task นี้' }, 422)
+  const deliveries = []
+  for (const recipient of recipients) {
+    const token = randomToken()
+    const tokenHash = await hashToken(token)
+    const recipientTaskUrl = new URL(taskUrl.toString())
+    recipientTaskUrl.searchParams.set('token', token)
+    const { error: tokenError } = await admin.from('external_task_tokens').insert({ task_id: task.id, external_email: recipient.email, token_hash: tokenHash })
+    if (tokenError) throw tokenError
+    deliveries.push({ task_id: task.id, recipient_type: 'external_assignee', recipient_reference: recipient.email, channel: 'email', idempotency_key: `external-task-assigned:${task.id}:${tokenHash}`, scheduled_at: now, template_key: 'task_assigned', payload: { entity: 'task', id: task.id, title: task.title, description: task.description, due_date: task.due_date, due_time: task.due_time, external_url: recipientTaskUrl.toString() } })
+  }
+  const { error: queueError } = await admin.from('notification_deliveries').insert(deliveries)
   if (queueError) throw queueError
-  return response({ url: taskUrl.toString() })
+  return response({ issued: deliveries.length })
 }
 
 async function uploadAttachment(request: Request) {

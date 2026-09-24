@@ -30,6 +30,7 @@ export interface Database {
         Row: {
           id: string
           owner_user_id: string
+          creator_name: string
           title: string
           description: string
           affiliation: string
@@ -84,6 +85,7 @@ export interface Database {
         Row: {
           id: string
           creator_user_id: string
+          creator_name: string
           assignee_type: 'internal' | 'external'
           assignee_user_id: string | null
           external_assignee_email: string | null
@@ -150,6 +152,12 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['task_reminders']['Insert']>
         Relationships: []
       }
+      task_external_recipients: {
+        Row: { id: string; task_id: string; email: string; created_at: string }
+        Insert: { id?: string; task_id: string; email: string; created_at?: string }
+        Update: Partial<Database['public']['Tables']['task_external_recipients']['Insert']>
+        Relationships: []
+      }
       task_attachments: {
         Row: { id: string; task_id: string; file_name: string; mime_type: string; file_size: number; storage_path: string; uploaded_by: string; uploaded_at: string }
         Insert: { id?: string; task_id: string; file_name: string; mime_type: string; file_size: number; storage_path: string; uploaded_by: string }
@@ -199,6 +207,10 @@ export interface Database {
           target_recurrence_rule: string | null
         }
         Returns: Database['public']['Tables']['events']['Row']
+      }
+      replace_task_external_recipients: {
+        Args: { target_task_id: string; recipient_emails: string[] }
+        Returns: undefined
       }
     }
     Enums: Record<string, never>

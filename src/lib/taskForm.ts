@@ -40,3 +40,13 @@ export function isGoogleDocumentUrl(value: string) {
     return false
   }
 }
+
+const gmailPattern = /^[^\s@]+@gmail\.com$/i
+
+export function normalizeExternalEmails(emails: string[]) {
+  return [...new Set(emails.map((email) => email.trim().toLowerCase()).filter(Boolean))]
+}
+
+export function invalidExternalEmails(emails: string[]) {
+  return normalizeExternalEmails(emails).filter((email) => !gmailPattern.test(email))
+}

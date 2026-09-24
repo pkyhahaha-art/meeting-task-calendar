@@ -18,7 +18,7 @@ import { bangkokDate, isPastBangkokDate, parseGuestEmails, recurrenceRule, remin
 import { appUrl } from '../lib/appUrl'
 import { canManageMeeting, meetingCreateArgs } from '../lib/meetingAccess'
 import { expandEvent } from '../lib/recurrence'
-import { taskDueDateTime, taskReminderDate, type TaskReminderKey } from '../lib/taskForm'
+import { normalizeExternalEmails, taskDueDateTime, taskReminderDate, type TaskReminderKey } from '../lib/taskForm'
 import { supabase } from '../lib/supabase'
 
 type EventRow = Database['public']['Tables']['events']['Row']
@@ -28,9 +28,10 @@ type AttachmentRow = Database['public']['Tables']['attachments']['Row']
 type TaskRow = Database['public']['Tables']['tasks']['Row']
 type TaskReminderRow = Database['public']['Tables']['task_reminders']['Row']
 type TaskAttachmentRow = Database['public']['Tables']['task_attachments']['Row']
+type TaskExternalRecipientRow = Database['public']['Tables']['task_external_recipients']['Row']
 type DocumentLinkRow = Database['public']['Tables']['document_links']['Row']
 type ProfileRow = Database['public']['Tables']['profiles']['Row']
-type CalendarTooltipItem = { kind: 'event' | 'task'; title: string; affiliation: string; date: Date }
+type CalendarTooltipItem = { kind: 'event' | 'task'; title: string; affiliation: string; date: Date; isOverdue: boolean }
 type CalendarTooltip = { items: CalendarTooltipItem[]; x: number; y: number }
 
 function toIso(date: string, time: string, allDay: boolean) {
@@ -145,14 +146,16 @@ export function CalendarPage() {
     enabled: Boolean(selectedTask),
     queryFn: async (): Promise<TaskDetails> => {
       const taskId = selectedTask!.id
-      const [reminders, attachments, documentLinks] = await Promise.all([
+      const [reminders, attachments, documentLinks, externalRecipients] = await Promise.all([
         supabase.from('task_reminders').select('*').eq('task_id', taskId).eq('status', 'scheduled').returns<TaskReminderRow[]>(),
         supabase.from('task_attachments').select('*').eq('task_id', taskId).order('uploaded_at').returns<TaskAttachmentRow[]>(),
         supabase.from('document_links').select('*').eq('task_id', taskId).order('created_at').returns<DocumentLinkRow[]>(),
+        supabase.from('task_external_recipients').select('*').eq('task_id', taskId).order('email').returns<TaskExternalRecipientRow[]>(),
       ])
       if (reminders.error) throw reminders.error
       if (attachments.error) throw attachments.error
       if (documentLinks.error) throw documentLinks.error
+      if (externalRecipients.error) throw externalRecipients.error
       const attachmentViews = await Promise.all(attachments.data.map(async (file) => {
         const { data, error } = await supabase.storage.from('task-documents').createSignedUrl(file.storage_path, 300)
         if (error || !data) throw error ?? new Error('ไม่สามารถเปิดเอกสารประกอบได้')
@@ -164,6 +167,7 @@ export function CalendarPage() {
         notifyLine: reminders.data.some((item) => item.channel_line),
         attachments: attachmentViews,
         documentLinks: documentLinks.data,
+        externalEmails: externalRecipients.data.map((recipient) => recipient.email),
       }
     },
   })
@@ -223,6 +227,12 @@ export function CalendarPage() {
     mutationFn: async ({ draft, task }: { draft: TaskDraft; task: TaskRow | null }) => {
       if (!task && isPastBangkokDate(draft.dueDate)) throw new Error('ไม่สามารถสร้าง Task ในวันที่ผ่านมาแล้ว')
       const external = draft.assigneeKind === 'external'
+      const externalEmails = normalizeExternalEmails(draft.externalEmails)
+      const externalAssigneeEmail = external
+        ? task?.assignee_type === 'external' && task.external_assignee_email && externalEmails.includes(task.external_assignee_email)
+          ? task.external_assignee_email
+          : externalEmails[0]
+        : null
       let externalAccessToken = ''
       if (external) {
         const { data, error } = await supabase.auth.refreshSession()
@@ -238,7 +248,7 @@ export function CalendarPage() {
         due_time: draft.dueTime || null,
         assignee_type: external ? 'external' as const : 'internal' as const,
         assignee_user_id: external ? null : assigneeUserId,
-        external_assignee_email: external ? draft.externalEmail.trim().toLowerCase() : null,
+        external_assignee_email: externalAssigneeEmail,
         linked_event_id: draft.linkedEventId || null,
         recurrence_rule: recurrenceRule(draft.recurrence),
       }
@@ -250,6 +260,14 @@ export function CalendarPage() {
         const { data, error } = await supabase.from('tasks').insert({ ...payload, creator_user_id: user!.id }).select('*').single<TaskRow>()
         if (error) throw error
         taskId = data.id
+      }
+
+      if (external || task?.assignee_type === 'external') {
+        const { error } = await supabase.rpc('replace_task_external_recipients', {
+          target_task_id: taskId,
+          recipient_emails: external ? externalEmails : [],
+        })
+        if (error) throw error
       }
 
       const [deletedReminders, deletedLinks] = await Promise.all([
@@ -332,8 +350,14 @@ export function CalendarPage() {
   const occurrenceStart = new Date(); occurrenceStart.setFullYear(occurrenceStart.getFullYear() - 1)
   const occurrenceEnd = new Date(); occurrenceEnd.setFullYear(occurrenceEnd.getFullYear() + 1)
   const calendarEntries = [
-    ...eventRows.flatMap((event) => expandEvent(event, occurrenceStart, occurrenceEnd).map((occurrence) => ({ id: `event-${occurrence.key}`, title: event.title, start: occurrence.start, end: occurrence.end || undefined, allDay: event.all_day, backgroundColor: event.owner_user_id === user?.id ? '#0f696c' : '#64748b', borderColor: 'transparent', extendedProps: { kind: 'event', row: event } }))),
-    ...(showTasks ? taskRows.map((task) => ({ id: `task-${task.id}`, title: task.title, start: task.due_time ? `${task.due_date}T${task.due_time.slice(0, 5)}:00+07:00` : task.due_date, allDay: !task.due_time, backgroundColor: task.status === 'completed' ? '#94a3b8' : '#d97706', borderColor: 'transparent', textColor: '#ffffff', extendedProps: { kind: 'task', row: task } })) : []),
+    ...eventRows.flatMap((event) => expandEvent(event, occurrenceStart, occurrenceEnd).map((occurrence) => {
+      const isOverdue = isPastBangkokDate(calendarDayKey(occurrence.start))
+      return { id: `event-${occurrence.key}`, title: event.title, start: occurrence.start, end: occurrence.end || undefined, allDay: event.all_day, backgroundColor: isOverdue ? '#94a3b8' : event.owner_user_id === user?.id ? '#0f696c' : '#64748b', borderColor: 'transparent', extendedProps: { kind: 'event', row: event, isOverdue } }
+    })),
+    ...(showTasks ? taskRows.map((task) => {
+      const isOverdue = task.status === 'pending' && isPastBangkokDate(task.due_date)
+      return { id: `task-${task.id}`, title: task.title, start: task.due_time ? `${task.due_date}T${task.due_time.slice(0, 5)}:00+07:00` : task.due_date, allDay: !task.due_time, backgroundColor: task.status === 'completed' ? '#94a3b8' : '#d97706', borderColor: 'transparent', textColor: '#ffffff', extendedProps: { kind: 'task', row: task, isOverdue } }
+    }) : []),
   ]
   const setCalendarTooltipAt = (items: CalendarTooltipItem[], clientX: number, clientY: number) => {
     setCalendarTooltip({
@@ -351,6 +375,7 @@ export function CalendarPage() {
       title: info.event.title,
       affiliation: row.affiliation || '-',
       date: info.event.start,
+      isOverdue: Boolean(info.event.extendedProps.isOverdue),
     }], info.jsEvent.clientX, info.jsEvent.clientY)
   }
   const canEditEvent = canManageMeeting(selectedEvent?.owner_user_id, user?.id, profile?.role)
@@ -388,7 +413,7 @@ export function CalendarPage() {
           dayCellContent={(info) => {
             const items = calendarEntries.filter((entry) => calendarDayKey(entry.start) === calendarDayKey(info.date)).map((entry) => {
               const row = entry.extendedProps.row as EventRow | TaskRow
-              return { kind: entry.extendedProps.kind as CalendarTooltipItem['kind'], title: entry.title, affiliation: row.affiliation || '-', date: info.date }
+              return { kind: entry.extendedProps.kind as CalendarTooltipItem['kind'], title: entry.title, affiliation: row.affiliation || '-', date: info.date, isOverdue: Boolean(entry.extendedProps.isOverdue) }
             })
             return <span className={items.length ? 'cursor-help' : undefined} onMouseEnter={(event) => { if (items.length) setCalendarTooltipAt(items, event.clientX, event.clientY) }} onMouseLeave={() => setCalendarTooltip(null)}>{info.dayNumberText}</span>
           }}
@@ -416,6 +441,7 @@ export function CalendarPage() {
               <div><dt className="inline font-semibold text-slate-500">ชื่อ: </dt><dd className="inline break-words">{item.title}</dd></div>
               <div><dt className="inline font-semibold text-slate-500">หน่วยงาน: </dt><dd className="inline break-words">{item.affiliation}</dd></div>
               <div><dt className="inline font-semibold text-slate-500">{item.kind === 'task' ? 'วันครบกำหนด: ' : 'วันนัดหมาย: '}</dt><dd className="inline">{calendarDateLabel(item.date, language)}</dd></div>
+              {item.isOverdue && <p className="pt-1 font-semibold text-red-600">{item.kind === 'task' ? 'เกินวันครบกำหนดแล้ว' : 'เลยวันนัดหมายแล้ว'}</p>}
             </dl>
           </section>)}
         </div>}

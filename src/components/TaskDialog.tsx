@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Bell, CheckCircle2, FileText, Link2, Loader2, Mail, Paperclip, Plus, Repeat2, Trash2, UserRound, X } from 'lucide-react'
 import type { Database } from '../lib/database.types'
 import { bangkokDate, isPastBangkokDate, recurrenceFromRule, validateAttachments, type Recurrence } from '../lib/eventForm'
-import { isGoogleDocumentUrl, taskReminderOptions, type TaskReminderKey } from '../lib/taskForm'
+import { invalidExternalEmails, isGoogleDocumentUrl, normalizeExternalEmails, taskReminderOptions, type TaskReminderKey } from '../lib/taskForm'
 
 type TaskRow = Database['public']['Tables']['tasks']['Row']
 type ProfileRow = Database['public']['Tables']['profiles']['Row']
@@ -17,13 +17,14 @@ export type TaskDetails = {
   notifyLine: boolean
   attachments: TaskAttachmentRow[]
   documentLinks: DocumentLinkRow[]
+  externalEmails: string[]
 }
 export type TaskDraft = Pick<TaskRow, 'title' | 'description' | 'affiliation'> & {
   dueDate: string
   dueTime: string
   assigneeKind: 'self' | 'internal' | 'external'
   assigneeUserId: string
-  externalEmail: string
+  externalEmails: string[]
   linkedEventId: string
   recurrence: Recurrence
   reminderKeys: TaskReminderKey[]
@@ -36,7 +37,7 @@ export type TaskDraft = Pick<TaskRow, 'title' | 'description' | 'affiliation'> &
 function blankDraft(date: string | undefined, userId: string): TaskDraft {
   return {
     title: '', description: '', affiliation: '', dueDate: date ?? bangkokDate(), dueTime: '', assigneeKind: 'self', assigneeUserId: userId,
-    externalEmail: '', linkedEventId: '', recurrence: 'none', reminderKeys: ['1_day'], notifyEmail: true,
+    externalEmails: [''], linkedEventId: '', recurrence: 'none', reminderKeys: ['1_day'], notifyEmail: true,
     notifyLine: false, files: [], driveLinks: [{ displayName: '', url: '' }],
   }
 }
@@ -80,7 +81,7 @@ export function TaskDialog({ open, task, details, selectedDate, userId, profiles
       dueTime: task.due_time?.slice(0, 5) ?? '',
       assigneeKind,
       assigneeUserId: task.assignee_user_id ?? '',
-      externalEmail: task.external_assignee_email ?? '',
+      externalEmails: details?.externalEmails.length ? details.externalEmails : [task.external_assignee_email ?? ''],
       linkedEventId: task.linked_event_id ?? '',
       recurrence: recurrenceFromRule(task.recurrence_rule),
       reminderKeys: details?.reminderKeys ?? [],
@@ -97,6 +98,7 @@ export function TaskDialog({ open, task, details, selectedDate, userId, profiles
   const set = <K extends keyof TaskDraft>(key: K, value: TaskDraft[K]) => setDraft((current) => ({ ...current, [key]: value }))
   const toggleReminder = (key: TaskReminderKey) => set('reminderKeys', draft.reminderKeys.includes(key) ? draft.reminderKeys.filter((item) => item !== key) : [...draft.reminderKeys, key])
   const setDriveLink = (index: number, value: DriveLinkDraft) => set('driveLinks', draft.driveLinks.map((item, itemIndex) => itemIndex === index ? value : item))
+  const setExternalEmail = (index: number, value: string) => set('externalEmails', draft.externalEmails.map((email, itemIndex) => itemIndex === index ? value : email))
   const creationDateInPast = !task && isPastBangkokDate(draft.dueDate)
 
   const submit = async (event: React.FormEvent) => {
@@ -104,7 +106,8 @@ export function TaskDialog({ open, task, details, selectedDate, userId, profiles
     if (!draft.title.trim() || !draft.dueDate) return setError('กรุณากรอกชื่องานและวันที่ครบกำหนด')
     if (creationDateInPast) return setError('ไม่สามารถสร้าง Task ในวันที่ผ่านมาแล้ว')
     if (draft.assigneeKind === 'internal' && !draft.assigneeUserId) return setError('กรุณาเลือกผู้รับมอบหมาย')
-    if (draft.assigneeKind === 'external' && !/^[^\s@]+@gmail\.com$/i.test(draft.externalEmail.trim())) return setError('ผู้รับภายนอกต้องเป็น Gmail ที่ถูกต้อง')
+    const externalEmails = normalizeExternalEmails(draft.externalEmails)
+    if (draft.assigneeKind === 'external' && (!externalEmails.length || invalidExternalEmails(draft.externalEmails).length)) return setError('ผู้รับภายนอกต้องเป็น Gmail ที่ถูกต้อง')
     const links = draft.driveLinks.filter((link) => link.displayName.trim() || link.url.trim())
     if (links.length > 10) return setError('เพิ่มลิงก์ Google Drive ได้สูงสุด 10 รายการ')
     if (links.some((link) => !link.displayName.trim() || !isGoogleDocumentUrl(link.url.trim()))) return setError('กรุณาใส่ชื่อและลิงก์ Google Drive/Docs ที่ถูกต้อง')
@@ -121,7 +124,7 @@ export function TaskDialog({ open, task, details, selectedDate, userId, profiles
       <section className="max-h-[95vh] w-full max-w-3xl overflow-y-auto rounded-t-2xl bg-white p-5 shadow-2xl sm:rounded-2xl sm:p-6">
         <div className="mb-5 flex items-start justify-between">
           <div className="flex gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-700"><CheckCircle2 size={22} /></span><div><h2 id="task-title" className="text-xl font-bold">{task ? 'รายละเอียด Task' : 'เพิ่ม Task'}</h2>{task && !canEdit && <p className="text-sm text-slate-500">ผู้รับมอบหมายเปลี่ยนได้เฉพาะสถานะเสร็จแล้ว</p>}</div></div>
-          <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label="ปิด"><X size={20} /></button>
+          <div className="flex items-center gap-2">{task && <p className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">สร้างโดย {task.creator_name || 'ไม่ระบุชื่อ'}</p>}<button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label="ปิด"><X size={20} /></button></div>
         </div>
 
         <form onSubmit={submit} className="space-y-5">
@@ -138,7 +141,7 @@ export function TaskDialog({ open, task, details, selectedDate, userId, profiles
               <h3 className="flex items-center gap-2 font-semibold text-slate-800"><UserRound size={18} className="text-amber-700" />ผู้รับมอบหมาย</h3>
               <div className="grid gap-3 sm:grid-cols-3">{(['self', 'internal', 'external'] as const).map((kind) => <label key={kind} className={`cursor-pointer rounded-xl border p-3 text-sm ${draft.assigneeKind === kind ? 'border-amber-500 bg-amber-50' : 'border-slate-200'}`}><input type="radio" className="mr-2" checked={draft.assigneeKind === kind} onChange={() => set('assigneeKind', kind)} />{kind === 'self' ? 'มอบหมายให้ตัวเอง' : kind === 'internal' ? 'พนักงานในระบบ' : 'ผู้รับภายนอก'}</label>)}</div>
               {draft.assigneeKind === 'internal' && <select className="field-input" value={draft.assigneeUserId} onChange={(event) => set('assigneeUserId', event.target.value)} aria-label="ผู้รับมอบหมาย"><option value="">เลือกพนักงาน</option>{profiles.filter((profile) => profile.id !== userId && profile.status === 'active').map((profile) => <option key={profile.id} value={profile.id}>{profile.full_name} — {profile.email}</option>)}</select>}
-              {draft.assigneeKind === 'external' && <div><label className="field-label" htmlFor="external-email">Gmail ผู้รับภายนอก *</label><input id="external-email" type="email" className="field-input" placeholder="name@gmail.com" value={draft.externalEmail} onChange={(event) => set('externalEmail', event.target.value)} /><p className="mt-1 text-xs text-slate-500">ผู้รับเปิดได้เฉพาะ Task นี้ และไม่สามารถเข้าปฏิทินได้</p></div>}
+              {draft.assigneeKind === 'external' && <div><label className="field-label" htmlFor="external-email">Gmail ผู้รับภายนอก *</label><div className="space-y-2">{draft.externalEmails.map((email, index) => <div key={index} className="flex gap-2"><input id={index === 0 ? 'external-email' : `external-email-${index + 1}`} type="email" className="field-input min-w-0 flex-1" placeholder="name@gmail.com" value={email} onChange={(event) => setExternalEmail(index, event.target.value)} aria-label={`Gmail ผู้รับภายนอกคนที่ ${index + 1}`} />{draft.externalEmails.length > 1 && <button type="button" className="shrink-0 rounded-xl border border-slate-300 p-2.5 text-slate-500 hover:border-red-200 hover:bg-red-50 hover:text-red-600" onClick={() => set('externalEmails', draft.externalEmails.filter((_, itemIndex) => itemIndex !== index))} aria-label={`ลบผู้รับภายนอกคนที่ ${index + 1}`}><X size={18} /></button>}</div>)}</div><button type="button" className="btn-secondary mt-2 w-full" onClick={() => set('externalEmails', [...draft.externalEmails, ''])}><Plus size={17} />เพิ่มผู้รับทางอีเมล</button><p className="mt-1 text-xs text-slate-500">ผู้รับแต่ละคนจะได้รับอีเมลรายละเอียดและลิงก์เฉพาะสำหรับ Task นี้ โดยไม่สามารถเข้าปฏิทินได้</p></div>}
               <div><label className="field-label" htmlFor="linked-event">เชื่อมกับ Meeting (ไม่บังคับ)</label><select id="linked-event" className="field-input" value={draft.linkedEventId} onChange={(event) => set('linkedEventId', event.target.value)}><option value="">ไม่เชื่อม Meeting</option>{events.map((event) => <option key={event.id} value={event.id}>{event.title}</option>)}</select></div>
             </section>
 
