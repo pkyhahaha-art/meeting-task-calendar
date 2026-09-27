@@ -7,6 +7,7 @@ import thLocale from '@fullcalendar/core/locales/th'
 import enGbLocale from '@fullcalendar/core/locales/en-gb'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CalendarDays, CalendarPlus, ListTodo, Search } from 'lucide-react'
+import Swal from 'sweetalert2'
 import { useAuth } from '../auth/AuthProvider'
 import { useConfirm } from '../components/ConfirmDialogProvider'
 import { EventDialog, type EventDetails, type EventDraft } from '../components/EventDialog'
@@ -50,6 +51,22 @@ function safeFileName(name: string) {
 
 function calendarDateLabel(date: Date, language: 'th' | 'en') {
   return new Intl.DateTimeFormat(language === 'th' ? 'th-TH' : 'en-GB', { dateStyle: 'medium', timeZone: 'Asia/Bangkok' }).format(date)
+}
+
+async function confirmDeletion(title: string, text: string, confirmButtonText: string) {
+  const result = await Swal.fire({
+    icon: 'error',
+    title,
+    text,
+    showCancelButton: true,
+    confirmButtonText,
+    cancelButtonText: 'ยกเลิก',
+    confirmButtonColor: '#dc2626',
+    cancelButtonColor: '#64748b',
+    reverseButtons: true,
+    focusCancel: true,
+  })
+  return result.isConfirmed
 }
 
 function calendarDayKey(date: Date | string) {
@@ -454,7 +471,7 @@ export function CalendarPage() {
         canEdit={canEditEvent} busy={busy || eventDetailsQuery.isLoading}
         onClose={() => setEventDialog({ open: false, event: null })}
         onSave={(draft) => eventMutation.mutateAsync({ draft, event: selectedEvent })}
-        onDelete={async () => { if (selectedEvent && await confirm({ title: 'ย้าย Meeting ไปถังขยะ?', message: `Meeting “${selectedEvent.title}” จะไม่แสดงในปฏิทิน`, confirmLabel: 'ย้ายไปถังขยะ', tone: 'danger' })) await deleteEventMutation.mutateAsync(selectedEvent) }}
+        onDelete={async () => { if (selectedEvent && await confirmDeletion('ย้าย Meeting ไปถังขยะ?', `Meeting “${selectedEvent.title}” จะไม่แสดงในปฏิทิน`, 'ย้ายไปถังขยะ')) await deleteEventMutation.mutateAsync(selectedEvent) }}
       />
       <TaskDialog
         open={taskDialog.open} task={selectedTask} details={taskDetailsQuery.data} selectedDate={taskDialog.date}
@@ -462,7 +479,7 @@ export function CalendarPage() {
         canEdit={canEditTask} canUpload={canUploadTask} canComplete={canCompleteTask} busy={busy || taskDetailsQuery.isLoading}
         onClose={() => setTaskDialog({ open: false, task: null })}
         onSave={(draft) => taskMutation.mutateAsync({ draft, task: selectedTask })}
-        onDelete={async () => { if (selectedTask && await confirm({ title: 'ย้าย Task ไปถังขยะ?', message: `Task “${selectedTask.title}” จะไม่แสดงในรายการงาน`, confirmLabel: 'ย้ายไปถังขยะ', tone: 'danger' })) await deleteTaskMutation.mutateAsync(selectedTask) }}
+        onDelete={async () => { if (selectedTask && await confirmDeletion('ย้าย Task ไปถังขยะ?', `Task “${selectedTask.title}” จะไม่แสดงในรายการงาน`, 'ย้ายไปถังขยะ')) await deleteTaskMutation.mutateAsync(selectedTask) }}
         onToggleComplete={async () => { if (selectedTask && await confirm({ title: selectedTask.status === 'completed' ? 'เปิดงานอีกครั้ง?' : 'ยืนยันว่างานเสร็จแล้ว?', message: `Task “${selectedTask.title}” จะถูกเปลี่ยนสถานะ`, confirmLabel: selectedTask.status === 'completed' ? 'เปิดงานอีกครั้ง' : 'ยืนยันงานเสร็จ' })) await toggleTaskMutation.mutateAsync(selectedTask) }}
         onUploadFiles={async (files) => { if (selectedTask) await uploadTaskAttachmentsMutation.mutateAsync({ task: selectedTask, files }) }}
       />
