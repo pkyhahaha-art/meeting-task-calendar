@@ -1,14 +1,15 @@
 const CONFIG = {
   endpoint: 'https://YOUR_PROJECT_REF.supabase.co/functions/v1/reporting-export',
-  secret: 'SET_REPORTING_SYNC_SECRET_HERE',
 };
 
 function syncMeetingTaskCalendar() {
   const properties = PropertiesService.getScriptProperties();
+  const secret = properties.getProperty('REPORTING_SYNC_SECRET');
+  if (!secret) throw new Error('Set REPORTING_SYNC_SECRET in Script Properties before syncing.');
   const cursor = properties.getProperty('meetingTaskCalendarCursor') || '1970-01-01T00:00:00.000Z';
   const response = UrlFetchApp.fetch(`${CONFIG.endpoint}?cursor=${encodeURIComponent(cursor)}`, {
     method: 'get',
-    headers: { Authorization: `Bearer ${CONFIG.secret}` },
+    headers: { Authorization: `Bearer ${secret}` },
     muteHttpExceptions: true,
   });
   if (response.getResponseCode() !== 200) throw new Error(`Reporting export failed: ${response.getContentText()}`);
