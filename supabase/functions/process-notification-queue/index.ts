@@ -3,10 +3,12 @@ import { html, subject, text } from './emailTemplate.ts'
 import { internalMeetingUrl } from './meetingLink.ts'
 import { retryDelayMinutes } from './retry.ts'
 import { internalTaskUrl } from './taskLink.ts'
+import { taskDocumentItems } from './taskDocuments.ts'
 
 type Delivery = {
   id: string
   event_id: string | null
+  task_id: string | null
   recipient_type: string
   recipient_reference: string
   channel: 'email' | 'line'
@@ -43,6 +45,24 @@ async function hashToken(token: string) {
   return Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('')
 }
 
+async function issueAcknowledgementUrl(delivery: Delivery) {
+  if (delivery.channel !== 'email' || !['task_assignee', 'external_assignee', 'guest'].includes(delivery.recipient_type)) return ''
+  if (!delivery.event_id && !delivery.task_id) return ''
+  const token = randomToken()
+  const { error } = await supabase.from('email_acknowledgement_tokens').insert({
+    event_id: delivery.event_id,
+    task_id: delivery.task_id,
+    recipient_type: delivery.recipient_type,
+    recipient_reference: delivery.recipient_reference.toLowerCase(),
+    token_hash: await hashToken(token),
+    expires_at: new Date(Date.now() + 30 * 24 * 60 * 60_000).toISOString(),
+  })
+  if (error) throw error
+  const url = new URL('/functions/v1/email-acknowledgement', supabaseUrl)
+  url.searchParams.set('token', token)
+  return url.toString()
+}
+
 async function payloadWithGuestLink(delivery: Delivery) {
   if (delivery.channel !== 'email' || delivery.recipient_type !== 'guest' || !delivery.event_id || !publicAppUrl) return delivery.payload
   const { data: guest } = await supabase.from('event_guests').select('id').eq('event_id', delivery.event_id)
@@ -68,11 +88,12 @@ async function payloadWithMeetingDetails(delivery: Delivery, payload: Record<str
     .eq('id', delivery.event_id).maybeSingle()
   if (eventError) throw new Error(`Unable to load Meeting details for email: ${errorMessage(eventError)}`)
   if (!event) throw new Error(`Unable to load Meeting details for email: event ${delivery.event_id} was not found`)
-  const [owner, attachments] = await Promise.all([
+  const [owner, attachments, documentLinks] = await Promise.all([
     supabase.from('profiles').select('full_name, email').eq('id', event.owner_user_id).maybeSingle(),
     supabase.from('attachments').select('id, file_name, file_size, storage_path').eq('event_id', event.id).order('uploaded_at'),
+    supabase.from('document_links').select('display_name, url').eq('event_id', event.id).order('created_at'),
   ])
-  if (owner.error || attachments.error) throw new Error(`Unable to load Meeting organizer or documents for email: ${errorMessage(owner.error ?? attachments.error)}`)
+  if (owner.error || attachments.error || documentLinks.error) throw new Error(`Unable to load Meeting organizer or documents for email: ${errorMessage(owner.error ?? attachments.error ?? documentLinks.error)}`)
   const meetingUrl = delivery.recipient_type !== 'guest' && publicAppUrl
     ? internalMeetingUrl(publicAppUrl, event.id)
     : ''
@@ -110,7 +131,7 @@ async function payloadWithMeetingDetails(delivery: Delivery, payload: Record<str
     status: event.status,
     organizer,
     ...(meetingUrl ? { meeting_url: meetingUrl } : {}),
-    meeting_documents: meetingDocuments,
+    meeting_documents: [...meetingDocuments, ...(documentLinks.data ?? []).map((link) => ({ name: link.display_name, url: link.url, kind: 'drive' }))],
   }
 }
 
@@ -142,17 +163,20 @@ async function payloadWithTaskDocuments(delivery: Delivery, payload: Record<stri
   if (!documentUrl.startsWith('http')) return payload
   const [attachments, documentLinks] = await Promise.all([
     supabase.from('task_attachments').select('file_name').eq('task_id', taskId).order('uploaded_at'),
-    supabase.from('document_links').select('display_name').eq('task_id', taskId).order('created_at'),
+    supabase.from('document_links').select('display_name, url').eq('task_id', taskId).order('created_at'),
   ])
   if (attachments.error || documentLinks.error) {
     console.error('Unable to load Task documents for email', errorMessage(attachments.error ?? documentLinks.error))
-    return delivery.recipient_type !== 'external_assignee' ? { ...payload, internal_task_url: documentUrl } : payload
+    return {
+      ...payload,
+      ...(delivery.recipient_type !== 'external_assignee' ? { internal_task_url: documentUrl } : {}),
+    }
   }
   return {
     ...payload,
     ...(externalUrl ? { external_url: externalUrl } : {}),
     ...(delivery.recipient_type !== 'external_assignee' ? { internal_task_url: documentUrl } : {}),
-    task_documents: [...(attachments.data ?? []).map((file) => file.file_name), ...(documentLinks.data ?? []).map((link) => link.display_name)],
+    task_documents: taskDocumentItems(attachments.data ?? [], documentLinks.data ?? []),
   }
 }
 
@@ -186,7 +210,7 @@ Deno.serve(async (request) => {
   const now = new Date().toISOString()
   const { data, error } = await supabase
     .from('notification_deliveries')
-    .select('id, event_id, recipient_type, recipient_reference, channel, template_key, payload, attempt')
+    .select('id, event_id, task_id, recipient_type, recipient_reference, channel, template_key, payload, attempt')
     .in('channel', ['email', 'line']).in('status', ['queued', 'retry'])
     .lte('scheduled_at', now)
     .or(`next_attempt_at.is.null,next_attempt_at.lte.${now}`)
@@ -205,7 +229,11 @@ Deno.serve(async (request) => {
     try {
       const guestPayload = await payloadWithGuestLink(delivery)
       const meetingPayload = await payloadWithMeetingDetails(delivery, guestPayload)
-      const payload = await payloadWithTaskDocuments(delivery, meetingPayload)
+      const documentPayload = await payloadWithTaskDocuments(delivery, meetingPayload)
+      const acknowledgement = !['meeting_cancelled', 'task_cancelled', 'task_completed'].includes(delivery.template_key)
+        ? await issueAcknowledgementUrl(delivery)
+        : ''
+      const payload = acknowledgement ? { ...documentPayload, ack_url: acknowledgement } : documentPayload
       response = await send(delivery, payload)
       body = await response.text()
     } catch (error) {

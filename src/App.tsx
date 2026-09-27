@@ -11,6 +11,7 @@ import { RegisterPage } from './pages/RegisterPage'
 import { ResetPasswordPage } from './pages/ResetPasswordPage'
 import { ExternalTaskPage } from './pages/ExternalTaskPage'
 import { GuestEventPage } from './pages/GuestEventPage'
+import { AcknowledgementPage } from './pages/AcknowledgementPage'
 
 const CalendarPage = lazy(() => import('./pages/CalendarPage').then((module) => ({ default: module.CalendarPage })))
 const ProfilePage = lazy(() => import('./pages/ProfilePage').then((module) => ({ default: module.ProfilePage })))
@@ -28,6 +29,7 @@ export default function App() {
     <Route path="/auth/callback" element={<AuthCallbackPage />} />
     <Route path="/external-task" element={<ExternalTaskPage />} />
     <Route path="/guest-event" element={<GuestEventPage />} />
+    <Route path="/acknowledged" element={<AcknowledgementPage />} />
     <Route element={<ProtectedRoute />}><Route element={<AppShell />}>
       <Route path="/calendar" element={<Suspense fallback={pageFallback}><CalendarPage /></Suspense>} />
       <Route path="/profile" element={<Suspense fallback={pageFallback}><ProfilePage /></Suspense>} />
