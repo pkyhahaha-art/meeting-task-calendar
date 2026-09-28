@@ -40,6 +40,8 @@ test('renders a complete Meeting HTML card with secure document links', () => {
   assert.match(card, /&lt;agenda&gt;\.pdf/)
   assert.match(card, /1\.0 MB/)
   assert.match(card, /href="https:\/\/project\.supabase\.co\/functions\/v1\/email-acknowledgement\?token=scoped"[^>]*>รับทราบ<\/a>/)
+  assert.match(card, /หากปุ่มรับทราบใช้งานไม่ได้/)
+  assert.match(card, /target="_blank"/)
   assert.match(card, /https:\/\/files\.example\.com\/download\/agenda/)
   assert.match(card, /href="https:\/\/drive\.google\.com\/drive\/folders\/example"/)
   assert.doesNotMatch(card, /เปิดรายละเอียด Meeting/)

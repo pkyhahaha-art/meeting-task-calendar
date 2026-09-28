@@ -87,7 +87,7 @@ export function AppShell() {
           {profile?.role === 'admin' && <NavLink to="/admin" onClick={() => setMenuOpen(false)} className={navClass}><ShieldCheck size={19} />Admin</NavLink>}
         </nav>
         <div className="relative mx-4 mt-auto mb-4 min-h-36 overflow-visible rounded-2xl bg-gradient-to-br from-purple-50 via-pink-50 to-amber-50 p-3">
-          <img src={mascot} alt="มาสคอต PEA ชูนิ้วโป้ง" className="pointer-events-none absolute -right-10 -top-6 z-20 h-40 w-40 max-w-none -rotate-3 object-contain drop-shadow-[0_14px_12px_rgba(76,15,93,0.30)]" />
+          <img src={mascot} alt="มาสคอต PEA ชูนิ้วโป้ง" className="pointer-events-none absolute -right-10 -top-6 z-20 h-40 w-40 max-w-none -rotate-3 object-contain drop-shadow-[0_12px_9px_rgba(76,15,93,0.38)]" />
           <div className="relative z-10 max-w-[45%] pt-3 text-left">
             <p className="text-sm font-bold leading-5 text-brand-700">พลังงานเพื่อชีวิตที่ดีกว่า</p>
             <p className="mt-1 text-xs text-slate-500">ของทุกคน</p>

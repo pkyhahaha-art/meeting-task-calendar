@@ -8,19 +8,28 @@
 
 **Approved:** 19 September 2026  
 
-**สถานะที่บันทึก ณ 27 กันยายน 2026:** การทดสอบด้วยบัญชีผู้รับจริงยังไม่ครบ และยังไม่ได้ยืนยันผลการ deploy frontend/Edge Function รอบล่าสุดบน production; ตรวจสถานะ Git แยกจากสถานะ deploy
+**สถานะที่บันทึก ณ 28 กันยายน 2026:** ปรับหน้า Calendar, banner 2D และ popup ตามธีม PEA แล้ว แก้ระบบรับทราบจากอีเมลและ deploy backend ขึ้น production แล้ว ส่วน frontend ให้ตรวจผล GitHub Pages workflow หลัง push รอบนี้
 
 ## Current Progress
 
 - Foundation, Auth, Meeting/Task calendar, recurrence, reminders, external Task links, guest links, Admin screens, and notification workers are implemented in code.
 - A Supabase production project is linked. On 26 September 2026, the deployed `external-task` function passed a CORS preflight with `x-client-info`; external-assignee notifications in the preceding seven days included 43 provider-accepted deliveries. These checks do not prove that every recipient link opened successfully.
-- On 27 September 2026, migrations `202609260001`, `202609270001`, and `202609270002` were reported as applied to production; `external-task`, `guest-event`, and `process-notification-queue` were reported as deployed. The `/acknowledged` frontend route was committed in `8e1d78c`; its live deployment and the remaining uncommitted UI changes still need separate verification.
+- On 28 September 2026, migration `202609280001_atomic_email_acknowledgement.sql` was applied to production. `email-acknowledgement` and `process-notification-queue` were deployed without JWT verification. A previously failing Gmail acknowledgement link returned `303` to the public `/acknowledged` route after the fix, and both the token and recipient acknowledgement timestamps were verified in production.
 - Task links now use server-side `PUBLIC_APP_URL`; assignees have read-only document access. Creators can delete Task and Meeting attachments, and forms use explicit 24-hour time selection. Task email Drive links open directly.
 - Edit forms offer save silently or save with notification. The migrations defer edit emails until recipients, attachments, and Drive links are saved, add mixed multi-recipient Tasks and per-recipient acknowledgements, and enforce creator-only editing/completion. Live acceptance testing with real recipient accounts remains open.
-- The acknowledgement button in each recipient email uses a dedicated action URL. Opening it performs the acknowledgement after the recipient page loads (and after sign-in for internal users); opening the ordinary detail URL does not change status. Calendar forms refresh recipient badges while open.
+- The acknowledgement button in each recipient email uses a dedicated action URL. The action now runs atomically in PostgreSQL, redirects successful requests to the public `/acknowledged` route, and includes a fallback acknowledgement link in newly generated emails. Opening the ordinary detail URL does not change status. Calendar forms refresh recipient badges while open.
 - The Task recipient form uses compact tabs for self, internal employees, and external Gmail recipients. Switching tabs preserves selections across all three groups; multiple recipients remain supported.
-- Pending the next production deployment, email cards retain only a direct acknowledgement action. The scoped acknowledgement Function records the matching Gmail recipient without opening the Task or Meeting app page. Cards list Google Drive links only when the creator entered them in the form.
+- Email cards contain a direct acknowledgement action plus a fallback link for Gmail/Outlook clients. The scoped acknowledgement Function records only the matching recipient. Cards list Google Drive links only when the creator entered them in the form.
 - Remaining acceptance work is tracked in `OPEN_ISSUES.md`, including production end-to-end verification, external token expiry, shared Task visibility, Meeting Drive links, and notification formats.
+
+## Latest Handoff — 28 September 2026
+
+- Calendar UI: the desktop banner is compact and uses the 2D artwork at `ภาพประกอบUI/PEA Calendar Banner 2D.png`, based on `ภาพประกอบUI/Screenshot 2026-09-28 173307.png`. The mascot speech bubble reads “นัดง่าย / งานราบรื่น / ไปด้วยกัน”. The full month calendar is visible without its own scrollbar; the right summary cards may scroll.
+- Popup UI: global SweetAlert dialogs and the custom confirmation dialog use the PEA purple/amber theme, mascot artwork, visible shadows, and a larger speech-bubble tail. Delete confirmations use the danger variant. Overflow rules prevent the mascot and speech tail from being clipped or hidden behind actions.
+- Email acknowledgement: the previous direct multi-step Data API update produced `500 EDGE_FUNCTION_ERROR` for a real guest token. Migration `202609280001_atomic_email_acknowledgement.sql` moves token validation, recipient acknowledgement, and token consumption into one security-definer transaction. The Edge Function now redirects success to `https://pkyhahaha-art.github.io/meeting-task-calendar#/acknowledged`.
+- Production status: the migration and both affected Edge Functions are already deployed. The supplied failing token was retested successfully and is now consumed/acknowledged. Future notification emails include a new-tab action and a fallback link.
+- Verification completed locally: 32 tests pass; TypeScript typecheck, ESLint, production build, and `git diff --check` pass. Vite still reports the existing advisory that the main JavaScript chunk exceeds 500 kB.
+- Next session: verify the GitHub Actions Pages deployment for this commit, then perform visual acceptance in Gmail and on desktop/mobile. Continue the broader real-recipient acceptance items in `OPEN_ISSUES.md`.
 
 ---
 

@@ -6,10 +6,9 @@ import interactionPlugin from '@fullcalendar/interaction'
 import thLocale from '@fullcalendar/core/locales/th'
 import enGbLocale from '@fullcalendar/core/locales/en-gb'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarDays, CalendarPlus, CheckCircle2, Clock3, FileText, Link2, ListTodo, Search, Sparkles } from 'lucide-react'
+import { CalendarCheck2, CalendarDays, CalendarPlus, CheckCircle2, Clock3, FileText, Link2, ListTodo, Search, Sparkles, Zap } from 'lucide-react'
 import Swal from 'sweetalert2'
-import calendarMascot from '../../ภาพประกอบUI/Calendar Mascot 3D.png'
-import peaOfficeTeam from '../../ภาพประกอบUI/PEA Office Team 3D v2.png'
+import bannerHero from '../../ภาพประกอบUI/PEA Calendar Banner 2D.png'
 import { useAuth } from '../auth/AuthProvider'
 import { useConfirm } from '../components/ConfirmDialogProvider'
 import { EventDialog, type EventDetails, type EventDraft } from '../components/EventDialog'
@@ -59,6 +58,7 @@ function calendarDateLabel(date: Date, language: 'th' | 'en') {
 
 async function confirmDeletion(title: string, text: string, confirmButtonText: string) {
   const result = await Swal.fire({
+    customClass: { popup: 'pea-swal-danger' },
     icon: 'error',
     title,
     text,
@@ -530,24 +530,35 @@ export function CalendarPage() {
 
   return (
     <main className="mx-auto max-w-[1600px] p-4 sm:p-6 xl:flex xl:h-[calc(100vh-4rem)] xl:flex-col xl:overflow-hidden xl:p-3">
-      <section className="relative mb-6 min-h-48 overflow-hidden rounded-[28px] border border-purple-100 bg-gradient-to-r from-[#f1ddf8] via-[#faebf6] to-[#eee5ff] px-6 py-7 sm:min-h-56 sm:px-8 xl:mb-3 xl:h-36 xl:min-h-0 xl:shrink-0 xl:overflow-visible xl:py-4" aria-label="ยินดีต้อนรับ">
+      <section className="relative mb-6 min-h-64 overflow-hidden rounded-[28px] border border-purple-100 bg-gradient-to-r from-[#f0dcff] via-[#fff0f7] to-[#eee6ff] px-6 py-7 shadow-sm sm:min-h-72 sm:px-8 xl:mb-2 xl:h-40 xl:min-h-0 xl:shrink-0 xl:px-8 xl:py-3" aria-label="ยินดีต้อนรับ">
         <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[28px]" aria-hidden="true">
-          <span className="absolute -bottom-20 right-4 h-52 w-52 rounded-full bg-white/35" />
-          <span className="absolute -bottom-8 right-[17%] h-28 w-40 rotate-6 rounded-[32px] border border-white/40 bg-purple-200/25" />
-          <Sparkles className="absolute right-[30%] top-5 hidden text-amber-400 drop-shadow-sm sm:block xl:right-[36%] xl:top-3" size={24} />
-          <span className="absolute right-[39%] top-6 hidden h-2.5 w-2.5 rounded-full bg-pink-300/80 xl:right-[42%] xl:block" />
+          <span className="absolute -left-16 -top-24 h-64 w-64 rounded-full bg-white/35 blur-2xl" />
+          <span className="absolute -bottom-24 right-8 h-64 w-64 rounded-full bg-purple-300/25 blur-2xl" />
+          <div className="absolute bottom-[-3rem] left-[43%] hidden h-40 w-32 rotate-[-5deg] rounded-[22px] border-4 border-white/25 bg-white/10 p-3 sm:block xl:h-28 xl:w-24 xl:p-2">
+            <span className="absolute -top-3 left-5 h-6 w-2 rounded-full bg-purple-300/30" />
+            <span className="absolute -top-3 right-5 h-6 w-2 rounded-full bg-purple-300/30" />
+            <span className="mt-3 grid grid-cols-3 gap-2 opacity-35 xl:gap-1.5">{Array.from({ length: 6 }, (_, index) => <span key={index} className={`aspect-square rounded-md ${index === 4 ? 'bg-purple-400/45' : 'bg-white/60'}`} />)}</span>
+          </div>
+          <Sparkles className="absolute left-[46%] top-8 hidden text-amber-400/80 drop-shadow-sm lg:block xl:top-3" size={24} />
+          <span className="absolute left-[51%] top-14 hidden h-2.5 w-2.5 rounded-full bg-pink-300/80 lg:block xl:top-8" />
+          <Clock3 className="absolute bottom-5 left-[57%] hidden text-brand-500/25 xl:block" size={34} strokeWidth={1.8} />
+          <CheckCircle2 className="absolute left-[62%] top-4 hidden text-amber-500/30 xl:block" size={30} strokeWidth={2} />
+          <span className="absolute left-[54%] top-3 hidden h-1.5 w-1.5 rounded-full bg-brand-400/30 xl:block" />
+          <span className="absolute bottom-3 left-[65%] hidden h-12 w-24 rounded-[50%] border-t-2 border-purple-400/20 xl:block" />
         </div>
-        <div className="relative z-10 max-w-[65%] sm:max-w-[62%] xl:max-w-[40%]"><p className="mb-2 flex items-center gap-2 text-sm font-semibold text-brand-700"><Sparkles size={16} />จัดการนัดหมาย ประชุม และงานสำคัญ</p><h1 className="text-2xl font-extrabold leading-tight text-brand-900 sm:text-4xl xl:text-3xl">ให้ทุกวันเป็นวันของความสำเร็จ</h1><p className="mt-3 hidden max-w-lg text-sm text-slate-600 sm:block xl:text-xs">ปฏิทินเดียวสำหรับวางแผน ติดตามงาน และทำงานร่วมกันอย่างราบรื่น</p></div>
-        <img
-          src={peaOfficeTeam}
-          alt="สำนักงาน PEA พร้อมรถกระเช้าและพนักงานกำลังตรวจงานแบบสามมิติ"
-          className="pointer-events-none absolute bottom-0 right-40 z-10 hidden h-[8.25rem] w-auto max-w-none object-contain drop-shadow-[0_14px_12px_rgba(76,15,93,0.28)] xl:block"
-        />
-        <img
-          src={calendarMascot}
-          alt="มาสคอต PEA ถือปฏิทินและชี้วันที่ทำเครื่องหมาย"
-          className="pointer-events-none absolute right-0 top-3 z-20 w-32 max-w-none -rotate-2 object-contain drop-shadow-[0_18px_14px_rgba(76,15,93,0.28)] sm:right-1 sm:top-2 sm:w-36 xl:right-3 xl:top-0 xl:w-40"
-        />
+        <div className="relative z-20 max-w-full sm:max-w-[54%] xl:max-w-[56%]">
+          <p className="mb-2 flex items-center gap-2 text-sm font-bold text-brand-800 xl:mb-0.5 xl:text-[11px]"><Sparkles size={16} />จัดการนัดหมาย ประชุม งานสำคัญ <CalendarCheck2 className="text-violet-500" size={18} /></p>
+          <h1 className="text-3xl font-extrabold leading-tight text-brand-900 sm:text-4xl xl:text-[1.65rem]">ให้ทุกวันเป็นวันของความสำเร็จ</h1>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 xl:mt-1 xl:text-xs xl:leading-5">ปฏิทินอัจฉริยะสำหรับชาว กฟภ. ช่วยให้การทำงานเป็นระบบมากขึ้น<br className="hidden xl:block" /> นัดหมายง่าย ไม่พลาดทุกภารกิจ สู่อนาคตพลังงานที่ยั่งยืน</p>
+          <p className="mt-4 inline-flex rounded-full bg-white/55 px-5 py-2 text-sm font-bold text-brand-700 shadow-sm backdrop-blur-sm xl:mt-2 xl:px-4 xl:py-1 xl:text-xs">“ ร่วมขับเคลื่อนพลังงาน เพื่อชีวิตที่ดีกว่าของทุกคน ”</p>
+        </div>
+        <div className="absolute right-[25.5rem] top-2 z-30 hidden -rotate-2 rounded-[22px] border border-purple-200/70 bg-white/80 px-4 py-2 pr-8 text-center text-xs font-bold leading-4 text-brand-800 shadow-sm backdrop-blur-sm xl:block">
+          <span className="absolute -right-2 top-1/2 h-4 w-4 -translate-y-1/2 rotate-45 border-r border-t border-purple-200/70 bg-white/80" />
+          <span className="relative z-10">นัดง่าย<br />งานราบรื่น<br />ไปด้วยกัน</span>
+          <Zap className="absolute right-2 top-1/2 -translate-y-1/2 text-amber-500" size={18} />
+        </div>
+        <div className="absolute right-4 top-3 z-30 hidden rounded-[20px] bg-white/65 px-4 py-2 text-center text-[10px] font-bold leading-4 text-brand-800 shadow-sm backdrop-blur-sm xl:block">พลังงาน<br />เชื่อมโยงอนาคต <span className="text-pink-500">♥</span></div>
+        <img src={bannerHero} alt="มาสคอต PEA โบกมือข้างปฏิทินและต้นไม้" className="pointer-events-none absolute bottom-0 right-2 z-10 hidden w-[46%] max-w-[40rem] object-contain drop-shadow-[0_12px_8px_rgba(76,15,93,0.28)] sm:block xl:right-8 xl:h-[9.75rem] xl:w-auto xl:max-w-none" />
       </section>
       <div className="grid gap-5 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,1fr)_260px] xl:gap-3">
       <div className="min-w-0 xl:flex xl:min-h-0 xl:flex-col">

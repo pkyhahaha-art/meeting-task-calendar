@@ -102,7 +102,7 @@ export function html(template: string, payload: Record<string, unknown>) {
     ? `<div style="margin-top:18px"><div style="margin-bottom:6px;color:#64748b;font-size:13px;font-weight:700">รายละเอียด / วาระการประชุม</div><div style="padding:14px;background:#f8fafc;border-radius:10px;color:#334155;font-size:14px;line-height:1.7">${escapeHtml(description)}</div></div>`
     : ''
   const acknowledgeAction = acknowledgeUrl
-    ? `<div style="margin-top:20px"><a style="display:inline-block;background:#15803d;color:#ffffff;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:700" href="${escapeHtml(acknowledgeUrl)}">รับทราบ</a></div>`
+    ? `<div style="margin-top:20px"><a target="_blank" rel="noopener noreferrer" style="display:inline-block;background:#15803d;color:#ffffff;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:700" href="${escapeHtml(acknowledgeUrl)}">รับทราบ</a><div style="margin-top:10px;color:#64748b;font-size:12px;line-height:1.6">หากปุ่มรับทราบใช้งานไม่ได้ <a target="_blank" rel="noopener noreferrer" href="${escapeHtml(acknowledgeUrl)}" style="color:#0f766e;word-break:break-all">คลิกลิงก์รับทราบสำรอง</a></div></div>`
     : ''
   const documentList = documentItems.length
     ? `<div style="margin-top:20px;padding:16px;background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px"><div style="margin-bottom:10px;color:#115e59;font-size:15px;font-weight:700">เอกสารและลิงก์ Google Drive (${documentItems.length})</div>${documentItems.map((document) => {

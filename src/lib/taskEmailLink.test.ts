@@ -27,5 +27,6 @@ test('Task email opens Drive directly and keeps acknowledgement separate from th
   assert.match(card, /Google Drive: <a href="https:\/\/drive\.google\.com\/drive\/folders\/example"/)
   assert.doesNotMatch(card, /เปิด Task \/ ดาวน์โหลดเอกสาร/)
   assert.match(card, /href="https:\/\/project\.supabase\.co\/functions\/v1\/email-acknowledgement\?token=scoped"[^>]*>รับทราบ<\/a>/)
+  assert.match(card, /หากปุ่มรับทราบใช้งานไม่ได้/)
   assert.doesNotMatch(card, /อัปโหลดเอกสาร/)
 })
