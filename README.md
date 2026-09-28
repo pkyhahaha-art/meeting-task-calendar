@@ -22,6 +22,17 @@ Internal shared calendar built with React, TypeScript, Tailwind CSS, FullCalenda
 - Recurring Meeting and Task occurrence generation with hourly storage/retention cleanup
 - LINE linking codes, webhook handling, and queued LINE reminders
 - Admin overview for deliveries, audit events, and scheduled jobs
+- Delivery status and manual retry for the Meeting owner, Task creator, and Admin
+
+## Recent changes
+
+- Responsive layout for mobile phones, tablets, and iPad, including the calendar, dialogs, action buttons, and cookie banner.
+- Branded bilingual cookie-consent banner for signed-in users, with the system mascot and a Thai/English speech bubble.
+- Inline spinner on save buttons for Meeting and Task forms. Success alerts close automatically after two seconds, without a duplicate loading alert or a manual close button.
+- Meeting and Task dialogs now close after their success alert finishes. Validation errors and failed saves leave the form open for correction.
+- A completed or cancelled Task cannot send a new notification. The form explains why instead of attempting to create an unusable external recipient link.
+- Email acknowledgement redirects to `/#/acknowledged`, displays a button-free success alert, and closes automatically after two seconds.
+- Meeting owners, Task creators, and Admin can see the latest delivery status per recipient. Creator rows identify automatic creator notifications; failed or quota-deferred deliveries can be queued for retry after migration `202609290001_notification_delivery_status.sql`.
 
 ## Local setup
 
@@ -38,7 +49,7 @@ Internal shared calendar built with React, TypeScript, Tailwind CSS, FullCalenda
    VITE_SUPABASE_PUBLISHABLE_KEY=...
    ```
 
-3. Apply every SQL file in `supabase/migrations` in filename order. On an existing project, apply every migration newer than its latest installed migration, including `202609260001_task_assignee_read_only_documents.sql`, `202609270001_explicit_edit_notifications.sql`, and `202609270002_multiple_recipients_acknowledgements.sql`.
+3. Apply every SQL file in `supabase/migrations` in filename order. On an existing project, apply every migration newer than its latest installed migration, including `202609260001_task_assignee_read_only_documents.sql`, `202609270001_explicit_edit_notifications.sql`, `202609270002_multiple_recipients_acknowledgements.sql`, and `202609290001_notification_delivery_status.sql`.
 
 4. In Supabase Auth, enable Email/Password and Confirm Email. For local development allow `http://127.0.0.1:5173/**`. GitHub Pages redirects use `/#/auth/callback` and `/#/reset-password`.
 
@@ -75,6 +86,37 @@ The app uses `HashRouter` and relative Vite assets so project Pages URLs work wi
 3. In GitHub repository settings, set Pages source to **GitHub Actions**.
 4. Push to `main` or `master`; `.github/workflows/deploy-pages.yml` tests, builds, and deploys the site.
 5. Add the resulting Pages URL patterns to Supabase Auth Redirect URLs.
+
+## Vercel
+
+GitHub remains the source repository. Vercel builds and serves the web application after each push to the selected production branch.
+
+1. In Vercel, create a **New Project** and import this GitHub repository.
+2. Select `main` as the production branch. Vercel detects Vite; if settings are requested, use build command `npm run build` and output directory `dist`.
+3. Add these Vercel environment variables from `.env.local`:
+
+   ```text
+   VITE_SUPABASE_URL=...
+   VITE_SUPABASE_PUBLISHABLE_KEY=...
+   VITE_LINE_ADD_FRIEND_URL=...
+   ```
+
+   Do not add `SUPABASE_SERVICE_ROLE_KEY`, Brevo keys, LINE channel secrets, or cron secrets to Vercel.
+
+4. Copy the production URL, for example `https://meeting-task-calendar.vercel.app`, then set Supabase Edge Function secret `PUBLIC_APP_URL` to that value. It is used for Task, Meeting, and acknowledgement links sent in notifications.
+
+   ```bash
+   supabase secrets set PUBLIC_APP_URL=https://meeting-task-calendar.vercel.app
+   ```
+
+5. In Supabase Auth, set the Site URL to the Vercel production URL and add these redirect URLs:
+
+   ```text
+   https://meeting-task-calendar.vercel.app/#/auth/callback
+   https://meeting-task-calendar.vercel.app/#/reset-password
+   ```
+
+6. Pushes to `main` automatically create a production deployment. Keep the existing GitHub Pages site available until email links sent before the migration are no longer needed.
 
 ## Google Sheets reporting
 
