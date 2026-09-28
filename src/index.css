@@ -13,7 +13,7 @@
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; min-height: 100vh; }
+body { margin: 0; min-width: 320px; min-height: 100vh; overflow-x: hidden; }
 button, input, textarea, select { font: inherit; }
 button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
   outline: 3px solid rgba(133, 20, 132, 0.28);
@@ -90,9 +90,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .calendar-fill .fc { height: 100%; }
   .calendar-fill .fc-scroller { overflow: hidden !important; }
 }
+@media (max-width: 1279px) {
+  .calendar-fill .fc { min-height: 34rem; }
+}
 @media (max-width: 640px) {
+  html { -webkit-text-size-adjust: 100%; }
+  .calendar-fill .fc { min-height: 31rem; }
   .fc .fc-toolbar { align-items: flex-start; gap: .75rem; }
   .fc .fc-toolbar-title { font-size: 1rem; }
   .fc .fc-button { padding: .35rem .55rem; }
+  .fc .fc-daygrid-day-frame { min-height: 4.25rem; }
   .fc .fc-day-today .fc-daygrid-day-number { width: 1.65rem; height: 1.65rem; }
 }

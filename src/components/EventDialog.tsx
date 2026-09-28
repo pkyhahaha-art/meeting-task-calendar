@@ -5,11 +5,12 @@ import type { Database } from '../lib/database.types'
 import { bangkokDate, formatDisplayDate, invalidGuestEmails, isPastBangkokDate, recurrenceFromRule, reminderOptions, validateAttachments, type Recurrence, type ReminderKey } from '../lib/eventForm'
 import { TimeSelect } from './TimeSelect'
 import { SaveActionMenu } from './SaveActionMenu'
+import { NotificationDeliveryStatus, type DeliveryStatusRow } from './NotificationDeliveryStatus'
 
 type EventRow = Database['public']['Tables']['events']['Row']
 type AttachmentRow = Database['public']['Tables']['attachments']['Row']
 type AttachmentView = AttachmentRow & { signedUrl: string }
-export type EventDetails = { guestEmails: string[]; guestAcknowledgements: Record<string, string | null>; reminderKeys: ReminderKey[]; notifyEmail: boolean; notifyLine: boolean; attachments: AttachmentView[] }
+export type EventDetails = { guestEmails: string[]; guestAcknowledgements: Record<string, string | null>; reminderKeys: ReminderKey[]; notifyEmail: boolean; notifyLine: boolean; attachments: AttachmentView[]; notificationDeliveries: DeliveryStatusRow[] }
 export type EventDraft = Pick<EventRow, 'title' | 'description' | 'location' | 'affiliation' | 'all_day'> & {
   date: string; start: string; end: string; recurrence: Recurrence; guestEmails: string[]; reminderKeys: ReminderKey[]
   notifyEmail: boolean; notifyLine: boolean; files: File[]
@@ -29,13 +30,15 @@ function localTime(value: string | null) {
   return `${read('hour')}:${read('minute')}`
 }
 
-export function EventDialog({ open, event, details, selectedDate, canEdit, busy, onClose, onSave, onDelete, onDeleteAttachment }: {
+export function EventDialog({ open, event, details, selectedDate, canEdit, canViewDeliveryStatus, busy, onClose, onSave, onDelete, onDeleteAttachment, onRetryNotification }: {
   open: boolean; event: EventRow | null; details?: EventDetails; selectedDate?: string; canEdit: boolean; busy: boolean
   onClose: () => void; onSave: (draft: EventDraft, notifyRecipients: boolean) => Promise<void>; onDelete: () => Promise<void>
   onDeleteAttachment: (attachment: AttachmentRow) => Promise<void>
+  canViewDeliveryStatus: boolean; onRetryNotification: (deliveryId: string) => Promise<void>
 }) {
   const [draft, setDraft] = useState<EventDraft>(blankDraft(selectedDate))
   const [error, setError] = useState('')
+  const [savingNew, setSavingNew] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const initializedDraft = useRef<string | null>(null)
   useEffect(() => {
@@ -79,9 +82,13 @@ export function EventDialog({ open, event, details, selectedDate, canEdit, busy,
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
     void (async () => {
-      if (await save(!event) && !event) {
-        await Swal.fire({ icon: 'success', title: 'สำเร็จ', text: 'สร้างการประชุมเรียบร้อยแล้ว', confirmButtonText: 'ปิด', confirmButtonColor: '#15803d' })
-      }
+      setSavingNew(true)
+      try {
+        if (await save(!event) && !event) {
+          await Swal.fire({ icon: 'success', title: 'สำเร็จ', text: 'สร้างการประชุมเรียบร้อยแล้ว', showConfirmButton: false, timer: 2000, timerProgressBar: true })
+          onClose()
+        }
+      } finally { setSavingNew(false) }
     })()
   }
   return (
@@ -89,7 +96,7 @@ export function EventDialog({ open, event, details, selectedDate, canEdit, busy,
       <section className="max-h-[95vh] w-full max-w-3xl overflow-y-auto rounded-t-2xl bg-white p-5 shadow-2xl sm:rounded-2xl sm:p-6">
         <div className="mb-5 flex items-start justify-between"><div className="flex gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600"><CalendarClock size={22} /></span><div><h2 id="event-title" className="text-xl font-bold">{event ? 'รายละเอียดการประชุม' : 'เพิ่มการประชุม'}</h2>{event && !canEdit && <p className="text-sm text-slate-500">ดูได้อย่างเดียว เฉพาะเจ้าของเท่านั้นที่แก้ไขได้</p>}</div></div><div className="flex items-center gap-2">{event && <p className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">สร้างโดย {event.creator_name || 'ไม่ระบุชื่อ'}</p>}<button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label="ปิด"><X size={20} /></button></div></div>
         <form onSubmit={submit} className="space-y-5">
-          <fieldset disabled={!canEdit || busy} className="space-y-5 disabled:opacity-75">
+          <fieldset disabled={!canEdit || busy || savingNew} className="space-y-5 disabled:opacity-75">
             <section className="space-y-4 rounded-xl border border-slate-200 p-4">
               <h3 className="flex items-center gap-2 font-semibold text-slate-800"><FileText size={18} className="text-brand-600" />ข้อมูลการประชุม</h3>
               <div><label className="field-label" htmlFor="title">ชื่อการประชุม *</label><input id="title" className="field-input" value={draft.title} onChange={(e) => set('title', e.target.value)} maxLength={180} /></div>
@@ -114,8 +121,9 @@ export function EventDialog({ open, event, details, selectedDate, canEdit, busy,
               {canEdit && <>{draft.files.map((file, index) => <div key={`${file.name}-${index}`} className="flex items-center gap-2 rounded-lg bg-brand-50 px-3 py-2 text-sm"><FileText size={16} /><span className="truncate">{file.name}</span><button type="button" className="ml-auto text-slate-500 hover:text-red-600" onClick={() => set('files', draft.files.filter((_, itemIndex) => itemIndex !== index))} aria-label={`นำ ${file.name} ออก`}><X size={16} /></button></div>)}<input ref={fileInput} type="file" multiple className="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png" onChange={(e) => { const files = [...(e.target.files ?? [])]; const message = validateAttachments([...draft.files, ...files], details?.attachments.length ?? 0); if (message) setError(message); else { setError(''); set('files', [...draft.files, ...files]) }; e.target.value = '' }} /><button type="button" className="btn-secondary" onClick={() => fileInput.current?.click()}><Paperclip size={17} />อัปโหลดเอกสาร</button><p className="text-xs text-slate-500">สูงสุด 5 ไฟล์ ไฟล์ละไม่เกิน 10 MB: PDF, Office, JPG และ PNG</p></>}
             </section>
           </fieldset>
+          {event && canViewDeliveryStatus && <NotificationDeliveryStatus deliveries={details?.notificationDeliveries ?? []} acknowledgements={details?.guestAcknowledgements ?? {}} onRetry={onRetryNotification} />}
           {error && <p className="form-error" role="alert">{error}</p>}
-          <div className="flex flex-wrap justify-between gap-2 border-t border-slate-100 pt-4">{event && canEdit ? <button type="button" onClick={onDelete} className="btn-secondary border-red-200 text-red-600 hover:bg-red-50" disabled={busy}><Trash2 size={17} />ลบ</button> : <span />}<div className="ml-auto flex gap-2"><button type="button" onClick={onClose} className="btn-secondary">{canEdit ? 'ยกเลิก' : 'ปิด'}</button>{canEdit && (event ? <SaveActionMenu busy={busy} onSave={(notifyRecipients) => void save(notifyRecipients)} /> : <button className="btn-primary" disabled={busy || creationDateInPast}>{busy && <Loader2 className="animate-spin" size={17} />}สร้างการประชุม</button>)}</div></div>
+          <div className="flex flex-wrap justify-between gap-2 border-t border-slate-100 pt-4">{event && canEdit ? <button type="button" onClick={onDelete} className="btn-secondary border-red-200 text-red-600 hover:bg-red-50" disabled={busy}><Trash2 size={17} />ลบ</button> : <span />}<div className="ml-auto flex gap-2"><button type="button" onClick={onClose} className="btn-secondary">{canEdit ? 'ยกเลิก' : 'ปิด'}</button>{canEdit && (event ? <SaveActionMenu busy={busy} onSave={save} onComplete={onClose} /> : <button className="btn-primary" disabled={busy || savingNew || creationDateInPast}>{(busy || savingNew) && <Loader2 className="animate-spin" size={17} />}สร้างการประชุม</button>)}</div></div>
         </form>
       </section>
     </div>

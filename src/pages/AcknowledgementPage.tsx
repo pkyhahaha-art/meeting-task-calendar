@@ -7,9 +7,12 @@ export function AcknowledgementPage() {
       icon: 'success',
       title: 'คุณรับทราบแล้ว',
       text: 'ระบบบันทึกการรับทราบเรียบร้อยแล้ว',
-      confirmButtonText: 'ปิด',
-      confirmButtonColor: '#15803d',
+      showConfirmButton: false,
+      showCloseButton: false,
+      timer: 2000,
+      timerProgressBar: true,
       allowOutsideClick: false,
+      didOpen: (popup) => popup.querySelector('.swal2-confirm')?.remove(),
     }).then(() => window.close())
   }, [])
 

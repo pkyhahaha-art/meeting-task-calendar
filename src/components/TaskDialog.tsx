@@ -5,6 +5,7 @@ import type { Database } from '../lib/database.types'
 import { bangkokDate, formatDisplayDate, isPastBangkokDate, parseDisplayDate, recurrenceFromRule, validateAttachments, type Recurrence } from '../lib/eventForm'
 import { invalidExternalEmails, isGoogleDocumentUrl, normalizeExternalEmails, taskReminderOptions, type TaskReminderKey } from '../lib/taskForm'
 import { TimeSelect } from './TimeSelect'
+import { NotificationDeliveryStatus, type DeliveryStatusRow } from './NotificationDeliveryStatus'
 
 type TaskRow = Database['public']['Tables']['tasks']['Row']
 type ProfileRow = Database['public']['Tables']['profiles']['Row']
@@ -22,6 +23,7 @@ export type TaskDetails = {
   documentLinks: DocumentLinkRow[]
   internalRecipients: Array<{ user_id: string; acknowledged_at: string | null }>
   externalRecipients: Array<{ email: string; acknowledged_at: string | null }>
+  notificationDeliveries: DeliveryStatusRow[]
 }
 export type TaskDraft = Pick<TaskRow, 'title' | 'description' | 'affiliation'> & {
   dueDate: string
@@ -45,7 +47,7 @@ function blankDraft(date: string | undefined, userId: string): TaskDraft {
   }
 }
 
-export function TaskDialog({ open, task, details, selectedDate, userId, profiles, events, canEdit, canComplete, canAcknowledge, busy, onClose, onSave, onDelete, onToggleComplete, onAcknowledge, onDeleteAttachment }: {
+export function TaskDialog({ open, task, details, selectedDate, userId, profiles, events, canEdit, canComplete, canAcknowledge, canViewDeliveryStatus, busy, onClose, onSave, onDelete, onToggleComplete, onAcknowledge, onDeleteAttachment, onRetryNotification }: {
   open: boolean
   task: TaskRow | null
   details?: TaskDetails
@@ -56,6 +58,7 @@ export function TaskDialog({ open, task, details, selectedDate, userId, profiles
   canEdit: boolean
   canComplete: boolean
   canAcknowledge: boolean
+  canViewDeliveryStatus: boolean
   busy: boolean
   onClose: () => void
   onSave: (draft: TaskDraft, notifyRecipients: boolean) => Promise<void>
@@ -63,11 +66,13 @@ export function TaskDialog({ open, task, details, selectedDate, userId, profiles
   onToggleComplete: () => Promise<void>
   onAcknowledge: () => Promise<void>
   onDeleteAttachment: (attachment: TaskAttachmentRow) => Promise<void>
+  onRetryNotification: (deliveryId: string) => Promise<void>
 }) {
   const [draft, setDraft] = useState<TaskDraft>(blankDraft(selectedDate, userId))
   const [dueDateText, setDueDateText] = useState(() => formatDisplayDate(selectedDate ?? bangkokDate()))
   const [recipientTab, setRecipientTab] = useState<RecipientTab>('self')
   const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const initializedDraft = useRef<string | null>(null)
 
@@ -159,24 +164,51 @@ export function TaskDialog({ open, task, details, selectedDate, userId, profiles
     })
     if (!result.isConfirmed && !result.isDenied) return
     const notifyRecipients = result.isDenied
-    if (await save(notifyRecipients)) {
+    if (notifyRecipients && task?.status !== 'pending') {
       await Swal.fire({
-        icon: 'success',
-        title: 'สำเร็จ',
-        text: notifyRecipients ? 'บันทึกการแก้ไขและแจ้งเตือนผู้รับแล้ว' : 'บันทึกการแก้ไขเรียบร้อยแล้ว',
-        confirmButtonText: 'ปิด',
-        confirmButtonColor: '#15803d',
+        icon: 'warning',
+        title: 'ไม่สามารถแจ้งเตือนได้',
+        text: task?.status === 'completed' ? 'Task นี้เสร็จแล้ว จึงไม่สามารถส่งการแจ้งเตือนได้' : 'Task นี้ถูกยกเลิกแล้ว จึงไม่สามารถส่งการแจ้งเตือนได้',
+        showConfirmButton: false,
+        timer: 2500,
+        timerProgressBar: true,
       })
+      return
     }
+    setSaving(true)
+    try {
+      if (await save(notifyRecipients)) {
+        await Swal.fire({
+          icon: 'success',
+          title: 'สำเร็จ',
+          text: notifyRecipients ? 'บันทึกการแก้ไขและแจ้งเตือนผู้รับแล้ว' : 'บันทึกการแก้ไขเรียบร้อยแล้ว',
+          showConfirmButton: false,
+          timer: 2000,
+          timerProgressBar: true,
+        })
+        onClose()
+      }
+    } finally { setSaving(false) }
   }
   const submit = (event: React.FormEvent) => {
     event.preventDefault()
     if (task) { void confirmSave(); return }
     void (async () => {
-      if (await save(true)) {
-        await Swal.fire({ icon: 'success', title: 'สำเร็จ', text: 'สร้าง Task เรียบร้อยแล้ว', confirmButtonText: 'ปิด', confirmButtonColor: '#15803d' })
-      }
+      setSaving(true)
+      try {
+        if (await save(true)) {
+          await Swal.fire({ icon: 'success', title: 'สำเร็จ', text: 'สร้าง Task เรียบร้อยแล้ว', showConfirmButton: false, timer: 2000, timerProgressBar: true })
+          onClose()
+        }
+      } finally { setSaving(false) }
     })()
+  }
+
+  const notificationAcknowledgements: Record<string, string | null> = {}
+  for (const recipient of details?.externalRecipients ?? []) notificationAcknowledgements[recipient.email.toLowerCase()] = recipient.acknowledged_at
+  for (const recipient of details?.internalRecipients ?? []) {
+    const email = profiles.find((profile) => profile.id === recipient.user_id)?.email
+    if (email) notificationAcknowledgements[email.toLowerCase()] = recipient.acknowledged_at
   }
 
   return (
@@ -188,7 +220,7 @@ export function TaskDialog({ open, task, details, selectedDate, userId, profiles
         </div>
 
         <form onSubmit={submit} className="space-y-5">
-          <fieldset disabled={!canEdit || busy} className="space-y-5 disabled:opacity-75">
+          <fieldset disabled={!canEdit || busy || saving} className="space-y-5 disabled:opacity-75">
             <section className="space-y-4 rounded-xl border border-slate-200 p-4">
               <h3 className="flex items-center gap-2 font-semibold text-slate-800"><FileText size={18} className="text-amber-700" />ข้อมูลงาน</h3>
               <div><label className="field-label" htmlFor="task-name">ชื่องาน *</label><input id="task-name" className="field-input" value={draft.title} onChange={(event) => set('title', event.target.value)} maxLength={180} /></div>
@@ -203,7 +235,7 @@ export function TaskDialog({ open, task, details, selectedDate, userId, profiles
             <div role="tablist" aria-label="ประเภทผู้รับมอบหมาย" className="grid grid-cols-1 gap-1 rounded-xl bg-slate-100 p-1 sm:grid-cols-3">
               {recipientTabs.map(({ key, label, count }) => <button key={key} type="button" role="tab" id={`task-recipient-tab-${key}`} aria-controls={`task-recipient-panel-${key}`} aria-selected={recipientTab === key} onClick={() => setRecipientTab(key)} className={`rounded-lg px-2 py-2 text-sm font-medium transition-colors ${recipientTab === key ? 'bg-white text-amber-800 shadow-sm' : 'text-slate-600 hover:bg-white/70'}`}>{label}{count > 0 && <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">{count}</span>}</button>)}
             </div>
-            <fieldset disabled={!canEdit || busy} className="disabled:opacity-75">
+            <fieldset disabled={!canEdit || busy || saving} className="disabled:opacity-75">
               {recipientTab === 'self' && <div role="tabpanel" id="task-recipient-panel-self" aria-labelledby="task-recipient-tab-self"><label className="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm"><input type="checkbox" checked={selfSelected} onChange={(event) => set('internalUserIds', event.target.checked ? [...draft.internalUserIds, userId] : draft.internalUserIds.filter((id) => id !== userId))} /><span className="min-w-0 flex-1 truncate">{selfProfile ? `${selfProfile.full_name} — ${selfProfile.email}` : 'ฉัน'}</span>{details?.internalRecipients.find((recipient) => recipient.user_id === userId)?.acknowledged_at && <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">รับทราบแล้ว</span>}</label></div>}
               {recipientTab === 'internal' && <div role="tabpanel" id="task-recipient-panel-internal" aria-labelledby="task-recipient-tab-internal" className="max-h-40 space-y-1 overflow-y-auto rounded-xl border border-slate-200 p-2">{profiles.filter((profile) => profile.status === 'active' && profile.id !== userId).map((profile) => <label key={profile.id} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50"><input type="checkbox" checked={draft.internalUserIds.includes(profile.id)} onChange={(event) => set('internalUserIds', event.target.checked ? [...draft.internalUserIds, profile.id] : draft.internalUserIds.filter((id) => id !== profile.id))} /><span className="min-w-0 flex-1 truncate">{profile.full_name} — {profile.email}</span>{details?.internalRecipients.find((recipient) => recipient.user_id === profile.id)?.acknowledged_at && <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">รับทราบแล้ว</span>}</label>)}{!profiles.some((profile) => profile.status === 'active' && profile.id !== userId) && <p className="px-2 py-1.5 text-sm text-slate-500">ไม่มีพนักงานอื่นในระบบ</p>}</div>}
               {recipientTab === 'external' && <div role="tabpanel" id="task-recipient-panel-external" aria-labelledby="task-recipient-tab-external" className="space-y-2">{draft.externalEmails.map((email, index) => <div key={index} className="flex items-center gap-2"><input id={index === 0 ? 'external-email' : `external-email-${index + 1}`} type="email" className="field-input min-w-0 flex-1" placeholder="name@gmail.com" value={email} onChange={(event) => setExternalEmail(index, event.target.value)} aria-label={`Gmail ผู้รับภายนอกคนที่ ${index + 1}`} />{details?.externalRecipients.find((recipient) => recipient.email === email.trim().toLowerCase())?.acknowledged_at && <span className="shrink-0 rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-700">รับทราบแล้ว</span>}{draft.externalEmails.length > 1 && <button type="button" className="shrink-0 rounded-xl border border-slate-300 p-2.5 text-slate-500 hover:border-red-200 hover:bg-red-50 hover:text-red-600" onClick={() => set('externalEmails', draft.externalEmails.filter((_, itemIndex) => itemIndex !== index))} aria-label={`ลบผู้รับภายนอกคนที่ ${index + 1}`}><X size={18} /></button>}</div>)}<button type="button" className="btn-secondary w-full" onClick={() => set('externalEmails', [...draft.externalEmails, ''])}><Plus size={17} />เพิ่มผู้รับทางอีเมล</button></div>}
@@ -211,7 +243,7 @@ export function TaskDialog({ open, task, details, selectedDate, userId, profiles
             <p className="text-xs text-slate-500">เลือกได้หลายคนและสลับแท็บได้โดยรายชื่อที่เลือกไว้ยังอยู่ ผู้สร้าง Task เท่านั้นที่ยืนยันว่าเสร็จแล้ว</p>
           </section>
 
-          <fieldset disabled={!canEdit || busy} className="space-y-5 disabled:opacity-75">
+          <fieldset disabled={!canEdit || busy || saving} className="space-y-5 disabled:opacity-75">
             <div><label className="field-label" htmlFor="linked-event">เชื่อมกับ Meeting (ไม่บังคับ)</label><select id="linked-event" className="field-input" value={draft.linkedEventId} onChange={(event) => set('linkedEventId', event.target.value)}><option value="">ไม่เชื่อม Meeting</option>{events.map((event) => <option key={event.id} value={event.id}>{event.title}</option>)}</select></div>
 
             <div className="grid gap-5 md:grid-cols-2">
@@ -230,10 +262,12 @@ export function TaskDialog({ open, task, details, selectedDate, userId, profiles
             </section>
           </fieldset>
 
+          {task && canViewDeliveryStatus && <NotificationDeliveryStatus deliveries={details?.notificationDeliveries ?? []} acknowledgements={notificationAcknowledgements} onRetry={onRetryNotification} />}
+
           {error && <p className="form-error" role="alert">{error}</p>}
           <div className="flex flex-wrap justify-between gap-2 border-t border-slate-100 pt-4">
             {task && canEdit ? <button type="button" onClick={onDelete} className="btn-secondary border-red-200 text-red-600" disabled={busy}><Trash2 size={17} />ย้ายไปถังขยะ</button> : <span />}
-            <div className="ml-auto flex flex-wrap gap-2"><button type="button" onClick={onClose} className="btn-secondary">ปิด</button>{task && canAcknowledge && <button type="button" className="btn-secondary" disabled={busy} onClick={onAcknowledge}>รับทราบ</button>}{task && canComplete && <button type="button" className="btn-secondary" disabled={busy} onClick={onToggleComplete}><CheckCircle2 size={17} />{task.status === 'completed' ? 'เปิดงานอีกครั้ง' : 'ยืนยันว่าทำ Task เสร็จแล้ว'}</button>}{canEdit && (task ? <button type="button" className="btn-primary" disabled={busy} onClick={() => void confirmSave()}>{busy && <Loader2 className="animate-spin" size={17} />}บันทึก</button> : <button className="btn-primary" disabled={busy || creationDateInPast}>{busy && <Loader2 className="animate-spin" size={17} />}สร้าง Task</button>)}</div>
+            <div className="ml-auto flex flex-wrap gap-2"><button type="button" onClick={onClose} className="btn-secondary">ปิด</button>{task && canAcknowledge && <button type="button" className="btn-secondary" disabled={busy || saving} onClick={onAcknowledge}>รับทราบ</button>}{task && canComplete && <button type="button" className="btn-secondary" disabled={busy || saving} onClick={onToggleComplete}><CheckCircle2 size={17} />{task.status === 'completed' ? 'เปิดงานอีกครั้ง' : 'ยืนยันว่าทำ Task เสร็จแล้ว'}</button>}{canEdit && (task ? <button type="button" className="btn-primary" disabled={busy || saving} onClick={() => void confirmSave()}>{(busy || saving) && <Loader2 className="animate-spin" size={17} />}บันทึก</button> : <button className="btn-primary" disabled={busy || saving || creationDateInPast}>{(busy || saving) && <Loader2 className="animate-spin" size={17} />}สร้าง Task</button>)}</div>
           </div>
         </form>
       </section>

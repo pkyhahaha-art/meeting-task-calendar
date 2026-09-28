@@ -12,6 +12,7 @@ import bannerHero from '../../ภาพประกอบUI/PEA Calendar Banner 
 import { useAuth } from '../auth/AuthProvider'
 import { useConfirm } from '../components/ConfirmDialogProvider'
 import { EventDialog, type EventDetails, type EventDraft } from '../components/EventDialog'
+import type { DeliveryStatusRow } from '../components/NotificationDeliveryStatus'
 import { TaskDialog, type TaskDetails, type TaskDraft } from '../components/TaskDialog'
 import { useLanguage } from '../i18n/LanguageProvider'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -80,7 +81,7 @@ function calendarDayKey(date: Date | string) {
 }
 
 export function CalendarPage() {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const { language } = useLanguage()
   const { search: locationSearch } = useLocation()
   const navigate = useNavigate()
@@ -164,49 +165,59 @@ export function CalendarPage() {
   })
 
   const selectedEvent = eventDialog.event
+  const selectedTask = taskDialog.task
+  const canViewEventDeliveryStatus = Boolean(selectedEvent && (selectedEvent.owner_user_id === user?.id || profile?.role === 'admin'))
+  const canViewTaskDeliveryStatus = Boolean(selectedTask && (selectedTask.creator_user_id === user?.id || profile?.role === 'admin'))
   const eventDetailsQuery = useQuery({
-    queryKey: ['event-details', selectedEvent?.id],
+    queryKey: ['event-details', selectedEvent?.id, canViewEventDeliveryStatus],
     enabled: Boolean(selectedEvent),
     refetchInterval: selectedEvent ? 3_000 : false,
     queryFn: async (): Promise<EventDetails> => {
       const eventId = selectedEvent!.id
-      const [guests, reminders, attachments] = await Promise.all([
+      const [guests, reminders, attachments, notificationDeliveries] = await Promise.all([
         supabase.from('event_guests').select('*').eq('event_id', eventId).is('revoked_at', null).returns<GuestRow[]>(),
         supabase.from('reminders').select('*').eq('event_id', eventId).eq('status', 'scheduled').returns<ReminderRow[]>(),
         supabase.from('attachments').select('*').eq('event_id', eventId).order('uploaded_at').returns<AttachmentRow[]>(),
+        canViewEventDeliveryStatus
+          ? supabase.from('notification_deliveries').select('id,recipient_type,recipient_reference,channel,status,scheduled_at,sent_at,error_message,created_at').eq('event_id', eventId).order('created_at', { ascending: false }).returns<DeliveryStatusRow[]>()
+          : Promise.resolve({ data: [] as DeliveryStatusRow[], error: null }),
       ])
       if (guests.error) throw guests.error
       if (reminders.error) throw reminders.error
       if (attachments.error) throw attachments.error
+      if (notificationDeliveries.error) throw notificationDeliveries.error
       const attachmentViews = await Promise.all(attachments.data.map(async (file) => {
         const { data, error } = await supabase.storage.from('meeting-documents').createSignedUrl(file.storage_path, 300, { download: file.file_name })
         if (error || !data) throw error ?? new Error('ไม่สามารถเปิดไฟล์แนบได้')
         return { ...file, signedUrl: data.signedUrl }
       }))
       const keys = reminders.data.map(reminderKey).filter((key): key is ReminderKey => Boolean(key))
-      return { guestEmails: guests.data.map((guest) => guest.email), guestAcknowledgements: Object.fromEntries(guests.data.map((guest) => [guest.email.toLowerCase(), guest.acknowledged_at])), reminderKeys: keys, notifyEmail: reminders.data.some((item) => item.channel_email), notifyLine: reminders.data.some((item) => item.channel_line), attachments: attachmentViews }
+      return { guestEmails: guests.data.map((guest) => guest.email), guestAcknowledgements: Object.fromEntries(guests.data.map((guest) => [guest.email.toLowerCase(), guest.acknowledged_at])), reminderKeys: keys, notifyEmail: reminders.data.some((item) => item.channel_email), notifyLine: reminders.data.some((item) => item.channel_line), attachments: attachmentViews, notificationDeliveries: notificationDeliveries.data }
     },
   })
 
-  const selectedTask = taskDialog.task
   const taskDetailsQuery = useQuery({
-    queryKey: ['task-details', selectedTask?.id],
+    queryKey: ['task-details', selectedTask?.id, canViewTaskDeliveryStatus],
     enabled: Boolean(selectedTask),
     refetchInterval: selectedTask ? 3_000 : false,
     queryFn: async (): Promise<TaskDetails> => {
       const taskId = selectedTask!.id
-      const [reminders, attachments, documentLinks, externalRecipients, internalRecipients] = await Promise.all([
+      const [reminders, attachments, documentLinks, externalRecipients, internalRecipients, notificationDeliveries] = await Promise.all([
         supabase.from('task_reminders').select('*').eq('task_id', taskId).eq('status', 'scheduled').returns<TaskReminderRow[]>(),
         supabase.from('task_attachments').select('*').eq('task_id', taskId).order('uploaded_at').returns<TaskAttachmentRow[]>(),
         supabase.from('document_links').select('*').eq('task_id', taskId).order('created_at').returns<DocumentLinkRow[]>(),
         supabase.from('task_external_recipients').select('*').eq('task_id', taskId).order('email').returns<TaskExternalRecipientRow[]>(),
         supabase.from('task_internal_recipients').select('*').eq('task_id', taskId).returns<TaskInternalRecipientRow[]>(),
+        canViewTaskDeliveryStatus
+          ? supabase.from('notification_deliveries').select('id,recipient_type,recipient_reference,channel,status,scheduled_at,sent_at,error_message,created_at').eq('task_id', taskId).order('created_at', { ascending: false }).returns<DeliveryStatusRow[]>()
+          : Promise.resolve({ data: [] as DeliveryStatusRow[], error: null }),
       ])
       if (reminders.error) throw reminders.error
       if (attachments.error) throw attachments.error
       if (documentLinks.error) throw documentLinks.error
       if (externalRecipients.error) throw externalRecipients.error
       if (internalRecipients.error) throw internalRecipients.error
+      if (notificationDeliveries.error) throw notificationDeliveries.error
       const attachmentViews = await Promise.all(attachments.data.map(async (file) => {
         const { data, error } = await supabase.storage.from('task-documents').createSignedUrl(file.storage_path, 300, { download: file.file_name })
         if (error || !data) throw error ?? new Error('ไม่สามารถเปิดเอกสารประกอบได้')
@@ -220,6 +231,7 @@ export function CalendarPage() {
         documentLinks: documentLinks.data,
         externalRecipients: externalRecipients.data.map(({ email, acknowledged_at }) => ({ email, acknowledged_at })),
         internalRecipients: internalRecipients.data.map(({ user_id, acknowledged_at }) => ({ user_id, acknowledged_at })),
+        notificationDeliveries: notificationDeliveries.data,
       }
     },
   })
@@ -287,7 +299,6 @@ export function CalendarPage() {
     },
     onSuccess: async () => {
       await Promise.all([queryClient.invalidateQueries({ queryKey: ['events'] }), queryClient.invalidateQueries({ queryKey: ['event-details'] }), queryClient.invalidateQueries({ queryKey: ['recent-documents'] }), queryClient.invalidateQueries({ queryKey: ['event-creation-stats'] })])
-      setEventDialog({ open: false, event: null })
     },
   })
 
@@ -304,8 +315,9 @@ export function CalendarPage() {
       const primaryExternal = !hasInternal
         ? task?.external_assignee_email && externalEmails.includes(task.external_assignee_email) ? task.external_assignee_email : externalEmails[0]
         : null
+      const shouldNotifyExternalRecipients = Boolean(externalEmails.length && notifyRecipients && (!task || task.status === 'pending'))
       let externalAccessToken = ''
-      if (externalEmails.length && notifyRecipients) {
+      if (shouldNotifyExternalRecipients) {
         const { data, error } = await supabase.auth.refreshSession()
         if (error || !data.session) throw new Error('เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง')
         externalAccessToken = data.session.access_token
@@ -371,12 +383,12 @@ export function CalendarPage() {
           const { error } = await supabase.from('task_attachments').insert({ task_id: taskId, file_name: file.name, mime_type: file.type, file_size: file.size, storage_path: storagePath, uploaded_by: user!.id })
           if (error) { await supabase.storage.from('task-documents').remove([storagePath]); throw error }
         }
-        if (notifyRecipients && hasInternal) {
+        if (notifyRecipients && hasInternal && (!task || task.status === 'pending')) {
           const { error } = await supabase.from('tasks').update({ notification_requested_at: new Date().toISOString() }).eq('id', taskId)
           if (error) throw error
         }
         let warning = ''
-        if (externalEmails.length && notifyRecipients) {
+        if (shouldNotifyExternalRecipients) {
           try {
             const { error } = await supabase.functions.invoke('external-task', {
               // Keep publicUrl until the deployed Function accepts server-generated links.
@@ -403,7 +415,6 @@ export function CalendarPage() {
     onSuccess: async ({ warning }) => {
       setTaskSaveWarning(warning)
       await Promise.all([queryClient.invalidateQueries({ queryKey: ['tasks'] }), queryClient.invalidateQueries({ queryKey: ['task-details'] }), queryClient.invalidateQueries({ queryKey: ['recent-documents'] }), queryClient.invalidateQueries({ queryKey: ['event-creation-stats'] })])
-      setTaskDialog({ open: false, task: null })
     },
   })
 
@@ -443,6 +454,18 @@ export function CalendarPage() {
       if (error) throw error
     },
     onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['task-details', selectedTask?.id] }) },
+  })
+  const retryNotificationMutation = useMutation({
+    mutationFn: async (deliveryId: string) => {
+      const { error } = await supabase.rpc('retry_notification_delivery', { target_delivery_id: deliveryId })
+      if (error) throw error
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['event-details'] }),
+        queryClient.invalidateQueries({ queryKey: ['task-details'] }),
+      ])
+    },
   })
   useEffect(() => {
     if (!acknowledgeFromEmail) attemptedEmailAcknowledgement.current = null
@@ -662,27 +685,29 @@ export function CalendarPage() {
         </section>
       </aside>
       </div>
-      {(eventMutation.isError || taskMutation.isError || deleteEventMutation.isError || deleteTaskMutation.isError || deleteEventAttachmentMutation.isError || deleteTaskAttachmentMutation.isError || toggleTaskMutation.isError || acknowledgeTaskMutation.isError) && <p className="fixed bottom-4 right-4 rounded-xl bg-red-600 px-4 py-3 text-sm text-white shadow-lg">ดำเนินการไม่สำเร็จ กรุณาตรวจสอบข้อมูลและลองใหม่</p>}
+      {(eventMutation.isError || taskMutation.isError || deleteEventMutation.isError || deleteTaskMutation.isError || deleteEventAttachmentMutation.isError || deleteTaskAttachmentMutation.isError || toggleTaskMutation.isError || acknowledgeTaskMutation.isError || retryNotificationMutation.isError) && <p className="fixed bottom-4 right-4 rounded-xl bg-red-600 px-4 py-3 text-sm text-white shadow-lg">ดำเนินการไม่สำเร็จ กรุณาตรวจสอบข้อมูลและลองใหม่</p>}
       {taskSaveWarning && <div className="fixed bottom-4 right-4 max-w-md rounded-xl bg-amber-100 px-4 py-3 text-sm text-amber-950 shadow-lg" role="alert"><p>{taskSaveWarning}</p><button type="button" className="mt-2 font-semibold underline" onClick={() => setTaskSaveWarning('')}>ปิด</button></div>}
 
       <EventDialog
         open={eventDialog.open} event={selectedEvent} details={eventDetailsQuery.data} selectedDate={eventDialog.date}
-        canEdit={canEditEvent} busy={busy || eventDetailsQuery.isLoading}
+        canEdit={canEditEvent} canViewDeliveryStatus={canViewEventDeliveryStatus} busy={busy || eventDetailsQuery.isLoading}
         onClose={() => setEventDialog({ open: false, event: null })}
         onSave={(draft, notifyRecipients) => eventMutation.mutateAsync({ draft, event: selectedEvent, notifyRecipients })}
         onDelete={async () => { if (selectedEvent && await confirmDeletion('ย้าย Meeting ไปถังขยะ?', `Meeting “${selectedEvent.title}” จะไม่แสดงในปฏิทิน`, 'ย้ายไปถังขยะ')) await deleteEventMutation.mutateAsync(selectedEvent) }}
         onDeleteAttachment={async (attachment) => { if (await confirmDeletion('ลบไฟล์แนบ?', `ลบ “${attachment.file_name}” ออกจาก Meeting นี้อย่างถาวร`, 'ลบไฟล์')) await deleteEventAttachmentMutation.mutateAsync(attachment) }}
+        onRetryNotification={(deliveryId) => retryNotificationMutation.mutateAsync(deliveryId)}
       />
       <TaskDialog
         open={taskDialog.open} task={selectedTask} details={taskDetailsQuery.data} selectedDate={taskDialog.date}
         userId={user!.id} profiles={profilesQuery.data ?? []} events={eventsQuery.data ?? []}
-        canEdit={canEditTask} canComplete={canCompleteTask} canAcknowledge={canAcknowledgeTask} busy={busy || taskDetailsQuery.isLoading}
+        canEdit={canEditTask} canComplete={canCompleteTask} canAcknowledge={canAcknowledgeTask} canViewDeliveryStatus={canViewTaskDeliveryStatus} busy={busy || taskDetailsQuery.isLoading}
         onClose={() => setTaskDialog({ open: false, task: null })}
         onSave={async (draft, notifyRecipients) => { await taskMutation.mutateAsync({ draft, task: selectedTask, notifyRecipients }) }}
         onDelete={async () => { if (selectedTask && await confirmDeletion('ย้าย Task ไปถังขยะ?', `Task “${selectedTask.title}” จะไม่แสดงในรายการงาน`, 'ย้ายไปถังขยะ')) await deleteTaskMutation.mutateAsync(selectedTask) }}
         onDeleteAttachment={async (attachment) => { if (await confirmDeletion('ลบเอกสาร?', `ลบ “${attachment.file_name}” ออกจาก Task นี้อย่างถาวร`, 'ลบไฟล์')) await deleteTaskAttachmentMutation.mutateAsync(attachment) }}
         onToggleComplete={async () => { if (selectedTask && await confirm({ title: selectedTask.status === 'completed' ? 'เปิดงานอีกครั้ง?' : 'ยืนยันว่างานเสร็จแล้ว?', message: `Task “${selectedTask.title}” จะถูกเปลี่ยนสถานะ`, confirmLabel: selectedTask.status === 'completed' ? 'เปิดงานอีกครั้ง' : 'ยืนยันงานเสร็จ' })) await toggleTaskMutation.mutateAsync(selectedTask) }}
         onAcknowledge={async () => { if (selectedTask) await acknowledgeTaskMutation.mutateAsync(selectedTask) }}
+        onRetryNotification={(deliveryId) => retryNotificationMutation.mutateAsync(deliveryId)}
       />
     </main>
   )
