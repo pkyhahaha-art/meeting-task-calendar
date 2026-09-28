@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { bangkokDate, invalidGuestEmails, isPastBangkokDate, parseGuestEmails, recurrenceFromRule, recurrenceRule, reminderDate } from './eventForm.js'
+import { bangkokDate, formatDisplayDate, invalidGuestEmails, isPastBangkokDate, parseDisplayDate, parseGuestEmails, recurrenceFromRule, recurrenceRule, reminderDate } from './eventForm.js'
 
 test('parses and deduplicates guest emails', () => {
   assert.deepEqual(parseGuestEmails('A@gmail.com, b@gmail.com\na@gmail.com'), ['a@gmail.com', 'b@gmail.com'])
@@ -25,4 +25,14 @@ test('flags dates before today in Bangkok', () => {
   assert.equal(isPastBangkokDate('2027-03-18T09:00', now), true)
   assert.equal(isPastBangkokDate('2027-03-19T00:00', now), false)
   assert.equal(isPastBangkokDate('2027-03-20', now), false)
+})
+
+test('converts valid dates between ISO and dd/mm/yyyy', () => {
+  assert.equal(formatDisplayDate('2026-09-28'), '28/09/2026')
+  assert.equal(parseDisplayDate('28/09/2026'), '2026-09-28')
+  assert.equal(parseDisplayDate('1/2/2028'), '2028-02-01')
+  assert.equal(parseDisplayDate('29/02/2028'), '2028-02-29')
+  assert.equal(parseDisplayDate('29/02/2027'), null)
+  assert.equal(parseDisplayDate('31/04/2026'), null)
+  assert.equal(parseDisplayDate('2026-09-28'), null)
 })

@@ -70,6 +70,21 @@ export function isPastBangkokDate(value: string, now = new Date()) {
   return /^\d{4}-\d{2}-\d{2}$/.test(selectedDate) && selectedDate < bangkokDate(now)
 }
 
+export function formatDisplayDate(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : ''
+}
+
+export function parseDisplayDate(value: string) {
+  const match = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(value.trim())
+  if (!match) return null
+  const day = Number(match[1])
+  const month = Number(match[2])
+  const year = Number(match[3])
+  if (year < 1000 || month < 1 || month > 12 || day < 1 || day > new Date(Date.UTC(year, month, 0)).getUTCDate()) return null
+  return `${match[3]}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
 export function validateAttachments(files: File[], existingCount = 0) {
   if (existingCount + files.length > 5) return 'แนบไฟล์ได้ไม่เกิน 5 ไฟล์ต่อการประชุม'
   const tooLarge = files.find((file) => file.size > 10 * 1024 * 1024)

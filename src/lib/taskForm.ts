@@ -1,3 +1,5 @@
+import { isPastBangkokDate } from './eventForm'
+
 export type TaskReminderKey = 'due' | '1_hour' | '1_day' | '3_days' | 'overdue'
 
 export const taskReminderOptions: { key: TaskReminderKey; label: string }[] = [
@@ -10,6 +12,10 @@ export const taskReminderOptions: { key: TaskReminderKey; label: string }[] = [
 
 export function taskDueDateTime(dueDate: string, dueTime: string) {
   return new Date(`${dueDate}T${dueTime || '09:00'}:00+07:00`)
+}
+
+export function isTaskOverdue(status: 'pending' | 'completed' | 'cancelled', dueDate: string, now = new Date()) {
+  return status === 'pending' && isPastBangkokDate(dueDate, now)
 }
 
 export function taskReminderDate(due: Date, key: TaskReminderKey) {

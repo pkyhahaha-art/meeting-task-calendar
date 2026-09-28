@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bell, CheckCircle2, FileText, Link2, Loader2, Mail, Paperclip, Plus, Repeat2, Trash2, UserRound, X } from 'lucide-react'
+import { Bell, CalendarDays, CheckCircle2, FileText, Link2, Loader2, Mail, Paperclip, Plus, Repeat2, Trash2, UserRound, X } from 'lucide-react'
 import Swal from 'sweetalert2'
 import type { Database } from '../lib/database.types'
-import { bangkokDate, isPastBangkokDate, recurrenceFromRule, validateAttachments, type Recurrence } from '../lib/eventForm'
+import { bangkokDate, formatDisplayDate, isPastBangkokDate, parseDisplayDate, recurrenceFromRule, validateAttachments, type Recurrence } from '../lib/eventForm'
 import { invalidExternalEmails, isGoogleDocumentUrl, normalizeExternalEmails, taskReminderOptions, type TaskReminderKey } from '../lib/taskForm'
 import { TimeSelect } from './TimeSelect'
 
@@ -65,6 +65,7 @@ export function TaskDialog({ open, task, details, selectedDate, userId, profiles
   onDeleteAttachment: (attachment: TaskAttachmentRow) => Promise<void>
 }) {
   const [draft, setDraft] = useState<TaskDraft>(blankDraft(selectedDate, userId))
+  const [dueDateText, setDueDateText] = useState(() => formatDisplayDate(selectedDate ?? bangkokDate()))
   const [recipientTab, setRecipientTab] = useState<RecipientTab>('self')
   const [error, setError] = useState('')
   const fileInput = useRef<HTMLInputElement>(null)
@@ -79,11 +80,13 @@ export function TaskDialog({ open, task, details, selectedDate, userId, profiles
     setError('')
     if (!task) {
       setDraft(blankDraft(selectedDate, userId))
+      setDueDateText(formatDisplayDate(selectedDate ?? bangkokDate()))
       setRecipientTab('self')
       return
     }
     const internalIds = details?.internalRecipients.map((recipient) => recipient.user_id) ?? (task.assignee_user_id ? [task.assignee_user_id] : [])
     setRecipientTab(internalIds.includes(userId) ? 'self' : internalIds.length ? 'internal' : 'external')
+    setDueDateText(formatDisplayDate(task.due_date))
     setDraft({
       title: task.title,
       description: task.description,
@@ -191,7 +194,7 @@ export function TaskDialog({ open, task, details, selectedDate, userId, profiles
               <div><label className="field-label" htmlFor="task-name">ชื่องาน *</label><input id="task-name" className="field-input" value={draft.title} onChange={(event) => set('title', event.target.value)} maxLength={180} /></div>
               <div><label className="field-label" htmlFor="task-affiliation">หน่วยงาน / สังกัด</label><input id="task-affiliation" className="field-input" placeholder="กคน.ฝลส." value={draft.affiliation} onChange={(event) => set('affiliation', event.target.value)} maxLength={250} /></div>
               <div><label className="field-label" htmlFor="task-description">รายละเอียด / คำสั่งงาน</label><textarea id="task-description" className="field-input min-h-28 resize-y" value={draft.description} onChange={(event) => set('description', event.target.value)} maxLength={10000} /></div>
-              <div className="grid gap-4 sm:grid-cols-2"><div><label className="field-label" htmlFor="task-date">วันครบกำหนด *</label><input id="task-date" type="date" className="field-input" value={draft.dueDate} min={task ? undefined : bangkokDate()} onChange={(event) => set('dueDate', event.target.value)} />{creationDateInPast && <p className="mt-1 text-sm text-red-600" role="alert">ไม่สามารถสร้าง Task ในวันที่ผ่านมาแล้ว</p>}</div><div><label className="field-label" htmlFor="task-time">เวลา (ไม่บังคับ)</label><TimeSelect id="task-time" value={draft.dueTime} onChange={(value) => set('dueTime', value)} optional /></div></div>
+              <div className="grid gap-4 sm:grid-cols-2"><div><label className="field-label" htmlFor="task-date">วันครบกำหนด *</label><div className="relative"><input id="task-date" type="text" inputMode="numeric" placeholder="dd/mm/yyyy" maxLength={10} className="field-input pr-12" value={dueDateText} onChange={(event) => { const text = event.target.value; setDueDateText(text); set('dueDate', parseDisplayDate(text) ?? '') }} onBlur={() => { const date = parseDisplayDate(dueDateText); if (date) setDueDateText(formatDisplayDate(date)) }} /><label className="absolute inset-y-1 right-1 flex w-10 items-center justify-center rounded-lg text-brand-600 hover:bg-brand-50"><CalendarDays size={19} aria-hidden="true" /><input type="date" className="absolute inset-0 h-full w-full cursor-pointer opacity-0" aria-label="เลือกวันครบกำหนดจากปฏิทิน" value={draft.dueDate} min={task ? undefined : bangkokDate()} onChange={(event) => { set('dueDate', event.target.value); setDueDateText(formatDisplayDate(event.target.value)) }} /></label></div>{creationDateInPast && <p className="mt-1 text-sm text-red-600" role="alert">ไม่สามารถสร้าง Task ในวันที่ผ่านมาแล้ว</p>}</div><div><label className="field-label" htmlFor="task-time">เวลา (ไม่บังคับ)</label><TimeSelect id="task-time" value={draft.dueTime} onChange={(value) => set('dueTime', value)} optional /></div></div>
             </section>
           </fieldset>
 

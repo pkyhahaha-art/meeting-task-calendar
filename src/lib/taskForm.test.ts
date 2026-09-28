@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { invalidExternalEmails, isGoogleDocumentUrl, normalizeExternalEmails, taskDueDateTime, taskReminderDate } from './taskForm'
+import { invalidExternalEmails, isGoogleDocumentUrl, isTaskOverdue, normalizeExternalEmails, taskDueDateTime, taskReminderDate } from './taskForm'
+
+test('only pending Tasks past the due date are overdue', () => {
+  const now = new Date('2026-09-28T05:00:00.000Z')
+  assert.equal(isTaskOverdue('pending', '2026-09-27', now), true)
+  assert.equal(isTaskOverdue('pending', '2026-09-28', now), false)
+  assert.equal(isTaskOverdue('completed', '2026-09-27', now), false)
+  assert.equal(isTaskOverdue('cancelled', '2026-09-27', now), false)
+})
 
 test('uses 09:00 Bangkok time when a Task has no due time', () => {
   assert.equal(taskDueDateTime('2026-09-20', '').toISOString(), '2026-09-20T02:00:00.000Z')

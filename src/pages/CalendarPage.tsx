@@ -6,8 +6,10 @@ import interactionPlugin from '@fullcalendar/interaction'
 import thLocale from '@fullcalendar/core/locales/th'
 import enGbLocale from '@fullcalendar/core/locales/en-gb'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarDays, CalendarPlus, ListTodo, Search } from 'lucide-react'
+import { CalendarDays, CalendarPlus, CheckCircle2, Clock3, FileText, Link2, ListTodo, Search, Sparkles } from 'lucide-react'
 import Swal from 'sweetalert2'
+import calendarMascot from '../../ภาพประกอบUI/Calendar Mascot 3D.png'
+import peaOfficeTeam from '../../ภาพประกอบUI/PEA Office Team 3D v2.png'
 import { useAuth } from '../auth/AuthProvider'
 import { useConfirm } from '../components/ConfirmDialogProvider'
 import { EventDialog, type EventDetails, type EventDraft } from '../components/EventDialog'
@@ -19,7 +21,7 @@ import { bangkokDate, isPastBangkokDate, parseGuestEmails, recurrenceRule, remin
 import { appUrl } from '../lib/appUrl'
 import { canManageMeeting, meetingCreateArgs } from '../lib/meetingAccess'
 import { expandEvent } from '../lib/recurrence'
-import { normalizeExternalEmails, taskDueDateTime, taskReminderDate, type TaskReminderKey } from '../lib/taskForm'
+import { isTaskOverdue, normalizeExternalEmails, taskDueDateTime, taskReminderDate, type TaskReminderKey } from '../lib/taskForm'
 import { supabase } from '../lib/supabase'
 
 type EventRow = Database['public']['Tables']['events']['Row']
@@ -35,6 +37,7 @@ type DocumentLinkRow = Database['public']['Tables']['document_links']['Row']
 type ProfileRow = Database['public']['Tables']['profiles']['Row']
 type CalendarTooltipItem = { kind: 'event' | 'task'; title: string; affiliation: string; date: Date; isOverdue: boolean }
 type CalendarTooltip = { items: CalendarTooltipItem[]; x: number; y: number }
+type RecentDocument = { id: string; kind: 'file' | 'link'; parent: 'event' | 'task'; parentId: string; name: string; addedAt: string }
 
 function toIso(date: string, time: string, allDay: boolean) {
   if (allDay) return new Date(`${date}T00:00:00+07:00`).toISOString()
@@ -84,8 +87,11 @@ export function CalendarPage() {
   const confirm = useConfirm()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
+  const [showMeetings, setShowMeetings] = useState(true)
   const [showTasks, setShowTasks] = useState(true)
-  const [showCompletedTasks, setShowCompletedTasks] = useState(false)
+  const [showCompletedTasks, setShowCompletedTasks] = useState(true)
+  const [showOverdue, setShowOverdue] = useState(true)
+  const [sideTab, setSideTab] = useState<'upcoming' | 'documents'>('upcoming')
   const [taskSaveWarning, setTaskSaveWarning] = useState('')
   const [eventDialog, setEventDialog] = useState<{ open: boolean; event: EventRow | null; date?: string }>({ open: false, event: null })
   const [taskDialog, setTaskDialog] = useState<{ open: boolean; task: TaskRow | null; date?: string }>({ open: false, task: null })
@@ -135,6 +141,25 @@ export function CalendarPage() {
       const { data, error } = await supabase.from('profiles').select('*').eq('status', 'active').order('full_name').returns<ProfileRow[]>()
       if (error) throw error
       return data
+    },
+  })
+  const recentDocumentsQuery = useQuery({
+    queryKey: ['recent-documents'],
+    enabled: sideTab === 'documents',
+    queryFn: async (): Promise<RecentDocument[]> => {
+      const [meetingFiles, taskFiles, taskLinks] = await Promise.all([
+        supabase.from('attachments').select('*').order('uploaded_at', { ascending: false }).limit(10).returns<AttachmentRow[]>(),
+        supabase.from('task_attachments').select('*').order('uploaded_at', { ascending: false }).limit(10).returns<TaskAttachmentRow[]>(),
+        supabase.from('document_links').select('*').order('created_at', { ascending: false }).limit(10).returns<DocumentLinkRow[]>(),
+      ])
+      if (meetingFiles.error) throw meetingFiles.error
+      if (taskFiles.error) throw taskFiles.error
+      if (taskLinks.error) throw taskLinks.error
+      return [
+        ...meetingFiles.data.map((file) => ({ id: `meeting-file-${file.id}`, kind: 'file' as const, parent: 'event' as const, parentId: file.event_id, name: file.file_name, addedAt: file.uploaded_at })),
+        ...taskFiles.data.map((file) => ({ id: `task-file-${file.id}`, kind: 'file' as const, parent: 'task' as const, parentId: file.task_id, name: file.file_name, addedAt: file.uploaded_at })),
+        ...taskLinks.data.filter((link) => link.task_id).map((link) => ({ id: `task-link-${link.id}`, kind: 'link' as const, parent: 'task' as const, parentId: link.task_id!, name: link.display_name, addedAt: link.created_at })),
+      ].sort((first, second) => second.addedAt.localeCompare(first.addedAt))
     },
   })
 
@@ -261,7 +286,7 @@ export function CalendarPage() {
       }
     },
     onSuccess: async () => {
-      await Promise.all([queryClient.invalidateQueries({ queryKey: ['events'] }), queryClient.invalidateQueries({ queryKey: ['event-details'] })])
+      await Promise.all([queryClient.invalidateQueries({ queryKey: ['events'] }), queryClient.invalidateQueries({ queryKey: ['event-details'] }), queryClient.invalidateQueries({ queryKey: ['recent-documents'] }), queryClient.invalidateQueries({ queryKey: ['event-creation-stats'] })])
       setEventDialog({ open: false, event: null })
     },
   })
@@ -377,14 +402,14 @@ export function CalendarPage() {
     },
     onSuccess: async ({ warning }) => {
       setTaskSaveWarning(warning)
-      await Promise.all([queryClient.invalidateQueries({ queryKey: ['tasks'] }), queryClient.invalidateQueries({ queryKey: ['task-details'] })])
+      await Promise.all([queryClient.invalidateQueries({ queryKey: ['tasks'] }), queryClient.invalidateQueries({ queryKey: ['task-details'] }), queryClient.invalidateQueries({ queryKey: ['recent-documents'] }), queryClient.invalidateQueries({ queryKey: ['event-creation-stats'] })])
       setTaskDialog({ open: false, task: null })
     },
   })
 
   const deleteEventMutation = useMutation({
     mutationFn: async (event: EventRow) => { const { error } = await supabase.from('events').update({ deleted_at: new Date().toISOString() }).eq('id', event.id); if (error) throw error },
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['events'] }); setEventDialog({ open: false, event: null }) },
+    onSuccess: async () => { await Promise.all([queryClient.invalidateQueries({ queryKey: ['events'] }), queryClient.invalidateQueries({ queryKey: ['event-creation-stats'] })]); setEventDialog({ open: false, event: null }) },
   })
   const deleteEventAttachmentMutation = useMutation({
     mutationFn: async (attachment: AttachmentRow) => {
@@ -393,11 +418,11 @@ export function CalendarPage() {
       const { error } = await supabase.from('attachments').delete().eq('id', attachment.id).eq('event_id', attachment.event_id)
       if (error) throw error
     },
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['event-details', selectedEvent?.id] }) },
+    onSuccess: async () => { await Promise.all([queryClient.invalidateQueries({ queryKey: ['event-details', selectedEvent?.id] }), queryClient.invalidateQueries({ queryKey: ['recent-documents'] })]) },
   })
   const deleteTaskMutation = useMutation({
     mutationFn: async (task: TaskRow) => { const { error } = await supabase.from('tasks').update({ deleted_at: new Date().toISOString(), status: 'cancelled' }).eq('id', task.id); if (error) throw error },
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['tasks'] }); setTaskDialog({ open: false, task: null }) },
+    onSuccess: async () => { await Promise.all([queryClient.invalidateQueries({ queryKey: ['tasks'] }), queryClient.invalidateQueries({ queryKey: ['event-creation-stats'] })]); setTaskDialog({ open: false, task: null }) },
   })
   const deleteTaskAttachmentMutation = useMutation({
     mutationFn: async (attachment: TaskAttachmentRow) => {
@@ -406,7 +431,7 @@ export function CalendarPage() {
       const { error } = await supabase.from('task_attachments').delete().eq('id', attachment.id).eq('task_id', attachment.task_id)
       if (error) throw error
     },
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['task-details', selectedTask?.id] }) },
+    onSuccess: async () => { await Promise.all([queryClient.invalidateQueries({ queryKey: ['task-details', selectedTask?.id] }), queryClient.invalidateQueries({ queryKey: ['recent-documents'] })]) },
   })
   const toggleTaskMutation = useMutation({
     mutationFn: async (task: TaskRow) => { const { error } = await supabase.from('tasks').update({ status: task.status === 'completed' ? 'pending' : 'completed' }).eq('id', task.id); if (error) throw error },
@@ -442,15 +467,37 @@ export function CalendarPage() {
   const occurrenceStart = new Date(); occurrenceStart.setFullYear(occurrenceStart.getFullYear() - 1)
   const occurrenceEnd = new Date(); occurrenceEnd.setFullYear(occurrenceEnd.getFullYear() + 1)
   const calendarEntries = [
-    ...eventRows.flatMap((event) => expandEvent(event, occurrenceStart, occurrenceEnd).map((occurrence) => {
+    ...(showMeetings ? eventRows.flatMap((event) => expandEvent(event, occurrenceStart, occurrenceEnd).map((occurrence) => {
       const isOverdue = isPastBangkokDate(calendarDayKey(occurrence.start))
-      return { id: `event-${occurrence.key}`, title: event.title, start: occurrence.start, end: occurrence.end || undefined, allDay: event.all_day, backgroundColor: isOverdue ? '#94a3b8' : event.owner_user_id === user?.id ? '#0f696c' : '#64748b', borderColor: 'transparent', extendedProps: { kind: 'event', row: event, isOverdue } }
-    })),
+      return { id: `event-${occurrence.key}`, title: event.title, start: occurrence.start, end: occurrence.end || undefined, allDay: event.all_day, backgroundColor: isOverdue ? '#fee2e2' : event.owner_user_id === user?.id ? '#edddf6' : '#f1e7fa', borderColor: 'transparent', textColor: isOverdue ? '#991b1b' : '#6b2170', extendedProps: { kind: 'event', row: event, isOverdue } }
+    })) : []),
     ...(showTasks ? taskRows.map((task) => {
-      const isOverdue = task.status === 'pending' && isPastBangkokDate(task.due_date)
-      return { id: `task-${task.id}`, title: task.title, start: task.due_time ? `${task.due_date}T${task.due_time.slice(0, 5)}:00+07:00` : task.due_date, allDay: !task.due_time, backgroundColor: task.status === 'completed' ? '#94a3b8' : '#d97706', borderColor: 'transparent', textColor: '#ffffff', extendedProps: { kind: 'task', row: task, isOverdue } }
+      const isOverdue = isTaskOverdue(task.status, task.due_date)
+      return { id: `task-${task.id}`, title: task.title, start: task.due_time ? `${task.due_date}T${task.due_time.slice(0, 5)}:00+07:00` : task.due_date, allDay: !task.due_time, backgroundColor: isOverdue ? '#fee2e2' : task.status === 'completed' ? '#dcf8e9' : '#fff0ce', borderColor: 'transparent', textColor: isOverdue ? '#991b1b' : task.status === 'completed' ? '#166534' : '#92400e', extendedProps: { kind: 'task', row: task, isOverdue } }
     }) : []),
-  ]
+  ].filter((entry) => showOverdue || !entry.extendedProps.isOverdue)
+  const today = bangkokDate()
+  const todayEntries = calendarEntries.filter((entry) => calendarDayKey(entry.start) === today)
+  const upcomingEntries = calendarEntries.filter((entry) => calendarDayKey(entry.start) >= today)
+    .sort((first, second) => new Date(first.start).getTime() - new Date(second.start).getTime()).slice(0, 3)
+  const recentDocuments = (recentDocumentsQuery.data ?? []).filter((document) => document.parent === 'event'
+    ? eventsQuery.data?.some((event) => event.id === document.parentId)
+    : tasksQuery.data?.some((task) => task.id === document.parentId)).slice(0, 3)
+  const pendingCount = (tasksQuery.data ?? []).filter((task) => task.status === 'pending').length
+  const completedCount = (tasksQuery.data ?? []).filter((task) => task.status === 'completed').length
+  const openCalendarEntry = (entry: (typeof calendarEntries)[number]) => {
+    if (entry.extendedProps.kind === 'task') setTaskDialog({ open: true, task: entry.extendedProps.row as TaskRow })
+    else setEventDialog({ open: true, event: entry.extendedProps.row as EventRow })
+  }
+  const openRecentDocument = (document: RecentDocument) => {
+    if (document.parent === 'task') {
+      const task = tasksQuery.data?.find((item) => item.id === document.parentId)
+      if (task) setTaskDialog({ open: true, task })
+    } else {
+      const event = eventsQuery.data?.find((item) => item.id === document.parentId)
+      if (event) setEventDialog({ open: true, event })
+    }
+  }
   const setCalendarTooltipAt = (items: CalendarTooltipItem[], clientX: number, clientY: number) => {
     setCalendarTooltip({
       items,
@@ -482,24 +529,52 @@ export function CalendarPage() {
   }
 
   return (
-    <main className="mx-auto max-w-[1600px] p-4 sm:p-6">
-      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div><h1 className="text-2xl font-bold text-slate-900">ปฏิทิน Meeting & Task</h1><p className="mt-1 text-sm text-slate-500">พนักงานทุกคนดู Meeting และ Task ได้ ผู้สร้างเป็นผู้แก้ไขและยืนยันงานเสร็จ</p></div>
-        <div className="flex flex-wrap gap-2"><button className="btn-secondary" onClick={() => setTaskDialog({ open: true, task: null })}><ListTodo size={18} />เพิ่ม Task</button><button className="btn-primary" onClick={() => setEventDialog({ open: true, event: null })}><CalendarPlus size={18} />เพิ่ม Meeting</button></div>
+    <main className="mx-auto max-w-[1600px] p-4 sm:p-6 xl:flex xl:h-[calc(100vh-4rem)] xl:flex-col xl:overflow-hidden xl:p-3">
+      <section className="relative mb-6 min-h-48 overflow-hidden rounded-[28px] border border-purple-100 bg-gradient-to-r from-[#f1ddf8] via-[#faebf6] to-[#eee5ff] px-6 py-7 sm:min-h-56 sm:px-8 xl:mb-3 xl:h-36 xl:min-h-0 xl:shrink-0 xl:overflow-visible xl:py-4" aria-label="ยินดีต้อนรับ">
+        <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[28px]" aria-hidden="true">
+          <span className="absolute -bottom-20 right-4 h-52 w-52 rounded-full bg-white/35" />
+          <span className="absolute -bottom-8 right-[17%] h-28 w-40 rotate-6 rounded-[32px] border border-white/40 bg-purple-200/25" />
+          <Sparkles className="absolute right-[30%] top-5 hidden text-amber-400 drop-shadow-sm sm:block xl:right-[36%] xl:top-3" size={24} />
+          <span className="absolute right-[39%] top-6 hidden h-2.5 w-2.5 rounded-full bg-pink-300/80 xl:right-[42%] xl:block" />
+        </div>
+        <div className="relative z-10 max-w-[65%] sm:max-w-[62%] xl:max-w-[40%]"><p className="mb-2 flex items-center gap-2 text-sm font-semibold text-brand-700"><Sparkles size={16} />จัดการนัดหมาย ประชุม และงานสำคัญ</p><h1 className="text-2xl font-extrabold leading-tight text-brand-900 sm:text-4xl xl:text-3xl">ให้ทุกวันเป็นวันของความสำเร็จ</h1><p className="mt-3 hidden max-w-lg text-sm text-slate-600 sm:block xl:text-xs">ปฏิทินเดียวสำหรับวางแผน ติดตามงาน และทำงานร่วมกันอย่างราบรื่น</p></div>
+        <img
+          src={peaOfficeTeam}
+          alt="สำนักงาน PEA พร้อมรถกระเช้าและพนักงานกำลังตรวจงานแบบสามมิติ"
+          className="pointer-events-none absolute bottom-0 right-40 z-10 hidden h-[8.25rem] w-auto max-w-none object-contain drop-shadow-[0_14px_12px_rgba(76,15,93,0.28)] xl:block"
+        />
+        <img
+          src={calendarMascot}
+          alt="มาสคอต PEA ถือปฏิทินและชี้วันที่ทำเครื่องหมาย"
+          className="pointer-events-none absolute right-0 top-3 z-20 w-32 max-w-none -rotate-2 object-contain drop-shadow-[0_18px_14px_rgba(76,15,93,0.28)] sm:right-1 sm:top-2 sm:w-36 xl:right-3 xl:top-0 xl:w-40"
+        />
+      </section>
+      <div className="grid gap-5 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,1fr)_260px] xl:gap-3">
+      <div className="min-w-0 xl:flex xl:min-h-0 xl:flex-col">
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between xl:mb-1 xl:min-h-9 xl:shrink-0">
+        <div><h2 className="text-2xl font-bold text-brand-900 xl:text-lg">ปฏิทิน Meeting & Task</h2></div>
+        <div className="flex flex-wrap gap-2 xl:gap-1.5"><button className="btn-secondary xl:min-h-9 xl:px-3 xl:py-1.5 xl:text-sm" onClick={() => setTaskDialog({ open: true, task: null })}><ListTodo size={16} />เพิ่ม Task</button><button className="btn-primary xl:min-h-9 xl:px-3 xl:py-1.5 xl:text-sm" onClick={() => setEventDialog({ open: true, event: null })}><CalendarPlus size={16} />เพิ่ม Meeting</button></div>
       </div>
-      <div className="card p-3 sm:p-5">
-        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="relative max-w-sm flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} /><input className="field-input pl-10" placeholder="ค้นหา Meeting หรือ Task" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
-          <div className="flex flex-wrap gap-4 text-sm text-slate-600"><label className="flex items-center gap-2"><input type="checkbox" checked={showTasks} onChange={(event) => setShowTasks(event.target.checked)} />แสดง Task</label><label className="flex items-center gap-2"><input type="checkbox" checked={showCompletedTasks} onChange={(event) => setShowCompletedTasks(event.target.checked)} />แสดง Task ที่เสร็จแล้ว</label></div>
+      <div className="card p-3 sm:p-5 xl:flex xl:min-h-0 xl:flex-1 xl:flex-col xl:p-3">
+        <div className="mb-4 grid gap-3 lg:grid-cols-[minmax(235px,1fr)_minmax(0,2fr)] lg:items-start lg:gap-4 xl:mb-2 xl:grid-cols-[180px_minmax(0,1fr)] xl:gap-2 xl:shrink-0">
+          <div className="relative w-full max-w-md xl:max-w-none"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} /><input className="field-input pl-10 xl:px-3 xl:py-1.5 xl:pl-9 xl:text-xs" placeholder="ค้นหา Meeting หรือ Task" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
+          <div className="flex flex-wrap justify-start gap-1.5 text-xs font-semibold lg:justify-end xl:flex-nowrap xl:gap-1" aria-label="ตัวกรองรายการในปฏิทิน">
+            <label className={`flex min-h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-xl border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-purple-300 xl:min-h-7 xl:gap-1 xl:px-1.5 xl:py-1 xl:text-[10px] ${showMeetings ? 'border-purple-300 bg-purple-100 text-purple-900' : 'border-slate-200 bg-white text-slate-500'}`}><input type="checkbox" className="h-4 w-4 accent-brand-600 xl:h-3 xl:w-3" checked={showMeetings} onChange={(event) => setShowMeetings(event.target.checked)} /><CalendarDays size={15} aria-hidden="true" /><span className="xl:hidden">แสดง Meeting</span><span className="hidden xl:inline">Meeting</span></label>
+            <label className={`flex min-h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-xl border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-amber-300 xl:min-h-7 xl:gap-1 xl:px-1.5 xl:py-1 xl:text-[10px] ${showTasks ? 'border-amber-300 bg-amber-100 text-amber-900' : 'border-slate-200 bg-white text-slate-500'}`}><input type="checkbox" className="h-4 w-4 accent-amber-600 xl:h-3 xl:w-3" checked={showTasks} onChange={(event) => setShowTasks(event.target.checked)} /><ListTodo size={15} aria-hidden="true" /><span className="xl:hidden">แสดง Task</span><span className="hidden xl:inline">Task</span></label>
+            <label className={`flex min-h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-xl border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-green-300 xl:min-h-7 xl:gap-1 xl:px-1.5 xl:py-1 xl:text-[10px] ${showCompletedTasks ? 'border-green-300 bg-green-100 text-green-900' : 'border-slate-200 bg-white text-slate-500'}`}><input type="checkbox" className="h-4 w-4 accent-green-600 xl:h-3 xl:w-3" checked={showCompletedTasks} onChange={(event) => setShowCompletedTasks(event.target.checked)} /><CheckCircle2 size={15} aria-hidden="true" /><span className="xl:hidden">แสดง Task ที่เสร็จแล้ว</span><span className="hidden xl:inline">Task เสร็จแล้ว</span></label>
+            <label className={`flex min-h-9 max-w-full cursor-pointer items-center gap-1.5 rounded-xl border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-red-300 lg:whitespace-nowrap xl:min-h-7 xl:gap-1 xl:px-1.5 xl:py-1 xl:text-[10px] ${showOverdue ? 'border-red-300 bg-red-100 text-red-900' : 'border-slate-200 bg-white text-slate-500'}`}><input type="checkbox" className="h-4 w-4 shrink-0 accent-red-600 xl:h-3 xl:w-3" checked={showOverdue} onChange={(event) => setShowOverdue(event.target.checked)} /><Clock3 size={15} className="shrink-0" aria-hidden="true" /><span className="xl:hidden">แสดง Task / Meeting เกินวันครบกำหนด/นัดหมาย</span><span className="hidden xl:inline">เกินกำหนด</span></label>
+          </div>
         </div>
         {(eventsQuery.isError || tasksQuery.isError || profilesQuery.isError) && <p className="mb-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">โหลดข้อมูลไม่สำเร็จ กรุณาตรวจสอบว่าได้รัน migration ล่าสุดแล้ว</p>}
-        <div className="relative">
+        <div className="calendar-fill relative xl:min-h-0 xl:flex-1">
         <FullCalendar
           plugins={[dayGridPlugin, interactionPlugin]}
           locale={language === 'th' ? thLocale : enGbLocale}
           initialView="dayGridMonth"
           firstDay={1}
-          height="auto"
+          height="100%"
+          expandRows
+          fixedWeekCount={false}
           selectable
           dateClick={(info) => { void warnPastCreation(info.dateStr).then((isPast) => { if (!isPast) setEventDialog({ open: true, event: null, date: info.dateStr }) }) }}
           dayCellContent={(info) => {
@@ -516,15 +591,16 @@ export function CalendarPage() {
           }}
           eventMouseEnter={showCalendarTooltip}
           eventMouseLeave={() => setCalendarTooltip(null)}
+          eventClassNames={(info) => info.event.extendedProps.isOverdue ? 'calendar-overdue' : info.event.extendedProps.kind === 'task' ? (info.event.extendedProps.row as TaskRow).status === 'completed' ? 'calendar-task-completed' : 'calendar-task' : 'calendar-meeting'}
           eventContent={(info) => {
             const isTask = info.event.extendedProps.kind === 'task'
             const task = isTask ? info.event.extendedProps.row as TaskRow : null
             const Icon = isTask ? ListTodo : CalendarDays
-            return <div className="flex min-w-0 items-center gap-1 px-1"><Icon size={14} aria-hidden="true" /><div className="fc-event-title truncate">{task?.status === 'completed' ? 'เสร็จแล้ว: ' : ''}{info.event.title}</div></div>
+            return <div className="flex min-w-0 items-center gap-0.5 px-0.5"><Icon size={12} aria-hidden="true" /><div className="fc-event-title truncate">{task?.status === 'completed' ? 'เสร็จแล้ว: ' : ''}{info.event.title}</div></div>
           }}
           events={calendarEntries}
           headerToolbar={{ left: 'prev,next today', center: 'title', right: '' }}
-          dayMaxEvents
+          dayMaxEvents={4}
         />
         {calendarTooltip && <div role="tooltip" className="pointer-events-none fixed z-50 max-h-[70vh] w-72 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-xl" style={{ left: calendarTooltip.x, top: calendarTooltip.y }}>
           {calendarTooltip.items.map((item, index) => <section key={`${item.kind}-${item.title}-${index}`} className={index ? 'mt-3 border-t border-slate-100 pt-3' : undefined}>
@@ -538,6 +614,42 @@ export function CalendarPage() {
           </section>)}
         </div>}
         </div>
+      </div>
+      </div>
+      <aside className="grid content-start gap-4 sm:grid-cols-2 xl:min-h-0 xl:grid-cols-1 xl:gap-3 xl:overflow-y-auto" aria-label="สรุปปฏิทิน">
+        <section className="card p-4">
+          <div className="mb-3 flex items-center justify-between"><h2 className="font-bold text-brand-900">นัดหมายวันนี้</h2><span className="rounded-full bg-purple-50 px-2.5 py-1 text-sm font-bold text-brand-700">{todayEntries.length}</span></div>
+          {todayEntries.length ? <div className="space-y-2">{todayEntries.slice(0, 4).map((entry) =>
+            <button key={entry.id} type="button" onClick={() => openCalendarEntry(entry)} className="flex w-full min-w-0 items-start gap-2 rounded-xl bg-purple-50/70 p-3 text-left hover:bg-purple-100"><span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${entry.extendedProps.isOverdue ? 'bg-red-500' : entry.extendedProps.kind === 'task' ? 'bg-amber-500' : 'bg-brand-600'}`} /><span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-800">{entry.title}</span><span className="text-xs text-slate-500">{entry.extendedProps.kind === 'task' ? 'Task' : 'Meeting'}</span></span></button>
+          )}</div> : <p className="rounded-xl bg-purple-50/70 p-3 text-sm text-slate-500">วันนี้ยังไม่มีรายการในปฏิทิน</p>}
+        </section>
+        <section className="card p-4">
+          <h2 className="mb-3 font-bold text-brand-900">ภาพรวมงาน</h2>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-xl bg-amber-50 px-1 py-3"><Clock3 className="mx-auto mb-1 text-amber-600" size={20} /><strong className="block text-xl text-amber-800">{pendingCount}</strong><span className="text-[11px] text-slate-600">รอดำเนินการ</span></div>
+            <div className="rounded-xl bg-green-50 px-1 py-3"><CheckCircle2 className="mx-auto mb-1 text-green-600" size={20} /><strong className="block text-xl text-green-700">{completedCount}</strong><span className="text-[11px] text-slate-600">เสร็จแล้ว</span></div>
+            <div className="rounded-xl bg-purple-50 px-1 py-3"><CalendarDays className="mx-auto mb-1 text-brand-600" size={20} /><strong className="block text-xl text-brand-700">{todayEntries.filter((entry) => entry.extendedProps.kind === 'event').length}</strong><span className="text-[11px] text-slate-600">ประชุมวันนี้</span></div>
+          </div>
+        </section>
+        <section className="card p-4 sm:col-span-2 xl:col-span-1">
+          <h2 className="sr-only">รายการถัดไปและเอกสารล่าสุด</h2>
+          <div className="mb-3 flex rounded-xl bg-purple-50 p-1 text-xs font-bold">
+            <button type="button" aria-pressed={sideTab === 'upcoming'} onClick={() => setSideTab('upcoming')} className={`flex-1 rounded-lg px-2 py-2 transition ${sideTab === 'upcoming' ? 'bg-white text-brand-900 shadow-sm' : 'text-slate-500 hover:text-brand-700'}`}>รายการถัดไป</button>
+            <button type="button" aria-pressed={sideTab === 'documents'} onClick={() => setSideTab('documents')} className={`flex-1 rounded-lg px-2 py-2 transition ${sideTab === 'documents' ? 'bg-white text-brand-900 shadow-sm' : 'text-slate-500 hover:text-brand-700'}`}>เอกสารล่าสุด</button>
+          </div>
+          {sideTab === 'upcoming' ? upcomingEntries.length ? <div className="space-y-2">{upcomingEntries.map((entry) =>
+            <button key={entry.id} type="button" onClick={() => openCalendarEntry(entry)} className="flex w-full items-start gap-3 rounded-xl border border-purple-50 p-2.5 text-left hover:bg-purple-50"><span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${entry.extendedProps.isOverdue ? 'bg-red-500' : entry.extendedProps.kind === 'task' ? 'bg-amber-500' : 'bg-brand-600'}`} /><span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-800">{entry.title}</span><span className="text-xs text-slate-500">{calendarDateLabel(new Date(entry.start), language)}</span></span></button>
+          )}</div> : <p className="text-sm text-slate-500">ยังไม่มีรายการถัดไป</p>
+            : recentDocumentsQuery.isLoading ? <p className="text-sm text-slate-500">กำลังโหลดเอกสาร…</p>
+              : recentDocumentsQuery.isError ? <p className="text-sm text-red-600">โหลดเอกสารไม่สำเร็จ</p>
+                : recentDocuments.length ? <div className="space-y-2">{recentDocuments.map((document) =>
+                  <button key={document.id} type="button" onClick={() => openRecentDocument(document)} className="flex w-full items-start gap-2.5 rounded-xl border border-purple-50 p-2.5 text-left hover:bg-purple-50">
+                    <span className="mt-0.5 text-brand-600">{document.kind === 'link' ? <Link2 size={18} /> : <FileText size={18} />}</span>
+                    <span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-800">{document.name}</span><span className="text-xs text-slate-500">{document.parent === 'event' ? 'Meeting' : 'Task'} · {calendarDateLabel(new Date(document.addedAt), language)}</span></span>
+                  </button>
+                )}</div> : <p className="text-sm text-slate-500">ยังไม่มีเอกสารที่เปิดดูได้</p>}
+        </section>
+      </aside>
       </div>
       {(eventMutation.isError || taskMutation.isError || deleteEventMutation.isError || deleteTaskMutation.isError || deleteEventAttachmentMutation.isError || deleteTaskAttachmentMutation.isError || toggleTaskMutation.isError || acknowledgeTaskMutation.isError) && <p className="fixed bottom-4 right-4 rounded-xl bg-red-600 px-4 py-3 text-sm text-white shadow-lg">ดำเนินการไม่สำเร็จ กรุณาตรวจสอบข้อมูลและลองใหม่</p>}
       {taskSaveWarning && <div className="fixed bottom-4 right-4 max-w-md rounded-xl bg-amber-100 px-4 py-3 text-sm text-amber-950 shadow-lg" role="alert"><p>{taskSaveWarning}</p><button type="button" className="mt-2 font-semibold underline" onClick={() => setTaskSaveWarning('')}>ปิด</button></div>}

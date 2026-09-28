@@ -9,12 +9,11 @@ import { Captcha } from '../components/Captcha'
 import { FormMessage } from '../components/FormMessage'
 import { useLanguage } from '../i18n/LanguageProvider'
 import { homePathForRole } from '../lib/authRouting'
-import type { Database } from '../lib/database.types'
 import { supabase } from '../lib/supabase'
 import { loginSchema, type LoginValues } from '../lib/validation'
 
 export function LoginPage() {
-  const { user, profile, profileLoading } = useAuth()
+  const { user, profileLoading } = useAuth()
   const { t, language } = useLanguage()
   const navigate = useNavigate()
   const location = useLocation()
@@ -24,17 +23,15 @@ export function LoginPage() {
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<LoginValues>({ resolver: zodResolver(loginSchema) })
 
   const returnTo = (location.state as { from?: { pathname?: string; search?: string } } | null)?.from
-  const from = `${returnTo?.pathname || '/calendar'}${returnTo?.search || ''}`
+  const from = returnTo?.pathname === '/calendar' ? `/calendar${returnTo.search || ''}` : homePathForRole()
   if (user && profileLoading) return <div className="flex min-h-screen items-center justify-center text-slate-500">กำลังตรวจสอบสิทธิ์…</div>
-  if (user) return <Navigate to={returnTo ? from : homePathForRole(profile?.role)} replace />
+  if (user) return <Navigate to={from} replace />
 
   const submit = async (values: LoginValues) => {
     setMessage(null)
-    const { data, error } = await supabase.auth.signInWithPassword({ email: values.email.toLowerCase(), password: values.password, options: { captchaToken: captchaToken ?? undefined } })
+    const { error } = await supabase.auth.signInWithPassword({ email: values.email.toLowerCase(), password: values.password, options: { captchaToken: captchaToken ?? undefined } })
     if (error) { setMessage(language === 'th' ? 'Gmail หรือรหัสผ่านไม่ถูกต้อง หรือบัญชียังไม่ได้ยืนยัน' : 'Incorrect Gmail or password, or the account is not verified.'); return }
-    type ProfileRole = Pick<Database['public']['Tables']['profiles']['Row'], 'role'>
-    const { data: signedInProfile } = await supabase.from('profiles').select('role').eq('id', data.user.id).returns<ProfileRole[]>().maybeSingle()
-    navigate(returnTo ? from : homePathForRole(signedInProfile?.role), { replace: true })
+    navigate(from, { replace: true })
   }
 
   return (
@@ -49,7 +46,7 @@ export function LoginPage() {
         </div>
         <Captcha onToken={setCaptchaToken} />
         <button className="btn-primary w-full" disabled={isSubmitting}><LogIn size={18} />{isSubmitting ? t('loading') : t('signIn')}</button>
-        <p className="rounded-xl bg-slate-50 px-3 py-2 text-center text-xs text-slate-500">ผู้ดูแลระบบเข้าสู่ระบบด้วย Gmail เดียวกัน ระบบจะตรวจสิทธิ์และเปิดหน้าตั้งค่าระบบให้อัตโนมัติ</p>
+        <p className="rounded-xl bg-slate-50 px-3 py-2 text-center text-xs text-slate-500">ผู้ดูแลระบบเข้าสู่ระบบด้วย Gmail เดียวกัน และสามารถเปิดหน้าตั้งค่าระบบได้จากเมนู Admin</p>
         <p className="text-center text-sm text-slate-600">{t('noAccount')} <Link to="/register" className="font-semibold text-brand-600 hover:underline">{t('register')}</Link></p>
       </form>
     </AuthLayout>

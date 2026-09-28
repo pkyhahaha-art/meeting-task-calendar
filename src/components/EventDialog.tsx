@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Bell, CalendarClock, Download, FileText, Loader2, Mail, Paperclip, Plus, Repeat2, Trash2, UserPlus, X } from 'lucide-react'
 import Swal from 'sweetalert2'
 import type { Database } from '../lib/database.types'
-import { bangkokDate, invalidGuestEmails, isPastBangkokDate, recurrenceFromRule, reminderOptions, validateAttachments, type Recurrence, type ReminderKey } from '../lib/eventForm'
+import { bangkokDate, formatDisplayDate, invalidGuestEmails, isPastBangkokDate, recurrenceFromRule, reminderOptions, validateAttachments, type Recurrence, type ReminderKey } from '../lib/eventForm'
 import { TimeSelect } from './TimeSelect'
 import { SaveActionMenu } from './SaveActionMenu'
 
@@ -20,11 +20,6 @@ const blankDraft = (date?: string): EventDraft => ({
   date: date ?? bangkokDate(), start: '09:00', end: '10:00',
   recurrence: 'none', guestEmails: [''], reminderKeys: ['1:day'], notifyEmail: true, notifyLine: false, files: [],
 })
-
-function localDate(value: string) {
-  const date = new Date(value)
-  return date.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
-}
 
 function localTime(value: string | null) {
   if (!value) return ''
@@ -52,7 +47,7 @@ export function EventDialog({ open, event, details, selectedDate, canEdit, busy,
     setError('')
     setDraft(event ? {
       title: event.title, description: event.description, location: event.location, affiliation: event.affiliation, all_day: event.all_day,
-      date: localDate(event.start_datetime), start: localTime(event.start_datetime), end: event.all_day ? '' : localTime(event.end_datetime),
+      date: bangkokDate(new Date(event.start_datetime)), start: localTime(event.start_datetime), end: event.all_day ? '' : localTime(event.end_datetime),
       recurrence: recurrenceFromRule(event.recurrence_rule), guestEmails: details?.guestEmails.length ? details.guestEmails : [''],
       reminderKeys: details?.reminderKeys ?? [], notifyEmail: details?.notifyEmail ?? true,
       notifyLine: details?.notifyLine ?? false, files: [],
@@ -99,7 +94,7 @@ export function EventDialog({ open, event, details, selectedDate, canEdit, busy,
               <h3 className="flex items-center gap-2 font-semibold text-slate-800"><FileText size={18} className="text-brand-600" />ข้อมูลการประชุม</h3>
               <div><label className="field-label" htmlFor="title">ชื่อการประชุม *</label><input id="title" className="field-input" value={draft.title} onChange={(e) => set('title', e.target.value)} maxLength={180} /></div>
               <div><label className="field-label" htmlFor="event-affiliation">หน่วยงาน / สังกัด</label><input id="event-affiliation" className="field-input" placeholder="กคน.ฝลส." value={draft.affiliation} onChange={(e) => set('affiliation', e.target.value)} maxLength={250} /></div>
-              <div><span className="field-label">วันที่นัดหมาย</span><p className={`rounded-xl border px-3 py-2.5 text-sm ${creationDateInPast ? 'border-red-200 bg-red-50 text-red-700' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>{new Date(`${draft.date}T00:00:00+07:00`).toLocaleDateString('th-TH', { dateStyle: 'full', timeZone: 'Asia/Bangkok' })}</p>{creationDateInPast && <p className="mt-1 text-sm text-red-600" role="alert">ไม่สามารถสร้าง Meeting ในวันที่ผ่านมาแล้ว กรุณาเลือกวันปัจจุบันหรือวันถัดไปจากปฏิทิน</p>}</div>
+              <div><span className="field-label">วันที่นัดหมาย</span><p className={`rounded-xl border px-3 py-2.5 text-sm ${creationDateInPast ? 'border-red-200 bg-red-50 text-red-700' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>{formatDisplayDate(draft.date)}</p>{creationDateInPast && <p className="mt-1 text-sm text-red-600" role="alert">ไม่สามารถสร้าง Meeting ในวันที่ผ่านมาแล้ว กรุณาเลือกวันปัจจุบันหรือวันถัดไปจากปฏิทิน</p>}</div>
               <label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={draft.all_day} onChange={(e) => { set('all_day', e.target.checked); if (e.target.checked) set('end', '') }} className="h-4 w-4 rounded border-slate-300 text-brand-600" />ทั้งวัน</label>
               {!draft.all_day && <div className="grid gap-4 sm:grid-cols-2"><div><label className="field-label" htmlFor="start">เริ่ม *</label><TimeSelect id="start" value={draft.start} onChange={(value) => set('start', value)} /></div><div><label className="field-label" htmlFor="end">สิ้นสุด (ไม่บังคับ)</label><TimeSelect id="end" value={draft.end} onChange={(value) => set('end', value)} optional /></div></div>}
               <div><label className="field-label" htmlFor="location">สถานที่ / ห้องประชุม / ลิงก์ออนไลน์</label><input id="location" className="field-input" value={draft.location} onChange={(e) => set('location', e.target.value)} maxLength={250} /></div>

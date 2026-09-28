@@ -5,6 +5,7 @@ import { HashRouter } from 'react-router-dom'
 import App from './App'
 import { AuthProvider } from './auth/AuthProvider'
 import { ConfirmDialogProvider } from './components/ConfirmDialogProvider'
+import { CookieConsent } from './components/CookieConsent'
 import { LanguageProvider } from './i18n/LanguageProvider'
 import './index.css'
 
@@ -22,6 +23,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <ConfirmDialogProvider>
             <AuthProvider>
               <App />
+              <CookieConsent />
             </AuthProvider>
           </ConfirmDialogProvider>
         </LanguageProvider>
