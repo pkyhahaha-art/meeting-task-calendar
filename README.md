@@ -9,13 +9,15 @@ Internal shared calendar built with React, TypeScript, Tailwind CSS, FullCalenda
 - Protected application routes and disabled-account handling
 - Shared month calendar
 - Create, view, edit, and move meetings to 30-day Trash
-- Private Tasks for creator, assignee, and Admin
-- Internal/external Task assignment, completion, recurrence settings, reminders, files, and Google Drive links
+- Shared Task visibility for every active employee, with creator-only editing and completion
+- Multiple internal and external Task recipients together, per-recipient acknowledgement, recurrence settings, reminders, files, and Google Drive links
 - Meeting and Task layers in the same calendar
 - UI ownership rules plus database-enforced RLS
 - Initial schema for recurrence, guests, attachments, reminders, delivery logs, audit logs, and system logs
 - Private Storage bucket policies
 - Revocable, single-Task links for external Task assignees
+- Task recipients can open Drive links and download Task files; only creators can manage Task documents after migrations `202609260001_task_assignee_read_only_documents.sql` and `202609270002_multiple_recipients_acknowledgements.sql`
+- Task and Meeting creators can remove uploaded attachments; Meeting and Task time fields use explicit 24-hour selectors
 - Revocable guest Meeting links with short-lived attachment downloads
 - Recurring Meeting and Task occurrence generation with hourly storage/retention cleanup
 - LINE linking codes, webhook handling, and queued LINE reminders
@@ -36,7 +38,7 @@ Internal shared calendar built with React, TypeScript, Tailwind CSS, FullCalenda
    VITE_SUPABASE_PUBLISHABLE_KEY=...
    ```
 
-3. Apply every SQL file in `supabase/migrations` in filename order. If the first three migrations are already installed, run only `202609190004_tasks_and_retention.sql`.
+3. Apply every SQL file in `supabase/migrations` in filename order. On an existing project, apply every migration newer than its latest installed migration, including `202609260001_task_assignee_read_only_documents.sql`, `202609270001_explicit_edit_notifications.sql`, and `202609270002_multiple_recipients_acknowledgements.sql`.
 
 4. In Supabase Auth, enable Email/Password and Confirm Email. For local development allow `http://127.0.0.1:5173/**`. GitHub Pages redirects use `/#/auth/callback` and `/#/reset-password`.
 
@@ -46,6 +48,7 @@ Internal shared calendar built with React, TypeScript, Tailwind CSS, FullCalenda
 
    ```bash
    supabase functions deploy process-notification-queue --no-verify-jwt
+   supabase functions deploy email-acknowledgement --no-verify-jwt
    supabase functions deploy external-task --no-verify-jwt
    supabase functions deploy guest-event --no-verify-jwt
    supabase functions deploy line-webhook --no-verify-jwt
@@ -53,7 +56,7 @@ Internal shared calendar built with React, TypeScript, Tailwind CSS, FullCalenda
    supabase functions deploy scheduled-maintenance --no-verify-jwt
    ```
 
-   `external-task` and `guest-event` use the standard Supabase server environment variables. The notification and maintenance functions need the cron secret; the notification function also needs Brevo settings and `PUBLIC_APP_URL` for guest links. LINE needs `LINE_CHANNEL_SECRET` and `LINE_CHANNEL_ACCESS_TOKEN`; set its webhook to `https://YOUR_PROJECT_REF.supabase.co/functions/v1/line-webhook`. Reporting needs a distinct `REPORTING_SYNC_SECRET`.
+   `external-task` and `guest-event` use the standard Supabase server environment variables. `external-task` also needs `PUBLIC_APP_URL` to build external assignee links. The notification and maintenance functions need the cron secret; the notification function also needs Brevo settings and `PUBLIC_APP_URL` for email links. LINE needs `LINE_CHANNEL_SECRET` and `LINE_CHANNEL_ACCESS_TOKEN`; set its webhook to `https://YOUR_PROJECT_REF.supabase.co/functions/v1/line-webhook`. Reporting needs a distinct `REPORTING_SYNC_SECRET`.
 
 7. Optionally enable Cloudflare Turnstile in Supabase Auth and set `VITE_TURNSTILE_SITE_KEY` in the frontend environment. The site key is public; the Turnstile secret belongs only in Supabase Auth settings.
 

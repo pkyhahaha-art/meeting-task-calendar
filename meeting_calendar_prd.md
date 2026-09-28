@@ -58,7 +58,7 @@ Users should be able to:
 - create recurring events
 - create personal Tasks or assign Tasks to a registered employee or external Email assignee
 - optionally link follow-up Tasks to a Meeting/Event
-- mark assigned Tasks as completed without deleting their history
+- acknowledge assigned Tasks; only the Task creator confirms completion without deleting history
 - share event details and attachments with email guests
 - use Thai or English UI
 - retain logs for audit purposes
@@ -139,7 +139,7 @@ Can:
 - use the verified Gmail registered with the account
 - create recurring events
 - create Tasks for themselves or assign Tasks to a registered employee or external Email assignee
-- update completion status of Tasks assigned to them
+- acknowledge Tasks assigned to them; only the creator changes completion status
 - view completed Task history according to the final visibility policy
 
 Cannot:
@@ -321,7 +321,7 @@ Only the event owner can:
 - modify recurrence
 - modify reminders
 
-Admin can delete any event.
+Only the Meeting creator can delete that Meeting.
 
 ## 7.3 Week Start
 
@@ -359,7 +359,10 @@ Examples:
 - show a timed Task at its due-time position on the calendar
 - show a Task with a due date but no due time in the all-day row
 - display a checkbox and a visually distinct Task icon/style
-- show only Tasks for which the current user is the creator or internal assignee; Admin may view Tasks through authorized Admin views
+- show active Tasks to every registered active employee; external assignees do not receive calendar access
+- non-owner employees may view Task details but cannot edit Task details or change the assignee
+- assigned employees may acknowledge the Task, while only its creator changes completion status
+- Admin may view every Task; editing follows the same creator-only rule
 - external assignees do not have calendar access
 - provide a calendar-layer toggle to show or hide Tasks
 - hide completed Tasks by default
@@ -461,16 +464,15 @@ Task and Meeting/Event remain separate records even when linked.
 ## 8.7 Task Assignment and Ownership
 
 - a user may create a Task for themselves
-- a user may assign a Task to another registered employee
-- a user may assign a Task to an external Gmail address that does not have a system account
-- only one assignee is required per Task in the MVP
+- a user may assign one Task to multiple registered employees and multiple external Gmail addresses together
+- at least one recipient is required per Task
 - the Task becomes active immediately after it is saved successfully
-- the assignee does not need to accept or reject the assignment
-- a Task is visible only to its creator, its assignee, and Admin
+- each recipient may acknowledge the assignment; acknowledgement is tracked per recipient
+- a Task is visible in the authenticated calendar to every active registered employee
+- an external assignee is not a calendar user and may access only the assigned Task through its secure token link
 - the Task creator controls the Task details and may change the assignee
-- the assignee may mark the Task completed or reopen it
-- the creator may also mark the Task completed or reopen it
-- Admin may administratively remove a Task
+- only the Task creator may confirm completion or reopen it
+- only the creator may edit or delete Task details and documents; everyone else has read-only access
 
 ### External Assignee
 
@@ -483,8 +485,8 @@ External assignee behavior:
 - does not have access to other Meetings, Tasks, employees, or Admin pages
 - opens only the assigned Task through a unique secure link
 - may view that Task's details and authorized attachments
-- may mark that Task completed only after a confirmation step
-- completing the Task immediately notifies the Task creator
+- may acknowledge that Task through the scoped link; this does not complete the Task
+- the Task creator alone confirms completion
 - cannot connect or receive LINE notifications without a registered system profile
 - if the same Gmail later becomes a verified system account, existing assigned Tasks may be linked to that account after verified-email matching
 
@@ -493,7 +495,7 @@ External assignee behavior:
 - one Meeting/Event may have multiple linked follow-up Tasks
 - one Task may link to zero or one source Meeting/Event
 - the Meeting detail view shows linked Tasks and completion progress, such as `2/5 completed`, only when the current user is authorized to read those Tasks
-- users who can view the Meeting but are unrelated to its linked Tasks must not see Task titles, details, counts, or status
+- every active registered employee who can view the Meeting may see the linked Task titles, details, counts, and status according to the shared Task visibility rule; external assignees remain restricted to their secure Task link
 - the Task detail view provides a link back to its source Meeting/Event when available
 - changing the Meeting date/time does not automatically change Task due dates
 - deleting a Meeting does not automatically delete its linked Tasks
@@ -761,9 +763,9 @@ Only owner may:
 For Task documents:
 
 - Task creator may upload, replace, or delete files and Drive links
-- internal Task assignee may view, open, and download
+- every active registered employee may view, open, and download Task documents when the Task is visible in the authenticated calendar
 - external Task assignee may view, open, and download only through the valid Task link
-- internal and external assignees cannot upload, replace, or delete Task documents in the MVP
+- only the Task creator may upload, replace, or delete Task documents and Drive links; Admin may administratively manage them
 - access to a Drive link still depends on permissions configured by the Drive file owner
 
 ## 11.5 Recurring Event Attachments
@@ -1624,14 +1626,13 @@ Rules should enforce:
 - everyone authenticated can read events
 - everyone authenticated can read attachments
 - only owner can update/delete own event
-- Admin can delete any event
+- only the creator can delete the Meeting
 - Task creator can update Task details and change the assignee
-- Task creator or assignee can complete or reopen the Task
-- only the Task creator, Task assignee, and Admin can read the Task
-- users cannot read or update unrelated Tasks
-- Admin can administratively remove any Task
+- only the Task creator can complete or reopen the Task
+- every active registered employee can read active Tasks; only the creator can edit or remove one
+- recipients may acknowledge only their own assignment
 - external Task tokens grant access only to their single assigned Task and authorized attachments
-- external Task tokens allow only the confirmed completion action and no general Task edits
+- external Task tokens allow acknowledgement and read-only access, never completion or general edits
 - user can only modify own profile linkage
 - guest links are read-only
 - guest token access is scoped to a single event
@@ -1758,7 +1759,7 @@ Set due date/time and reminder channels
 ↓
 Assignee receives assignment/reminder notifications
 ↓
-Creator or assignee marks Task completed
+Creator confirms Task completed
 ↓
 Cancel remaining reminders
 ↓
@@ -1782,7 +1783,7 @@ MVP is considered complete when all of the following work:
 9. Shared calendar
 10. Everyone can view all events
 11. Only owner can edit/delete own event
-12. Admin can delete any event
+12. Only the Meeting creator can delete that Meeting
 13. Create Event
 14. Start/End date-time
 15. All-day
@@ -1821,7 +1822,7 @@ MVP is considered complete when all of the following work:
 48. Create follow-up Task from a Meeting/Event
 49. Assign Task to self or one registered employee
 50. Creator can edit Task details and change assignee
-51. Creator or assignee can complete/reopen Task
+51. Only the creator can complete/reopen Task; recipients acknowledge separately
 52. Task supports due date and optional due time
 53. Task reminders support due time, 1 hour, 1 day, 3 days, and overdue
 54. Completing a Task cancels future reminders
@@ -1831,7 +1832,7 @@ MVP is considered complete when all of the following work:
 58. Permanently purge Task after 30 days in Trash
 59. Meeting detail shows linked Task progress
 60. Deleting a Meeting does not delete linked Tasks
-61. Task is visible only to its creator, assignee, and Admin
+61. Active Tasks are visible to every registered active employee, while only the creator may edit Task details or update completion status
 62. Completing an assigned Task notifies its creator by Gmail and by LINE when connected
 63. Self-assigned Tasks do not generate duplicate completion notifications
 64. An overdue pending Task notifies both creator and assignee at 09:00 for up to 3 days
@@ -1840,7 +1841,7 @@ MVP is considered complete when all of the following work:
 67. Assignment notification includes creator, Task summary, due date/time, and a link to the Task
 68. External Gmail assignee can open only the assigned Task and its authorized attachments
 69. External assignee cannot access the calendar or other system data
-70. External assignee can mark the Task completed only after an explicit confirmation
+70. External assignee can acknowledge the Task through a scoped link; only the creator confirms completion
 71. External completion immediately notifies the Task creator
 72. External assignment tokens are unique, hashed, scoped, and revocable
 73. External Task link remains valid while active and expires 30 days after completion

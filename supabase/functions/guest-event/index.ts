@@ -4,7 +4,7 @@ const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE
 const cors = {
   'access-control-allow-origin': '*',
   'access-control-allow-headers': 'apikey, content-type',
-  'access-control-allow-methods': 'GET, OPTIONS',
+  'access-control-allow-methods': 'GET, POST, OPTIONS',
 }
 
 function json(body: Record<string, unknown>, status = 200) {
@@ -18,10 +18,14 @@ async function hashToken(token: string) {
 
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers: cors })
-  if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405)
+  if (request.method !== 'GET' && request.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
   try {
     const url = new URL(request.url)
-    const token = url.searchParams.get('token')?.trim()
+    const body = request.method === 'POST' ? await request.json() : null
+    if (request.method === 'POST' && body?.action !== 'acknowledge') return json({ error: 'คำสั่งไม่ถูกต้อง' }, 400)
+    const token = request.method === 'POST'
+      ? typeof body?.token === 'string' ? body.token.trim() : ''
+      : url.searchParams.get('token')?.trim()
     const attachmentId = url.searchParams.get('attachment_id')?.trim()
     if (!token) return json({ error: 'ลิงก์ไม่ถูกต้อง' }, 400)
     const { data: tokenRow, error: tokenError } = await admin.from('guest_tokens').select('*')
@@ -41,6 +45,14 @@ Deno.serve(async (request) => {
     if (eventError || attachmentError) throw eventError ?? attachmentError
     if (!event || event.deleted_at || event.status !== 'scheduled') return json({ error: 'Meeting นี้ถูกยกเลิกแล้ว' }, 404)
 
+    if (request.method === 'POST') {
+      const { data, error } = await admin.from('event_guests')
+        .update({ acknowledged_at: guest.acknowledged_at ?? new Date().toISOString() })
+        .eq('id', guest.id).select('acknowledged_at').single()
+      if (error) throw error
+      return json({ acknowledged_at: data.acknowledged_at })
+    }
+
     if (attachmentId) {
       const attachment = (attachments ?? []).find((item) => item.id === attachmentId)
       if (!attachment) return json({ error: 'ไม่พบเอกสารแนบนี้' }, 404)
@@ -56,7 +68,7 @@ Deno.serve(async (request) => {
       return { id: attachment.id, file_name: attachment.file_name, url: data.signedUrl }
     }))
     await admin.from('guest_tokens').update({ last_accessed_at: new Date().toISOString() }).eq('id', tokenRow.id)
-    return json({ event: { ...event, attachments: files } })
+    return json({ event: { ...event, acknowledged_at: guest.acknowledged_at, attachments: files } })
   } catch (error) {
     console.error(error)
     return json({ error: 'ไม่สามารถเปิดข้อมูล Meeting ได้ในขณะนี้' }, 500)

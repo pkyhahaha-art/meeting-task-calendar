@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { externalTaskUrl } from './link.ts'
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -9,11 +10,6 @@ const corsHeaders = { 'access-control-allow-origin': '*', 'access-control-allow-
 
 function response(body: Record<string, unknown>, status = 200) { return Response.json(body, { status, headers: corsHeaders }) }
 function randomToken() { return Array.from(crypto.getRandomValues(new Uint8Array(32)), (value) => value.toString(16).padStart(2, '0')).join('') }
-function safeFileName(name: string) { return name.normalize('NFKD').replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'attachment' }
-function isLocalDevelopmentUrl(url: URL, requestOrigin: string | null) {
-  if (url.origin !== requestOrigin) return false
-  return url.hostname === 'localhost' || url.hostname === '127.0.0.1'
-}
 async function hashToken(token: string) {
   const bytes = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token)))
   return Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('')
@@ -26,9 +22,13 @@ async function taskForToken(token: string) {
   const { data: task, error: taskError } = await admin.from('tasks').select('*').eq('id', tokenRow.task_id).maybeSingle()
   if (taskError) throw taskError
   if (!task || task.deleted_at || task.status === 'cancelled') return null
+  const { data: recipient, error: recipientError } = await admin.from('task_external_recipients').select('email, acknowledged_at')
+    .eq('task_id', task.id).eq('email', tokenRow.external_email).maybeSingle()
+  if (recipientError) throw recipientError
+  if (!recipient) return null
   if (task.status === 'completed' && task.completed_at && new Date(task.completed_at).getTime() + 30 * 24 * 60 * 60 * 1000 <= Date.now()) return null
   await admin.from('external_task_tokens').update({ last_accessed_at: new Date().toISOString() }).eq('id', tokenRow.id)
-  return task
+  return { ...task, recipient_email: recipient.email, acknowledged_at: recipient.acknowledged_at }
 }
 
 async function issueToken(request: Request) {
@@ -39,17 +39,14 @@ async function issueToken(request: Request) {
   if (userError || !user) return response({ error: 'เซสชันไม่ถูกต้อง' }, 401)
   const body = await request.json()
   const taskId = typeof body.taskId === 'string' ? body.taskId : ''
-  let taskUrl: URL
+  const notificationType = body.notificationType === 'task_updated' ? 'task_updated' : 'task_assigned'
+  if (!publicAppUrl) return response({ error: 'ยังไม่ได้ตั้งค่า PUBLIC_APP_URL สำหรับลิงก์ Task' }, 503)
   try {
-    taskUrl = new URL(typeof body.publicUrl === 'string' ? body.publicUrl : '')
-    if (!['https:', 'http:'].includes(taskUrl.protocol)) throw new Error('unsupported protocol')
-  } catch { return response({ error: 'ลิงก์ Task ไม่ถูกต้อง' }, 400) }
-  const configuredOrigin = publicAppUrl ? new URL(publicAppUrl).origin : null
-  const requestOrigin = request.headers.get('origin')
-  if (taskUrl.origin !== configuredOrigin && !isLocalDevelopmentUrl(taskUrl, requestOrigin)) return response({ error: 'โดเมนลิงก์ Task ไม่ถูกต้อง' }, 400)
+    externalTaskUrl(publicAppUrl, 'validation')
+  } catch { return response({ error: 'PUBLIC_APP_URL สำหรับลิงก์ Task ไม่ถูกต้อง' }, 503) }
   const { data: task, error: taskError } = await admin.from('tasks').select('*').eq('id', taskId).maybeSingle()
   if (taskError) throw taskError
-  if (!task || task.creator_user_id !== user.id || task.assignee_type !== 'external' || task.deleted_at || task.status !== 'pending') return response({ error: 'ไม่สามารถออกลิงก์สำหรับ Task นี้ได้' }, 403)
+  if (!task || task.creator_user_id !== user.id || task.deleted_at || task.status !== 'pending') return response({ error: 'ไม่สามารถออกลิงก์สำหรับ Task นี้ได้' }, 403)
   const now = new Date().toISOString()
   const { data: recipients, error: recipientsError } = await admin.from('task_external_recipients').select('email').eq('task_id', task.id).order('email')
   if (recipientsError) throw recipientsError
@@ -58,56 +55,37 @@ async function issueToken(request: Request) {
   for (const recipient of recipients) {
     const token = randomToken()
     const tokenHash = await hashToken(token)
-    const recipientTaskUrl = new URL(taskUrl.toString())
-    recipientTaskUrl.searchParams.set('token', token)
+    const recipientTaskUrl = externalTaskUrl(publicAppUrl, token)
     const { error: tokenError } = await admin.from('external_task_tokens').insert({ task_id: task.id, external_email: recipient.email, token_hash: tokenHash })
     if (tokenError) throw tokenError
-    deliveries.push({ task_id: task.id, recipient_type: 'external_assignee', recipient_reference: recipient.email, channel: 'email', idempotency_key: `external-task-assigned:${task.id}:${tokenHash}`, scheduled_at: now, template_key: 'task_assigned', payload: { entity: 'task', id: task.id, title: task.title, description: task.description, due_date: task.due_date, due_time: task.due_time, external_url: recipientTaskUrl.toString() } })
+    deliveries.push({ task_id: task.id, recipient_type: 'external_assignee', recipient_reference: recipient.email, channel: 'email', idempotency_key: `external-task:${notificationType}:${task.id}:${tokenHash}`, scheduled_at: now, template_key: notificationType, payload: { entity: 'task', id: task.id, title: task.title, description: task.description, due_date: task.due_date, due_time: task.due_time, external_url: recipientTaskUrl } })
   }
   const { error: queueError } = await admin.from('notification_deliveries').insert(deliveries)
   if (queueError) throw queueError
   return response({ issued: deliveries.length })
 }
 
-async function uploadAttachment(request: Request) {
-  const form = await request.formData()
-  const token = typeof form.get('token') === 'string' ? form.get('token')!.trim() : ''
-  const file = form.get('file')
-  if (!token || !(file instanceof File)) return response({ error: 'กรุณาเลือกไฟล์และใช้ลิงก์ Task ที่ถูกต้อง' }, 400)
-  const task = await taskForToken(token)
-  if (!task) return response({ error: 'ลิงก์งานหมดอายุหรือถูกยกเลิกแล้ว' }, 404)
-  const allowed = new Set(['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'image/jpeg', 'image/png'])
-  if (!allowed.has(file.type) || file.size > 10 * 1024 * 1024) return response({ error: 'รองรับ PDF, Office, JPG, PNG ขนาดไม่เกิน 10 MB' }, 400)
-  const { count, error: countError } = await admin.from('task_attachments').select('*', { count: 'exact', head: true }).eq('task_id', task.id)
-  if (countError) throw countError
-  if ((count ?? 0) >= 10) return response({ error: 'Task นี้มีเอกสารครบ 10 ไฟล์แล้ว' }, 400)
-  const storagePath = `external/${task.id}/${crypto.randomUUID()}-${safeFileName(file.name)}`
-  const { error: uploadError } = await admin.storage.from('task-documents').upload(storagePath, file, { contentType: file.type, upsert: false })
-  if (uploadError) throw uploadError
-  const { error: attachmentError } = await admin.from('task_attachments').insert({ task_id: task.id, file_name: file.name, mime_type: file.type, file_size: file.size, storage_path: storagePath, uploaded_by: null })
-  if (attachmentError) { await admin.storage.from('task-documents').remove([storagePath]); throw attachmentError }
-  return response({ uploaded: true })
-}
-
 Deno.serve(async (request) => {
   try {
     if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
     if (request.method === 'POST') {
-      if (request.headers.get('content-type')?.includes('multipart/form-data')) return await uploadAttachment(request)
+      if (request.headers.get('content-type')?.includes('multipart/form-data')) return response({ error: 'ผู้รับมอบหมายไม่สามารถอัปโหลดเอกสารได้' }, 403)
       const body = await request.clone().json()
       if (body.action === 'issue') return await issueToken(request)
-      if (body.action !== 'complete') return response({ error: 'คำสั่งไม่ถูกต้อง' }, 400)
+      if (body.action === 'complete') return response({ error: 'เฉพาะผู้สร้าง Task เท่านั้นที่ยืนยันงานเสร็จได้' }, 403)
+      if (body.action !== 'acknowledge') return response({ error: 'คำสั่งไม่ถูกต้อง' }, 400)
     } else if (request.method !== 'GET') return response({ error: 'ไม่รองรับคำสั่งนี้' }, 405)
     const token = request.method === 'GET' ? new URL(request.url).searchParams.get('token')?.trim() : (await request.json()).token?.trim()
     if (!token) return response({ error: 'ลิงก์งานไม่ถูกต้อง' }, 400)
     const task = await taskForToken(token)
     if (!task) return response({ error: 'ลิงก์หมดอายุหรือถูกยกเลิกแล้ว' }, 404)
     if (request.method === 'POST') {
-      if (task.status === 'pending') {
-        const { error } = await admin.from('tasks').update({ status: 'completed' }).eq('id', task.id).eq('status', 'pending')
-        if (error) throw error
-      }
-      return response({ status: 'completed' })
+      if (task.status !== 'pending') return response({ error: 'Task นี้ปิดงานแล้ว' }, 409)
+      const { data, error } = await admin.from('task_external_recipients')
+        .update({ acknowledged_at: task.acknowledged_at ?? new Date().toISOString() })
+        .eq('task_id', task.id).eq('email', task.recipient_email).select('acknowledged_at').single()
+      if (error) throw error
+      return response({ acknowledged_at: data.acknowledged_at })
     }
     const [{ data: attachments, error: attachmentError }, { data: documentLinks, error: linkError }] = await Promise.all([
       admin.from('task_attachments').select('id, file_name, storage_path').eq('task_id', task.id),
@@ -115,11 +93,11 @@ Deno.serve(async (request) => {
     ])
     if (attachmentError || linkError) throw attachmentError ?? linkError
     const attachmentViews = await Promise.all((attachments ?? []).map(async (attachment) => {
-      const { data, error } = await admin.storage.from('task-documents').createSignedUrl(attachment.storage_path, 300)
+      const { data, error } = await admin.storage.from('task-documents').createSignedUrl(attachment.storage_path, 300, { download: attachment.file_name })
       if (error || !data) throw error ?? new Error('ไม่สามารถสร้างลิงก์ไฟล์ได้')
       return { id: attachment.id, file_name: attachment.file_name, url: data.signedUrl }
     }))
-    return response({ task: { title: task.title, description: task.description, due_date: task.due_date, due_time: task.due_time, status: task.status, attachments: attachmentViews, documentLinks: documentLinks ?? [] } })
+    return response({ task: { title: task.title, description: task.description, due_date: task.due_date, due_time: task.due_time, status: task.status, acknowledged_at: task.acknowledged_at, attachments: attachmentViews, documentLinks: documentLinks ?? [] } })
   } catch (error) {
     console.error(error)
     return response({ error: 'ระบบไม่สามารถดำเนินการได้ในขณะนี้' }, 500)

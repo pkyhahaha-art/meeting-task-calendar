@@ -22,7 +22,7 @@ export function meetingCreateArgs(payload: MeetingEventPayload) {
   }
 }
 
-export function canManageMeeting(ownerUserId: string | undefined, userId: string | undefined, role: 'user' | 'admin' | undefined) {
+export function canManageMeeting(ownerUserId: string | undefined, userId: string | undefined) {
   if (!userId) return false
-  return !ownerUserId || ownerUserId === userId || role === 'admin'
+  return !ownerUserId || ownerUserId === userId
 }

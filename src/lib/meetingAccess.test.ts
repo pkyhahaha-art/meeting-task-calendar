@@ -27,10 +27,10 @@ test('meeting creation delegates ownership to the database', () => {
   })
 })
 
-test('meeting management is limited to the owner or an admin', () => {
-  assert.equal(canManageMeeting(undefined, 'employee-1', 'user'), true)
-  assert.equal(canManageMeeting('employee-1', 'employee-1', 'user'), true)
-  assert.equal(canManageMeeting('employee-1', 'employee-2', 'user'), false)
-  assert.equal(canManageMeeting('employee-1', 'admin-1', 'admin'), true)
-  assert.equal(canManageMeeting('employee-1', undefined, undefined), false)
+test('meeting management is limited to the creator', () => {
+  assert.equal(canManageMeeting(undefined, 'employee-1'), true)
+  assert.equal(canManageMeeting('employee-1', 'employee-1'), true)
+  assert.equal(canManageMeeting('employee-1', 'employee-2'), false)
+  assert.equal(canManageMeeting('employee-1', 'admin-1'), false)
+  assert.equal(canManageMeeting('employee-1', undefined), false)
 })

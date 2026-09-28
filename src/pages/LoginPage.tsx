@@ -23,10 +23,10 @@ export function LoginPage() {
   const [captchaToken, setCaptchaToken] = useState<string | null>(null)
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<LoginValues>({ resolver: zodResolver(loginSchema) })
 
-  if (user && profileLoading) return <div className="flex min-h-screen items-center justify-center text-slate-500">กำลังตรวจสอบสิทธิ์…</div>
-  if (user) return <Navigate to={homePathForRole(profile?.role)} replace />
   const returnTo = (location.state as { from?: { pathname?: string; search?: string } } | null)?.from
   const from = `${returnTo?.pathname || '/calendar'}${returnTo?.search || ''}`
+  if (user && profileLoading) return <div className="flex min-h-screen items-center justify-center text-slate-500">กำลังตรวจสอบสิทธิ์…</div>
+  if (user) return <Navigate to={returnTo ? from : homePathForRole(profile?.role)} replace />
 
   const submit = async (values: LoginValues) => {
     setMessage(null)
@@ -34,7 +34,7 @@ export function LoginPage() {
     if (error) { setMessage(language === 'th' ? 'Gmail หรือรหัสผ่านไม่ถูกต้อง หรือบัญชียังไม่ได้ยืนยัน' : 'Incorrect Gmail or password, or the account is not verified.'); return }
     type ProfileRole = Pick<Database['public']['Tables']['profiles']['Row'], 'role'>
     const { data: signedInProfile } = await supabase.from('profiles').select('role').eq('id', data.user.id).returns<ProfileRole[]>().maybeSingle()
-    navigate(signedInProfile?.role === 'admin' ? '/admin' : from, { replace: true })
+    navigate(returnTo ? from : homePathForRole(signedInProfile?.role), { replace: true })
   }
 
   return (

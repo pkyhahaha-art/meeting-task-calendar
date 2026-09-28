@@ -42,6 +42,8 @@ export interface Database {
           recurrence_rule: string | null
           status: 'scheduled' | 'cancelled'
           deleted_at: string | null
+          notification_requested_at: string | null
+          suppress_guest_notifications: boolean
           created_at: string
           updated_at: string
         }
@@ -59,12 +61,14 @@ export interface Database {
           recurrence_rule?: string | null
           status?: 'scheduled' | 'cancelled'
           deleted_at?: string | null
+          notification_requested_at?: string | null
+          suppress_guest_notifications?: boolean
         }
         Update: Partial<Database['public']['Tables']['events']['Insert']>
         Relationships: []
       }
       event_guests: {
-        Row: { id: string; event_id: string; email: string; revoked_at: string | null; created_at: string }
+        Row: { id: string; event_id: string; email: string; revoked_at: string | null; acknowledged_at: string | null; created_at: string }
         Insert: { id?: string; event_id: string; email: string; revoked_at?: string | null }
         Update: Partial<Database['public']['Tables']['event_guests']['Insert']>
         Relationships: []
@@ -102,6 +106,7 @@ export interface Database {
           recurrence_rule: string | null
           recurrence_series_id: string | null
           recurrence_end_at: string | null
+          notification_requested_at: string | null
           created_at: string
           updated_at: string
         }
@@ -112,6 +117,7 @@ export interface Database {
           assignee_user_id?: string | null
           external_assignee_email?: string | null
           linked_event_id?: string | null
+          notification_requested_at?: string | null
           title: string
           description?: string
           affiliation?: string
@@ -153,9 +159,15 @@ export interface Database {
         Relationships: []
       }
       task_external_recipients: {
-        Row: { id: string; task_id: string; email: string; created_at: string }
+        Row: { id: string; task_id: string; email: string; acknowledged_at: string | null; created_at: string }
         Insert: { id?: string; task_id: string; email: string; created_at?: string }
         Update: Partial<Database['public']['Tables']['task_external_recipients']['Insert']>
+        Relationships: []
+      }
+      task_internal_recipients: {
+        Row: { task_id: string; user_id: string; acknowledged_at: string | null; created_at: string }
+        Insert: { task_id: string; user_id: string; acknowledged_at?: string | null; created_at?: string }
+        Update: Partial<Database['public']['Tables']['task_internal_recipients']['Insert']>
         Relationships: []
       }
       task_attachments: {
@@ -212,6 +224,8 @@ export interface Database {
         Args: { target_task_id: string; recipient_emails: string[] }
         Returns: undefined
       }
+      replace_task_internal_recipients: { Args: { target_task_id: string; recipient_user_ids: string[] }; Returns: undefined }
+      acknowledge_task: { Args: { target_task_id: string }; Returns: string }
     }
     Enums: Record<string, never>
     CompositeTypes: Record<string, never>

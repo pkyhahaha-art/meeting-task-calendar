@@ -8,11 +8,19 @@
 
 **Approved:** 19 September 2026  
 
+**สถานะที่บันทึก ณ 27 กันยายน 2026:** การทดสอบด้วยบัญชีผู้รับจริงยังไม่ครบ และยังไม่ได้ยืนยันผลการ deploy frontend/Edge Function รอบล่าสุดบน production; ตรวจสถานะ Git แยกจากสถานะ deploy
+
 ## Current Progress
 
-- Phase 1 foundation: implemented and verified locally.
-- Phase 2 schema/Auth/RLS foundation: implemented as migration and frontend flows; awaiting connection to a real Supabase project for integration verification.
-- Phase 3 calendar CRUD: basic one-time meeting flow implemented; advanced filters and remaining event fields are pending.
+- Foundation, Auth, Meeting/Task calendar, recurrence, reminders, external Task links, guest links, Admin screens, and notification workers are implemented in code.
+- A Supabase production project is linked. On 26 September 2026, the deployed `external-task` function passed a CORS preflight with `x-client-info`; external-assignee notifications in the preceding seven days included 43 provider-accepted deliveries. These checks do not prove that every recipient link opened successfully.
+- On 27 September 2026, migrations `202609260001`, `202609270001`, and `202609270002` were reported as applied to production; `external-task`, `guest-event`, and `process-notification-queue` were reported as deployed. The `/acknowledged` frontend route was committed in `8e1d78c`; its live deployment and the remaining uncommitted UI changes still need separate verification.
+- Task links now use server-side `PUBLIC_APP_URL`; assignees have read-only document access. Creators can delete Task and Meeting attachments, and forms use explicit 24-hour time selection. Task email Drive links open directly.
+- Edit forms offer save silently or save with notification. The migrations defer edit emails until recipients, attachments, and Drive links are saved, add mixed multi-recipient Tasks and per-recipient acknowledgements, and enforce creator-only editing/completion. Live acceptance testing with real recipient accounts remains open.
+- The acknowledgement button in each recipient email uses a dedicated action URL. Opening it performs the acknowledgement after the recipient page loads (and after sign-in for internal users); opening the ordinary detail URL does not change status. Calendar forms refresh recipient badges while open.
+- The Task recipient form uses compact tabs for self, internal employees, and external Gmail recipients. Switching tabs preserves selections across all three groups; multiple recipients remain supported.
+- Pending the next production deployment, email cards retain only a direct acknowledgement action. The scoped acknowledgement Function records the matching Gmail recipient without opening the Task or Meeting app page. Cards list Google Drive links only when the creator entered them in the form.
+- Remaining acceptance work is tracked in `OPEN_ISSUES.md`, including production end-to-end verification, external token expiry, shared Task visibility, Meeting Drive links, and notification formats.
 
 ---
 
@@ -24,7 +32,7 @@
 - No employee master list and no per-user Admin approval are required for the MVP.
 - Gmail verification proves control of the Email address, but does not independently prove employment or ownership of the claimed Employee ID. This limitation is accepted for the MVP.
 - All signed-in users can view all events and their attachments.
-- Only the event owner can edit/delete the event and manage its attachments. Admin can delete any event.
+- Only the Meeting creator can edit/delete the event and manage its attachments.
 - The owner may optionally add participant/guest Gmail addresses.
 - A guest receives an Email reminder with a secure read-only link and can open it immediately without an account, sign-in, or OTP.
 - LINE is an optional personal reminder channel connected after sign-in.
@@ -247,12 +255,20 @@ One row per recipient, channel, and reminder:
 ## Authenticated Users
 
 - Read active events and occurrences created by any active user.
+- Read active Tasks created by any active user.
 - Read attachment metadata and private files for visible events.
 - Create events owned by themselves.
 - Update/delete only their own events and occurrences.
 - Upload/replace/delete only attachments belonging to their own events.
 - Read/update only safe fields of their own profile.
 - Cannot read Admin-only logs or secrets.
+
+Task visibility rule:
+
+- every active registered employee may view active Task details;
+- only the Task creator may edit Task details or change the assignee;
+- only the creator may update Task completion status; assigned employees may acknowledge their own assignment;
+- Admin may read active Tasks; editing, deletion, and completion belong to the Task creator.
 
 ## Admin
 
