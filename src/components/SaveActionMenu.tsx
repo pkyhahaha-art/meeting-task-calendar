@@ -3,7 +3,7 @@ import { Loader2 } from 'lucide-react'
 import Swal from 'sweetalert2'
 import { useLanguage } from '../i18n/LanguageProvider'
 
-export function SaveActionMenu({ busy, onSave, onComplete }: { busy: boolean; onSave: (notifyRecipients: boolean) => Promise<boolean>; onComplete: () => void }) {
+export function SaveActionMenu({ busy, onSave, onComplete, allowNotification = true }: { busy: boolean; onSave: (notifyRecipients: boolean) => Promise<boolean>; onComplete: () => void; allowNotification?: boolean }) {
   const { text } = useLanguage()
   const [savingWithNotification, setSavingWithNotification] = useState<boolean | null>(null)
   const saving = savingWithNotification !== null
@@ -13,9 +13,9 @@ export function SaveActionMenu({ busy, onSave, onComplete }: { busy: boolean; on
     const result = await Swal.fire({
       icon: 'question',
       title: text('ยืนยันการบันทึก Meeting', 'Confirm meeting update'),
-      text: text('เลือกวิธีการบันทึกที่ต้องการ', 'Choose how to save your changes.'),
+      text: allowNotification ? text('เลือกวิธีการบันทึกที่ต้องการ', 'Choose how to save your changes.') : text('การแก้ไขนี้จะใช้กับการแจ้งเตือนตามกำหนดนัด', 'These changes will be used for the scheduled appointment reminder.'),
       showCancelButton: true,
-      showDenyButton: true,
+      showDenyButton: allowNotification,
       confirmButtonText: text('บันทึกการแก้ไข', 'Save changes'),
       denyButtonText: text('บันทึกการแก้ไขและแจ้งเตือน', 'Save and notify'),
       cancelButtonText: text('ยกเลิก', 'Cancel'),
@@ -23,7 +23,7 @@ export function SaveActionMenu({ busy, onSave, onComplete }: { busy: boolean; on
       denyButtonColor: '#b45309',
     })
     if (!result.isConfirmed && !result.isDenied) return
-    const notifyRecipients = result.isDenied
+    const notifyRecipients = allowNotification && result.isDenied
     setSavingWithNotification(notifyRecipients)
     let completed = false
     try {
@@ -31,7 +31,7 @@ export function SaveActionMenu({ busy, onSave, onComplete }: { busy: boolean; on
       await Swal.fire({
         icon: 'success',
         title: text('สำเร็จ', 'Success'),
-        text: notifyRecipients ? text('บันทึกการแก้ไขและแจ้งเตือนผู้รับแล้ว', 'Changes saved and recipients notified.') : text('บันทึกการแก้ไขเรียบร้อยแล้ว', 'Changes saved.'),
+        text: notifyRecipients ? text('บันทึกการแก้ไขและแจ้งเตือนผู้รับแล้ว', 'Changes saved and recipients notified.') : allowNotification ? text('บันทึกการแก้ไขเรียบร้อยแล้ว', 'Changes saved.') : text('บันทึกการแก้ไขเฉพาะนัดแล้ว', 'Changes for this occurrence have been saved.'),
         showConfirmButton: false,
         timer: 2000,
         timerProgressBar: true,

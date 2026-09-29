@@ -34,13 +34,14 @@ function displayDate(value: string, language: 'th' | 'en') {
   }).format(new Date(value))
 }
 
-export function NotificationDeliveryStatus({ deliveries, acknowledgements, onRetry, title, description, emptyMessage }: {
+export function NotificationDeliveryStatus({ deliveries, acknowledgements, onRetry, title, description, emptyMessage, embedded = false }: {
   deliveries: DeliveryStatusRow[]
   acknowledgements: Record<string, string | null>
   onRetry?: (deliveryId: string) => Promise<void>
   title?: { thai: string; english: string }
   description?: { thai: string; english: string }
   emptyMessage?: { thai: string; english: string }
+  embedded?: boolean
 }) {
   const { language, text } = useLanguage()
   const [retryingId, setRetryingId] = useState<string | null>(null)
@@ -61,7 +62,7 @@ export function NotificationDeliveryStatus({ deliveries, acknowledgements, onRet
   }
 
   return (
-    <section className="space-y-3 rounded-xl border border-slate-200 p-4">
+    <section className={embedded ? 'space-y-3' : 'space-y-3 rounded-xl border border-slate-200 p-4'}>
       <div><h3 className="flex items-center gap-2 font-semibold text-slate-800"><Bell size={18} className="text-brand-600" />{text(title?.thai ?? 'สถานะการแจ้งเตือน', title?.english ?? 'Notification status')}</h3><p className="mt-1 text-xs text-slate-500">{text(description?.thai ?? 'แสดงสถานะล่าสุดของแต่ละผู้รับและช่องทาง', description?.english ?? 'Shows the latest status for each recipient and channel.')}</p></div>
       {!deliveries.length && <p className="rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-500">{text(emptyMessage?.thai ?? 'ยังไม่มีรายการแจ้งเตือนสำหรับ Meeting หรือ Task นี้', emptyMessage?.english ?? 'There are no notifications for this meeting or task yet.')}</p>}
       <div className="space-y-2">

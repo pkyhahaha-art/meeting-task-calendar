@@ -9,6 +9,7 @@ type Delivery = {
   id: string
   event_id: string | null
   task_id: string | null
+  reminder_id: string | null
   recipient_type: string
   recipient_reference: string
   channel: 'email' | 'line'
@@ -63,36 +64,84 @@ async function issueAcknowledgementUrl(delivery: Delivery) {
   return url.toString()
 }
 
+async function occurrenceIdForDelivery(delivery: Delivery, payload: Record<string, unknown>) {
+  const payloadOccurrenceId = text(payload.occurrence_id)
+  if (payloadOccurrenceId) return payloadOccurrenceId
+  if (!delivery.event_id || !delivery.reminder_id) return ''
+  const { data, error } = await supabase.from('reminders').select('occurrence_id').eq('id', delivery.reminder_id).maybeSingle()
+  if (error) throw new Error(`Unable to load Meeting occurrence: ${errorMessage(error)}`)
+  return data?.occurrence_id ?? ''
+}
+
 async function payloadWithGuestLink(delivery: Delivery) {
   if (delivery.channel !== 'email' || delivery.recipient_type !== 'guest' || !delivery.event_id || !publicAppUrl) return delivery.payload
-  const { data: guest } = await supabase.from('event_guests').select('id').eq('event_id', delivery.event_id)
-    .eq('email', delivery.recipient_reference).is('revoked_at', null).maybeSingle()
-  if (!guest) return delivery.payload
+  const occurrenceId = await occurrenceIdForDelivery(delivery, delivery.payload)
+  const scopedGuest = occurrenceId
+    ? await supabase.from('event_guests').select('id').eq('event_id', delivery.event_id)
+      .eq('occurrence_id', occurrenceId).eq('email', delivery.recipient_reference).is('revoked_at', null).maybeSingle()
+    : { data: null, error: null }
+  if (scopedGuest.error) throw scopedGuest.error
+  const baseGuest = scopedGuest.data ? { data: null, error: null } : await supabase.from('event_guests').select('id').eq('event_id', delivery.event_id)
+    .is('occurrence_id', null).eq('email', delivery.recipient_reference).is('revoked_at', null).maybeSingle()
+  if (baseGuest.error) throw baseGuest.error
+  const guest = scopedGuest.data ?? baseGuest.data
+  if (!guest) return occurrenceId ? { ...delivery.payload, occurrence_id: occurrenceId } : delivery.payload
   const token = randomToken()
-  await supabase.from('guest_tokens').update({ revoked_at: new Date().toISOString() })
+  const revokeToken = supabase.from('guest_tokens').update({ revoked_at: new Date().toISOString() })
     .eq('guest_id', guest.id).is('revoked_at', null)
+  const { error: revokeError } = occurrenceId
+    ? await revokeToken.eq('occurrence_id', occurrenceId)
+    : await revokeToken.is('occurrence_id', null)
+  if (revokeError) throw revokeError
   const { error } = await supabase.from('guest_tokens').insert({
     guest_id: guest.id, token_hash: await hashToken(token),
+    occurrence_id: occurrenceId || null,
     expires_at: new Date(Date.now() + 30 * 24 * 60 * 60_000).toISOString(),
   })
   if (error) throw error
   const url = new URL(publicAppUrl)
   url.hash = `/guest-event?token=${encodeURIComponent(token)}`
-  return { ...delivery.payload, guest_url: url.toString(), guest_token: token }
+  return { ...delivery.payload, ...(occurrenceId ? { occurrence_id: occurrenceId } : {}), guest_url: url.toString(), guest_token: token }
 }
 
 async function payloadWithMeetingDetails(delivery: Delivery, payload: Record<string, unknown>) {
-  if (delivery.channel !== 'email' || !delivery.event_id) return payload
+  if (!delivery.event_id) return payload
   const { data: event, error: eventError } = await supabase.from('events')
     .select('id, owner_user_id, title, description, affiliation, start_datetime, end_datetime, all_day, location, timezone, recurrence_rule, status')
     .eq('id', delivery.event_id).maybeSingle()
   if (eventError) throw new Error(`Unable to load Meeting details for email: ${errorMessage(eventError)}`)
   if (!event) throw new Error(`Unable to load Meeting details for email: event ${delivery.event_id} was not found`)
-  const occurrenceStart = text(payload.start_datetime)
-  const occurrenceEnd = text(payload.end_datetime)
+  const occurrenceId = await occurrenceIdForDelivery(delivery, payload)
+  const occurrenceResult = occurrenceId
+    ? await supabase.from('event_occurrences').select('id, start_datetime, end_datetime, override_payload').eq('id', occurrenceId).eq('event_id', event.id).maybeSingle()
+    : { data: null, error: null }
+  if (occurrenceResult.error) throw new Error(`Unable to load Meeting occurrence details: ${errorMessage(occurrenceResult.error)}`)
+  const override = occurrenceResult.data?.override_payload
+  const occurrenceOverride = override && typeof override === 'object' && !Array.isArray(override) ? override as Record<string, unknown> : {}
+  const description = typeof occurrenceOverride.description === 'string' ? occurrenceOverride.description : event.description
+  const location = typeof occurrenceOverride.location === 'string' ? occurrenceOverride.location : event.location
+  const occurrenceStart = text(payload.start_datetime) || occurrenceResult.data?.start_datetime || event.start_datetime
+  const occurrenceEnd = text(payload.end_datetime) || occurrenceResult.data?.end_datetime || event.end_datetime
+  const meetingPayload = {
+    ...payload,
+    entity: 'meeting',
+    id: event.id,
+    title: event.title,
+    description,
+    affiliation: event.affiliation,
+    start_datetime: occurrenceStart,
+    end_datetime: occurrenceEnd,
+    all_day: event.all_day,
+    location,
+    timezone: event.timezone,
+    recurrence_rule: event.recurrence_rule,
+    status: event.status,
+    ...(occurrenceId ? { occurrence_id: occurrenceId } : {}),
+  }
+  if (delivery.channel !== 'email') return meetingPayload
   const [owner, attachments, documentLinks] = await Promise.all([
     supabase.from('profiles').select('full_name, email').eq('id', event.owner_user_id).maybeSingle(),
-    supabase.from('attachments').select('id, file_name, file_size, storage_path').eq('event_id', event.id).order('uploaded_at'),
+    supabase.from('attachments').select('id, file_name, file_size, storage_path, occurrence_id').eq('event_id', event.id).order('uploaded_at'),
     supabase.from('document_links').select('display_name, url').eq('event_id', event.id).order('created_at'),
   ])
   if (owner.error || attachments.error || documentLinks.error) throw new Error(`Unable to load Meeting organizer or documents for email: ${errorMessage(owner.error ?? attachments.error ?? documentLinks.error)}`)
@@ -103,7 +152,7 @@ async function payloadWithMeetingDetails(delivery: Delivery, payload: Record<str
     ? `${text(owner.data.full_name)} (${text(owner.data.email)})`
     : ''
   const guestToken = delivery.recipient_type === 'guest' ? text(payload.guest_token) : ''
-  const meetingDocuments = await Promise.all((attachments.data ?? []).map(async (file) => {
+  const meetingDocuments = await Promise.all((attachments.data ?? []).filter((file) => !file.occurrence_id || file.occurrence_id === occurrenceId).map(async (file) => {
     if (guestToken) {
       const url = new URL('/functions/v1/guest-event', supabaseUrl)
       url.searchParams.set('token', guestToken)
@@ -118,19 +167,7 @@ async function payloadWithMeetingDetails(delivery: Delivery, payload: Record<str
     return { name: file.file_name, size: file.file_size, url: data.signedUrl }
   }))
   return {
-    ...payload,
-    entity: 'meeting',
-    id: event.id,
-    title: event.title,
-    description: event.description,
-    affiliation: event.affiliation,
-    start_datetime: occurrenceStart || event.start_datetime,
-    end_datetime: occurrenceEnd || event.end_datetime,
-    all_day: event.all_day,
-    location: event.location,
-    timezone: event.timezone,
-    recurrence_rule: event.recurrence_rule,
-    status: event.status,
+    ...meetingPayload,
     organizer,
     ...(meetingUrl ? { meeting_url: meetingUrl } : {}),
     meeting_documents: [...meetingDocuments, ...(documentLinks.data ?? []).map((link) => ({ name: link.display_name, url: link.url, kind: 'drive' }))],
@@ -213,7 +250,7 @@ Deno.serve(async (request) => {
   const now = new Date().toISOString()
   const { data, error } = await supabase
     .from('notification_deliveries')
-    .select('id, event_id, task_id, recipient_type, recipient_reference, channel, template_key, payload, attempt')
+    .select('id, event_id, task_id, reminder_id, recipient_type, recipient_reference, channel, template_key, payload, attempt')
     .in('channel', ['email', 'line']).in('status', ['queued', 'retry'])
     .lte('scheduled_at', now)
     .or(`next_attempt_at.is.null,next_attempt_at.lte.${now}`)

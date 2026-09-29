@@ -26,6 +26,8 @@ import { supabase } from '../lib/supabase'
 
 type EventRow = Database['public']['Tables']['events']['Row']
 type GuestRow = Database['public']['Tables']['event_guests']['Row']
+type OccurrenceRow = Database['public']['Tables']['event_occurrences']['Row']
+type OccurrenceGuestExclusionRow = Database['public']['Tables']['event_occurrence_guest_exclusions']['Row']
 type ReminderRow = Database['public']['Tables']['reminders']['Row']
 type AttachmentRow = Database['public']['Tables']['attachments']['Row']
 type TaskRow = Database['public']['Tables']['tasks']['Row']
@@ -174,6 +176,12 @@ export function CalendarPage() {
     refetchInterval: selectedEvent ? 3_000 : false,
     queryFn: async (): Promise<EventDetails> => {
       const eventId = selectedEvent!.id
+      const selectedOccurrence = (async (): Promise<OccurrenceRow | null> => {
+        if (!selectedEventOccurrenceStart) return null
+        const { data, error } = await supabase.from('event_occurrences').select('*').eq('event_id', eventId).eq('start_datetime', selectedEventOccurrenceStart).returns<OccurrenceRow>().maybeSingle()
+        if (error) throw error
+        return data
+      })()
       const occurrenceReminders = (async (): Promise<ReminderRow[]> => {
         if (!selectedEventOccurrenceStart) return []
         if (new Date(selectedEventOccurrenceStart).getTime() === new Date(selectedEvent!.start_datetime).getTime()) {
@@ -181,28 +189,49 @@ export function CalendarPage() {
           if (error) throw error
           return data
         }
-        const { data: occurrenceRow, error: occurrenceError } = await supabase.from('event_occurrences').select('id').eq('event_id', eventId).eq('start_datetime', selectedEventOccurrenceStart).returns<{ id: string }>().maybeSingle()
-        const occurrence = occurrenceRow as { id: string } | null
-        if (occurrenceError) throw occurrenceError
+        const occurrence = await selectedOccurrence
         if (!occurrence) return []
         const { data, error } = await supabase.from('reminders').select('*').eq('event_id', eventId).eq('occurrence_id', occurrence.id).returns<ReminderRow[]>()
         if (error) throw error
         return data
       })()
-      const [guests, reminders, attachments, notificationDeliveries, selectedReminders] = await Promise.all([
-        supabase.from('event_guests').select('*').eq('event_id', eventId).is('revoked_at', null).returns<GuestRow[]>(),
+      const occurrenceGuests = (async (): Promise<GuestRow[]> => {
+        const occurrence = await selectedOccurrence
+        if (!occurrence) return []
+        const { data, error } = await supabase.from('event_guests').select('*').eq('event_id', eventId).eq('occurrence_id', occurrence.id).is('revoked_at', null).returns<GuestRow[]>()
+        if (error) throw error
+        return data
+      })()
+      const occurrenceExclusions = (async (): Promise<OccurrenceGuestExclusionRow[]> => {
+        const occurrence = await selectedOccurrence
+        if (!occurrence) return []
+        const { data, error } = await supabase.from('event_occurrence_guest_exclusions').select('*').eq('occurrence_id', occurrence.id).returns<OccurrenceGuestExclusionRow[]>()
+        if (error) throw error
+        return data
+      })()
+      const [guests, reminders, attachments, notificationDeliveries, occurrence, addedOccurrenceGuests, exclusions, selectedReminders] = await Promise.all([
+        supabase.from('event_guests').select('*').eq('event_id', eventId).is('occurrence_id', null).is('revoked_at', null).returns<GuestRow[]>(),
         supabase.from('reminders').select('*').eq('event_id', eventId).is('occurrence_id', null).eq('status', 'scheduled').returns<ReminderRow[]>(),
         supabase.from('attachments').select('*').eq('event_id', eventId).order('uploaded_at').returns<AttachmentRow[]>(),
         canViewEventDeliveryStatus
           ? supabase.from('notification_deliveries').select('id,reminder_id,recipient_type,recipient_reference,channel,status,scheduled_at,sent_at,error_message,created_at').eq('event_id', eventId).order('created_at', { ascending: false }).returns<DeliveryStatusRow[]>()
           : Promise.resolve({ data: [] as DeliveryStatusRow[], error: null }),
+        selectedOccurrence,
+        occurrenceGuests,
+        occurrenceExclusions,
         occurrenceReminders,
       ])
       if (guests.error) throw guests.error
       if (reminders.error) throw reminders.error
       if (attachments.error) throw attachments.error
       if (notificationDeliveries.error) throw notificationDeliveries.error
-      const attachmentViews = await Promise.all(attachments.data.map(async (file) => {
+      const excludedEmails = new Set(exclusions.map((exclusion) => exclusion.email.toLowerCase()))
+      const effectiveGuests = [
+        ...guests.data.filter((guest) => !excludedEmails.has(guest.email.toLowerCase())),
+        ...addedOccurrenceGuests,
+      ]
+      const occurrenceAttachments = attachments.data.filter((file) => !file.occurrence_id || file.occurrence_id === occurrence?.id)
+      const attachmentViews = await Promise.all(occurrenceAttachments.map(async (file) => {
         const { data, error } = await supabase.storage.from('meeting-documents').createSignedUrl(file.storage_path, 300, { download: file.file_name })
         if (error || !data) throw error ?? new Error('ไม่สามารถเปิดไฟล์แนบได้')
         return { ...file, signedUrl: data.signedUrl }
@@ -213,7 +242,12 @@ export function CalendarPage() {
         offsetUnit: row.offset_unit,
       })))
       const selectedReminderIds = new Set(selectedReminders.map((reminder) => reminder.id))
-      return { guestEmails: guests.data.map((guest) => guest.email), guestAcknowledgements: Object.fromEntries(guests.data.map((guest) => [guest.email.toLowerCase(), guest.acknowledged_at])), reminderKeys: keys, notifyEmail: reminders.data.some((item) => item.channel_email), notifyLine: reminders.data.some((item) => item.channel_line), attachments: attachmentViews, occurrenceReminders: selectedReminders, occurrenceNotificationDeliveries: notificationDeliveries.data.filter((delivery) => delivery.reminder_id && selectedReminderIds.has(delivery.reminder_id)), notificationDeliveries: notificationDeliveries.data.filter((delivery) => !delivery.reminder_id) }
+      const overridePayload = occurrence?.override_payload
+      const occurrenceOverride = overridePayload && typeof overridePayload === 'object' && !Array.isArray(overridePayload)
+        ? { description: typeof overridePayload.description === 'string' ? overridePayload.description : undefined, location: typeof overridePayload.location === 'string' ? overridePayload.location : undefined }
+        : null
+      const hasOccurrenceChanges = Boolean(occurrenceOverride?.description !== undefined || occurrenceOverride?.location !== undefined || addedOccurrenceGuests.length || exclusions.length || occurrenceAttachments.some((file) => file.scope === 'occurrence'))
+      return { guestEmails: guests.data.map((guest) => guest.email), occurrenceGuestEmails: effectiveGuests.map((guest) => guest.email), guestAcknowledgements: Object.fromEntries(effectiveGuests.map((guest) => [guest.email.toLowerCase(), guest.acknowledged_at])), reminderKeys: keys, notifyEmail: reminders.data.some((item) => item.channel_email), notifyLine: reminders.data.some((item) => item.channel_line), attachments: attachmentViews, occurrenceId: occurrence?.id ?? null, occurrenceOverride, hasOccurrenceChanges, occurrenceReminders: selectedReminders, occurrenceNotificationDeliveries: notificationDeliveries.data.filter((delivery) => delivery.reminder_id && selectedReminderIds.has(delivery.reminder_id)), notificationDeliveries: notificationDeliveries.data.filter((delivery) => !delivery.reminder_id) }
     },
   })
 
@@ -258,10 +292,29 @@ export function CalendarPage() {
   })
 
   const eventMutation = useMutation({
-    mutationFn: async ({ draft, event, notifyRecipients }: { draft: EventDraft; event: EventRow | null; notifyRecipients: boolean }) => {
+    mutationFn: async ({ draft, event, notifyRecipients, scope, occurrenceStart }: { draft: EventDraft; event: EventRow | null; notifyRecipients: boolean; scope: 'series' | 'occurrence'; occurrenceStart?: string }) => {
       const { data: userData, error: userError } = await supabase.auth.getUser()
       if (userError || !userData.user) throw new Error('เซสชันหมดอายุ กรุณาออกจากระบบแล้วเข้าสู่ระบบใหม่')
       const eventUserId = userData.user.id
+      if (scope === 'occurrence') {
+        if (!event || !occurrenceStart) throw new Error('ไม่พบรอบนัดหมายที่เลือก')
+        const { data: occurrenceId, error: occurrenceError } = await supabase.rpc('update_meeting_occurrence_details', {
+          target_event_id: event.id,
+          target_occurrence_start: occurrenceStart,
+          target_description: draft.description.trim(),
+          target_location: draft.location.trim(),
+          target_guest_emails: parseGuestEmails(draft.guestEmails),
+        })
+        if (occurrenceError || !occurrenceId) throw occurrenceError ?? new Error('ไม่สามารถบันทึกนัดหมายรอบนี้ได้')
+        for (const file of draft.files) {
+          const storagePath = `${eventUserId}/${event.id}/occurrences/${occurrenceId}/${crypto.randomUUID()}-${safeFileName(file.name)}`
+          const uploaded = await supabase.storage.from('meeting-documents').upload(storagePath, file, { contentType: file.type, upsert: false })
+          if (uploaded.error) throw uploaded.error
+          const { error } = await supabase.from('attachments').insert({ event_id: event.id, occurrence_id: occurrenceId, scope: 'occurrence', file_name: file.name, mime_type: file.type, file_size: file.size, storage_path: storagePath, uploaded_by: eventUserId })
+          if (error) { await supabase.storage.from('meeting-documents').remove([storagePath]); throw error }
+        }
+        return
+      }
       if (!event && isPastBangkokDate(draft.date)) throw new Error('ไม่สามารถสร้าง Meeting ในวันที่ผ่านมาแล้ว')
       const startIso = toIso(draft.date, draft.start, draft.all_day)
       const payload = {
@@ -280,7 +333,7 @@ export function CalendarPage() {
         eventId = data.id
       }
       const [existingGuests, deletedReminders] = await Promise.all([
-        supabase.from('event_guests').select('id, email').eq('event_id', eventId).is('revoked_at', null),
+        supabase.from('event_guests').select('id, email').eq('event_id', eventId).is('occurrence_id', null).is('revoked_at', null),
         supabase.from('reminders').delete().eq('event_id', eventId),
       ])
       if (existingGuests.error) throw existingGuests.error
@@ -729,7 +782,7 @@ export function CalendarPage() {
         open={eventDialog.open} event={selectedEvent} details={eventDetailsQuery.data} selectedDate={eventDialog.date} occurrenceStart={eventDialog.occurrenceStart}
         canEdit={canEditEvent} canViewDeliveryStatus={canViewEventDeliveryStatus} busy={busy || eventDetailsQuery.isLoading}
         onClose={() => setEventDialog({ open: false, event: null })}
-        onSave={(draft, notifyRecipients) => eventMutation.mutateAsync({ draft, event: selectedEvent, notifyRecipients })}
+        onSave={(draft, notifyRecipients, scope) => eventMutation.mutateAsync({ draft, event: selectedEvent, notifyRecipients, scope, occurrenceStart: selectedEventOccurrenceStart })}
         onDelete={async () => { if (selectedEvent && await confirmDeletion('ย้าย Meeting ไปถังขยะ?', `Meeting “${selectedEvent.title}” จะไม่แสดงในปฏิทิน`, 'ย้ายไปถังขยะ')) await deleteEventMutation.mutateAsync(selectedEvent) }}
         onDeleteAttachment={async (attachment) => { if (await confirmDeletion('ลบไฟล์แนบ?', `ลบ “${attachment.file_name}” ออกจาก Meeting นี้อย่างถาวร`, 'ลบไฟล์')) await deleteEventAttachmentMutation.mutateAsync(attachment) }}
         onRetryNotification={(deliveryId) => retryNotificationMutation.mutateAsync(deliveryId)}

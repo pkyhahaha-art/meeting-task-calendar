@@ -80,9 +80,15 @@ export interface Database {
         Relationships: []
       }
       event_guests: {
-        Row: { id: string; event_id: string; email: string; revoked_at: string | null; acknowledged_at: string | null; created_at: string }
-        Insert: { id?: string; event_id: string; email: string; revoked_at?: string | null }
+        Row: { id: string; event_id: string; occurrence_id: string | null; email: string; revoked_at: string | null; acknowledged_at: string | null; created_at: string }
+        Insert: { id?: string; event_id: string; occurrence_id?: string | null; email: string; revoked_at?: string | null }
         Update: Partial<Database['public']['Tables']['event_guests']['Insert']>
+        Relationships: []
+      }
+      event_occurrence_guest_exclusions: {
+        Row: { occurrence_id: string; email: string; created_at: string }
+        Insert: { occurrence_id: string; email: string; created_at?: string }
+        Update: Partial<Database['public']['Tables']['event_occurrence_guest_exclusions']['Insert']>
         Relationships: []
       }
       attachments: {
@@ -254,6 +260,16 @@ export interface Database {
       queue_meeting_initial_notifications: {
         Args: { target_event_id: string }
         Returns: number
+      }
+      update_meeting_occurrence_details: {
+        Args: {
+          target_event_id: string
+          target_occurrence_start: string
+          target_description: string
+          target_location: string
+          target_guest_emails: string[]
+        }
+        Returns: string
       }
       replace_task_external_recipients: {
         Args: { target_task_id: string; recipient_emails: string[] }

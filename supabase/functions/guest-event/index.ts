@@ -38,12 +38,27 @@ Deno.serve(async (request) => {
     if (guestError) throw guestError
     if (!guest) return json({ error: 'สิทธิ์เข้าถึงถูกยกเลิกแล้ว' }, 404)
 
-    const [{ data: event, error: eventError }, { data: attachments, error: attachmentError }] = await Promise.all([
+    const occurrenceRequest = tokenRow.occurrence_id
+      ? admin.from('event_occurrences').select('id,start_datetime,end_datetime,override_payload,status').eq('id', tokenRow.occurrence_id).eq('event_id', guest.event_id).maybeSingle()
+      : Promise.resolve({ data: null, error: null })
+    const [{ data: event, error: eventError }, { data: occurrence, error: occurrenceError }, { data: attachments, error: attachmentError }] = await Promise.all([
       admin.from('events').select('id,title,description,affiliation,start_datetime,end_datetime,all_day,location,timezone,status,deleted_at').eq('id', guest.event_id).maybeSingle(),
-      admin.from('attachments').select('id,file_name,storage_path').eq('event_id', guest.event_id),
+      occurrenceRequest,
+      admin.from('attachments').select('id,file_name,storage_path,occurrence_id').eq('event_id', guest.event_id),
     ])
-    if (eventError || attachmentError) throw eventError ?? attachmentError
+    if (eventError || occurrenceError || attachmentError) throw eventError ?? occurrenceError ?? attachmentError
     if (!event || event.deleted_at || event.status !== 'scheduled') return json({ error: 'Meeting นี้ถูกยกเลิกแล้ว' }, 404)
+    if (tokenRow.occurrence_id && (!occurrence || occurrence.status !== 'scheduled')) return json({ error: 'นัดหมายรอบนี้ถูกยกเลิกแล้ว' }, 404)
+    const override = occurrence?.override_payload
+    const occurrenceOverride = override && typeof override === 'object' && !Array.isArray(override) ? override as Record<string, unknown> : {}
+    const occurrenceAttachments = (attachments ?? []).filter((attachment) => !attachment.occurrence_id || attachment.occurrence_id === tokenRow.occurrence_id)
+    const eventForGuest = {
+      ...event,
+      description: typeof occurrenceOverride.description === 'string' ? occurrenceOverride.description : event.description,
+      location: typeof occurrenceOverride.location === 'string' ? occurrenceOverride.location : event.location,
+      start_datetime: occurrence?.start_datetime ?? event.start_datetime,
+      end_datetime: occurrence?.end_datetime ?? event.end_datetime,
+    }
 
     if (request.method === 'POST') {
       const { data, error } = await admin.from('event_guests')
@@ -54,7 +69,7 @@ Deno.serve(async (request) => {
     }
 
     if (attachmentId) {
-      const attachment = (attachments ?? []).find((item) => item.id === attachmentId)
+      const attachment = occurrenceAttachments.find((item) => item.id === attachmentId)
       if (!attachment) return json({ error: 'ไม่พบเอกสารแนบนี้' }, 404)
       const { data, error } = await admin.storage.from('meeting-documents').createSignedUrl(attachment.storage_path, 300)
       if (error || !data) throw error ?? new Error('Unable to sign attachment')
@@ -62,13 +77,13 @@ Deno.serve(async (request) => {
       return Response.redirect(data.signedUrl, 302)
     }
 
-    const files = await Promise.all((attachments ?? []).map(async (attachment) => {
+    const files = await Promise.all(occurrenceAttachments.map(async (attachment) => {
       const { data, error } = await admin.storage.from('meeting-documents').createSignedUrl(attachment.storage_path, 300)
       if (error || !data) throw error ?? new Error('Unable to sign attachment')
       return { id: attachment.id, file_name: attachment.file_name, url: data.signedUrl }
     }))
     await admin.from('guest_tokens').update({ last_accessed_at: new Date().toISOString() }).eq('id', tokenRow.id)
-    return json({ event: { ...event, acknowledged_at: guest.acknowledged_at, attachments: files } })
+    return json({ event: { ...eventForGuest, acknowledged_at: guest.acknowledged_at, attachments: files } })
   } catch (error) {
     console.error(error)
     return json({ error: 'ไม่สามารถเปิดข้อมูล Meeting ได้ในขณะนี้' }, 500)

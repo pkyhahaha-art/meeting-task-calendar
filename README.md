@@ -33,6 +33,8 @@ Internal shared calendar built with React, TypeScript, Tailwind CSS, FullCalenda
 - A completed or cancelled Task cannot send a new notification. The form explains why instead of attempting to create an unusable external recipient link.
 - Email acknowledgement redirects to `/#/acknowledged`, displays a button-free success alert, and closes automatically after two seconds.
 - Meeting owners, Task creators, and Admin can see the latest delivery status per recipient. Creator rows identify automatic creator notifications; failed or quota-deferred deliveries can be queued for retry after migration `202609290001_notification_delivery_status.sql`.
+- Recurring Meetings can now be edited for one future occurrence only. That scope permits changes to the details, location, attendees, and attachments while preserving the existing reminder schedule; the scheduled message uses the occurrence's latest saved details without creating a duplicate reminder. This requires migrations `202609290007_occurrence_specific_meeting_details.sql` through `202609290010_allow_notification_worker_read_occurrences.sql` and the deployed `process-notification-queue` and `guest-event` functions.
+- Meeting notification information is grouped into one frame: scheduled reminders for the occurrence being viewed and messages sent when the Meeting was created or updated.
 
 ## Local setup
 
@@ -49,7 +51,7 @@ Internal shared calendar built with React, TypeScript, Tailwind CSS, FullCalenda
    VITE_SUPABASE_PUBLISHABLE_KEY=...
    ```
 
-3. Apply every SQL file in `supabase/migrations` in filename order. On an existing project, apply every migration newer than its latest installed migration, including `202609260001_task_assignee_read_only_documents.sql`, `202609270001_explicit_edit_notifications.sql`, `202609270002_multiple_recipients_acknowledgements.sql`, and `202609290001_notification_delivery_status.sql`.
+3. Apply every SQL file in `supabase/migrations` in filename order. On an existing project, apply every migration newer than its latest installed migration, including `202609260001_task_assignee_read_only_documents.sql`, `202609270001_explicit_edit_notifications.sql`, `202609270002_multiple_recipients_acknowledgements.sql`, `202609290001_notification_delivery_status.sql`, and `202609290007_occurrence_specific_meeting_details.sql` through `202609290010_allow_notification_worker_read_occurrences.sql`.
 
 4. In Supabase Auth, enable Email/Password and Confirm Email. For local development allow `http://127.0.0.1:5173/**`. GitHub Pages redirects use `/#/auth/callback` and `/#/reset-password`.
 
