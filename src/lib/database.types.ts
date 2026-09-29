@@ -40,9 +40,12 @@ export interface Database {
           location: string
           timezone: string
           recurrence_rule: string | null
+          recurrence_until: string | null
+          recurrence_count: number | null
           status: 'scheduled' | 'cancelled'
           deleted_at: string | null
           notification_requested_at: string | null
+          initial_notification_requested_at: string | null
           suppress_guest_notifications: boolean
           created_at: string
           updated_at: string
@@ -59,12 +62,21 @@ export interface Database {
           location?: string
           timezone?: string
           recurrence_rule?: string | null
+          recurrence_until?: string | null
+          recurrence_count?: number | null
           status?: 'scheduled' | 'cancelled'
           deleted_at?: string | null
           notification_requested_at?: string | null
+          initial_notification_requested_at?: string | null
           suppress_guest_notifications?: boolean
         }
         Update: Partial<Database['public']['Tables']['events']['Insert']>
+        Relationships: []
+      }
+      event_occurrences: {
+        Row: { id: string; event_id: string; occurrence_key: string; start_datetime: string; end_datetime: string | null; override_payload: Json; status: 'scheduled' | 'cancelled' | 'deleted'; purge_at: string | null; created_at: string; updated_at: string }
+        Insert: { id?: string; event_id: string; occurrence_key: string; start_datetime: string; end_datetime?: string | null; override_payload?: Json; status?: 'scheduled' | 'cancelled' | 'deleted'; purge_at?: string | null }
+        Update: Partial<Database['public']['Tables']['event_occurrences']['Insert']>
         Relationships: []
       }
       event_guests: {
@@ -219,6 +231,29 @@ export interface Database {
           target_recurrence_rule: string | null
         }
         Returns: Database['public']['Tables']['events']['Row']
+      }
+      create_meeting_event_v2: {
+        Args: {
+          target_title: string
+          target_description: string
+          target_location: string
+          target_affiliation: string
+          target_all_day: boolean
+          target_start_datetime: string
+          target_end_datetime: string | null
+          target_recurrence_rule: string | null
+          target_recurrence_until: string | null
+          target_recurrence_count: number | null
+        }
+        Returns: Database['public']['Tables']['events']['Row']
+      }
+      refresh_meeting_occurrences: {
+        Args: { target_event_id: string }
+        Returns: number
+      }
+      queue_meeting_initial_notifications: {
+        Args: { target_event_id: string }
+        Returns: number
       }
       replace_task_external_recipients: {
         Args: { target_task_id: string; recipient_emails: string[] }

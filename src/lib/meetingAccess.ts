@@ -7,6 +7,8 @@ export type MeetingEventPayload = {
   start_datetime: string
   end_datetime: string | null
   recurrence_rule: string | null
+  recurrence_until: string | null
+  recurrence_count: number | null
 }
 
 export function meetingCreateArgs(payload: MeetingEventPayload) {
@@ -19,6 +21,8 @@ export function meetingCreateArgs(payload: MeetingEventPayload) {
     target_start_datetime: payload.start_datetime,
     target_end_datetime: payload.end_datetime,
     target_recurrence_rule: payload.recurrence_rule,
+    target_recurrence_until: payload.recurrence_until,
+    target_recurrence_count: payload.recurrence_count,
   }
 }
 

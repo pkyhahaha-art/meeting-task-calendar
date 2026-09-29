@@ -12,6 +12,8 @@ test('meeting creation delegates ownership to the database', () => {
     start_datetime: '2026-09-23T02:00:00.000Z',
     end_datetime: '2026-09-23T03:00:00.000Z',
     recurrence_rule: null,
+    recurrence_until: null,
+    recurrence_count: null,
   })
 
   assert.equal('owner_user_id' in args, false)
@@ -24,6 +26,8 @@ test('meeting creation delegates ownership to the database', () => {
     target_start_datetime: '2026-09-23T02:00:00.000Z',
     target_end_datetime: '2026-09-23T03:00:00.000Z',
     target_recurrence_rule: null,
+    target_recurrence_until: null,
+    target_recurrence_count: null,
   })
 })
 

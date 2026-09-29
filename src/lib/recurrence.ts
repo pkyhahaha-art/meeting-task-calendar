@@ -3,6 +3,8 @@ export type RecurringEvent = {
   start_datetime: string
   end_datetime: string | null
   recurrence_rule: string | null
+  recurrence_until?: string | null
+  recurrence_count?: number | null
 }
 
 export type EventOccurrence<T extends RecurringEvent> = {
@@ -12,23 +14,42 @@ export type EventOccurrence<T extends RecurringEvent> = {
   end: string | null
 }
 
-function nextDate(current: Date, rule: string) {
-  const next = new Date(current)
-  if (rule.startsWith('FREQ=DAILY') || rule.includes('BYDAY=MO,TU,WE,TH,FR')) next.setUTCDate(next.getUTCDate() + 1)
-  else if (rule.startsWith('FREQ=WEEKLY')) next.setUTCDate(next.getUTCDate() + 7)
-  else if (rule.startsWith('FREQ=MONTHLY')) {
-    const day = next.getUTCDate()
-    next.setUTCMonth(next.getUTCMonth() + 1, 1)
-    const daysInMonth = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0)).getUTCDate()
-    if (day > daysInMonth) next.setUTCMonth(next.getUTCMonth() + 1, day)
-    else next.setUTCDate(day)
-  } else if (rule.startsWith('FREQ=YEARLY')) {
-    const month = next.getUTCMonth()
-    const day = next.getUTCDate()
-    next.setUTCFullYear(next.getUTCFullYear() + 1, month, day)
-    if (next.getUTCMonth() !== month) next.setUTCFullYear(next.getUTCFullYear() + 1, month, day)
-  } else return null
-  return next
+const weekdayCodes = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA']
+const bangkokParts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit' })
+
+function localDate(value: Date) {
+  const parts = bangkokParts.formatToParts(value)
+  const read = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value
+  return `${read('year')}-${read('month')}-${read('day')}`
+}
+
+function dayDifference(first: string, second: string) {
+  return Math.round((Date.parse(`${second}T00:00:00Z`) - Date.parse(`${first}T00:00:00Z`)) / 86_400_000)
+}
+
+function ruleParts(rule: string) {
+  return new Map(rule.split(';').map((part) => part.split('=', 2) as [string, string]))
+}
+
+function matches(current: Date, first: Date, parts: Map<string, string>) {
+  const frequency = parts.get('FREQ')
+  const interval = Math.max(1, Number(parts.get('INTERVAL')) || 1)
+  const currentDate = localDate(current)
+  const firstDate = localDate(first)
+  const dayOffset = dayDifference(firstDate, currentDate)
+  if (dayOffset < 0) return false
+  if (frequency === 'DAILY') return dayOffset % interval === 0
+  if (frequency === 'WEEKLY') {
+    if (Math.floor(dayOffset / 7) % interval !== 0) return false
+    const allowedDays = parts.get('BYDAY')?.split(',')
+    const weekday = weekdayCodes[new Date(`${currentDate}T12:00:00+07:00`).getUTCDay()]
+    return allowedDays ? allowedDays.includes(weekday) : weekday === weekdayCodes[new Date(`${firstDate}T12:00:00+07:00`).getUTCDay()]
+  }
+  const [currentYear, currentMonth, currentDay] = currentDate.split('-').map(Number)
+  const [firstYear, firstMonth, firstDay] = firstDate.split('-').map(Number)
+  if (frequency === 'MONTHLY') return currentDay === firstDay && ((currentYear - firstYear) * 12 + currentMonth - firstMonth) % interval === 0
+  if (frequency === 'YEARLY') return currentMonth === firstMonth && currentDay === firstDay && (currentYear - firstYear) % interval === 0
+  return false
 }
 
 export function expandEvent<T extends RecurringEvent>(event: T, rangeStart: Date, rangeEnd: Date): EventOccurrence<T>[] {
@@ -41,20 +62,20 @@ export function expandEvent<T extends RecurringEvent>(event: T, rangeStart: Date
       : []
   }
 
+  const parts = ruleParts(event.recurrence_rule)
+  const recurrenceUntil = event.recurrence_until ? new Date(event.recurrence_until) : null
   const occurrences: EventOccurrence<T>[] = []
-  let current = first
-  for (let index = 0; index < 5000 && current <= rangeEnd; index += 1) {
-    const weekday = current.getUTCDay()
-    const allowed = !event.recurrence_rule.includes('BYDAY=MO,TU,WE,TH,FR') || (weekday >= 1 && weekday <= 5)
-    if (allowed && current >= rangeStart) occurrences.push({
+  let occurrenceCount = 0
+  for (let current = new Date(first); current <= rangeEnd && occurrenceCount < (event.recurrence_count ?? Infinity); current.setUTCDate(current.getUTCDate() + 1)) {
+    if (recurrenceUntil && current > recurrenceUntil) break
+    if (!matches(current, first, parts)) continue
+    occurrenceCount += 1
+    if (current >= rangeStart) occurrences.push({
       key: `${event.id}-${current.toISOString()}`,
       event,
       start: current.toISOString(),
       end: duration === null ? null : new Date(current.getTime() + duration).toISOString(),
     })
-    const next = nextDate(current, event.recurrence_rule)
-    if (!next || next <= current) break
-    current = next
   }
   return occurrences
 }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { bangkokDate, formatDisplayDate, invalidGuestEmails, isPastBangkokDate, parseDisplayDate, parseGuestEmails, recurrenceFromRule, recurrenceRule, reminderDate } from './eventForm.js'
+import { bangkokDate, formatDisplayDate, invalidGuestEmails, isPastBangkokDate, meetingRecurrenceFromRule, meetingRecurrenceRule, meetingReminderKeysFromTemplates, meetingReminderStatus, pastMeetingReminderKeys, parseDisplayDate, parseGuestEmails, recurrenceFromRule, recurrenceRule, reminderDate } from './eventForm.js'
 
 test('parses and deduplicates guest emails', () => {
   assert.deepEqual(parseGuestEmails('A@gmail.com, b@gmail.com\na@gmail.com'), ['a@gmail.com', 'b@gmail.com'])
@@ -13,10 +13,40 @@ test('maps recurrence values both ways', () => {
   assert.equal(recurrenceFromRule('FREQ=MONTHLY'), 'monthly')
 })
 
+test('maps custom Meeting recurrences to and from an RRULE', () => {
+  const recurrence = { frequency: 'week' as const, interval: 2, weekdays: ['MO', 'WE'] as const, until: '2026-12-31', count: 12 }
+  assert.equal(meetingRecurrenceRule(recurrence), 'FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE')
+  assert.deepEqual(
+    meetingRecurrenceFromRule('FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE', '2026-09-28', '2026-12-31T16:59:59.999Z', 12),
+    recurrence,
+  )
+})
+
 test('calculates reminder schedule from event start', () => {
   const start = new Date('2027-03-19T09:00:00+07:00')
   assert.equal(reminderDate(start, '0:minute').toISOString(), '2027-03-19T02:00:00.000Z')
   assert.equal(reminderDate(start, '3:day').toISOString(), '2027-03-16T02:00:00.000Z')
+})
+
+test('cancels a Meeting reminder that was already due when it is saved', () => {
+  const now = new Date('2026-09-29T05:33:00.000Z')
+  assert.equal(meetingReminderStatus(new Date('2026-09-28T05:50:00.000Z'), now), 'cancelled')
+  assert.equal(meetingReminderStatus(new Date('2026-09-29T05:50:00.000Z'), now), 'scheduled')
+})
+
+test('identifies every selected reminder that would be skipped', () => {
+  const start = new Date('2026-09-29T05:50:00.000Z')
+  const now = new Date('2026-09-29T05:33:00.000Z')
+  assert.deepEqual(pastMeetingReminderKeys(start, ['1:day', '0:minute'], now), ['1:day'])
+})
+
+test('keeps only unique base reminders when editing a recurring Meeting', () => {
+  assert.deepEqual(meetingReminderKeysFromTemplates([
+    { occurrenceId: null, offsetValue: 3, offsetUnit: 'day' },
+    { occurrenceId: 'first-occurrence', offsetValue: 3, offsetUnit: 'day' },
+    { occurrenceId: 'second-occurrence', offsetValue: 3, offsetUnit: 'day' },
+    { occurrenceId: null, offsetValue: 3, offsetUnit: 'day' },
+  ]), ['3:day'])
 })
 
 test('flags dates before today in Bangkok', () => {

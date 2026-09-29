@@ -20,7 +20,7 @@ test('renders a complete Meeting HTML card with secure document links', () => {
     start_datetime: '2026-09-23T02:00:00.000Z',
     end_datetime: '2026-09-23T03:00:00.000Z',
     location: 'Room 1',
-    recurrence_rule: 'FREQ=WEEKLY',
+    recurrence_rule: 'FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE',
     status: 'scheduled',
     ack_url: 'https://project.supabase.co/functions/v1/email-acknowledgement?token=scoped',
     meeting_documents: [
@@ -35,7 +35,7 @@ test('renders a complete Meeting HTML card with secure document links', () => {
   assert.match(card, /สมชาย &lt;owner@gmail.com&gt;/)
   assert.match(card, /หน่วยงาน \/ สังกัด/)
   assert.match(card, /กคน\.ฝลส\./)
-  assert.match(card, /ทุกสัปดาห์/)
+  assert.match(card, /ทุก 2 สัปดาห์ \(จันทร์, พุธ\)/)
   assert.match(card, /เอกสารและลิงก์ Google Drive \(2\)/)
   assert.match(card, /&lt;agenda&gt;\.pdf/)
   assert.match(card, /1\.0 MB/)

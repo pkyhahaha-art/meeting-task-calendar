@@ -17,7 +17,7 @@ import { TaskDialog, type TaskDetails, type TaskDraft } from '../components/Task
 import { useLanguage } from '../i18n/LanguageProvider'
 import { useLocation, useNavigate } from 'react-router-dom'
 import type { Database } from '../lib/database.types'
-import { bangkokDate, isPastBangkokDate, parseGuestEmails, recurrenceRule, reminderDate, type ReminderKey } from '../lib/eventForm'
+import { bangkokDate, isPastBangkokDate, meetingRecurrenceRule, meetingReminderKeysFromTemplates, meetingReminderStatus, parseGuestEmails, recurrenceRule, reminderDate } from '../lib/eventForm'
 import { appUrl } from '../lib/appUrl'
 import { canManageMeeting, meetingCreateArgs } from '../lib/meetingAccess'
 import { expandEvent } from '../lib/recurrence'
@@ -44,9 +44,8 @@ function toIso(date: string, time: string, allDay: boolean) {
   return new Date(`${date}T${time}:00+07:00`).toISOString()
 }
 
-function reminderKey(row: ReminderRow): ReminderKey | null {
-const key = `${row.offset_value}:${row.offset_unit}`
-return ['0:minute', '1:month', '1:week', '3:day', '1:day'].includes(key) ? key as ReminderKey : null
+function endOfBangkokDay(date: string) {
+  return new Date(`${date}T23:59:59.999+07:00`).toISOString()
 }
 
 function safeFileName(name: string) {
@@ -82,7 +81,7 @@ function calendarDayKey(date: Date | string) {
 
 export function CalendarPage() {
   const { user, profile } = useAuth()
-  const { language } = useLanguage()
+  const { language, text } = useLanguage()
   const { search: locationSearch } = useLocation()
   const navigate = useNavigate()
   const confirm = useConfirm()
@@ -94,7 +93,7 @@ export function CalendarPage() {
   const [showOverdue, setShowOverdue] = useState(true)
   const [sideTab, setSideTab] = useState<'upcoming' | 'documents'>('upcoming')
   const [taskSaveWarning, setTaskSaveWarning] = useState('')
-  const [eventDialog, setEventDialog] = useState<{ open: boolean; event: EventRow | null; date?: string }>({ open: false, event: null })
+  const [eventDialog, setEventDialog] = useState<{ open: boolean; event: EventRow | null; date?: string; occurrenceStart?: string }>({ open: false, event: null })
   const [taskDialog, setTaskDialog] = useState<{ open: boolean; task: TaskRow | null; date?: string }>({ open: false, task: null })
   const [openedEventLink, setOpenedEventLink] = useState<string | null>(null)
   const [openedTaskLink, setOpenedTaskLink] = useState<string | null>(null)
@@ -165,22 +164,39 @@ export function CalendarPage() {
   })
 
   const selectedEvent = eventDialog.event
+  const selectedEventOccurrenceStart = eventDialog.occurrenceStart
   const selectedTask = taskDialog.task
   const canViewEventDeliveryStatus = Boolean(selectedEvent && (selectedEvent.owner_user_id === user?.id || profile?.role === 'admin'))
   const canViewTaskDeliveryStatus = Boolean(selectedTask && (selectedTask.creator_user_id === user?.id || profile?.role === 'admin'))
   const eventDetailsQuery = useQuery({
-    queryKey: ['event-details', selectedEvent?.id, canViewEventDeliveryStatus],
+    queryKey: ['event-details', selectedEvent?.id, selectedEventOccurrenceStart, canViewEventDeliveryStatus],
     enabled: Boolean(selectedEvent),
     refetchInterval: selectedEvent ? 3_000 : false,
     queryFn: async (): Promise<EventDetails> => {
       const eventId = selectedEvent!.id
-      const [guests, reminders, attachments, notificationDeliveries] = await Promise.all([
+      const occurrenceReminders = (async (): Promise<ReminderRow[]> => {
+        if (!selectedEventOccurrenceStart) return []
+        if (new Date(selectedEventOccurrenceStart).getTime() === new Date(selectedEvent!.start_datetime).getTime()) {
+          const { data, error } = await supabase.from('reminders').select('*').eq('event_id', eventId).is('occurrence_id', null).returns<ReminderRow[]>()
+          if (error) throw error
+          return data
+        }
+        const { data: occurrenceRow, error: occurrenceError } = await supabase.from('event_occurrences').select('id').eq('event_id', eventId).eq('start_datetime', selectedEventOccurrenceStart).returns<{ id: string }>().maybeSingle()
+        const occurrence = occurrenceRow as { id: string } | null
+        if (occurrenceError) throw occurrenceError
+        if (!occurrence) return []
+        const { data, error } = await supabase.from('reminders').select('*').eq('event_id', eventId).eq('occurrence_id', occurrence.id).returns<ReminderRow[]>()
+        if (error) throw error
+        return data
+      })()
+      const [guests, reminders, attachments, notificationDeliveries, selectedReminders] = await Promise.all([
         supabase.from('event_guests').select('*').eq('event_id', eventId).is('revoked_at', null).returns<GuestRow[]>(),
-        supabase.from('reminders').select('*').eq('event_id', eventId).eq('status', 'scheduled').returns<ReminderRow[]>(),
+        supabase.from('reminders').select('*').eq('event_id', eventId).is('occurrence_id', null).eq('status', 'scheduled').returns<ReminderRow[]>(),
         supabase.from('attachments').select('*').eq('event_id', eventId).order('uploaded_at').returns<AttachmentRow[]>(),
         canViewEventDeliveryStatus
-          ? supabase.from('notification_deliveries').select('id,recipient_type,recipient_reference,channel,status,scheduled_at,sent_at,error_message,created_at').eq('event_id', eventId).order('created_at', { ascending: false }).returns<DeliveryStatusRow[]>()
+          ? supabase.from('notification_deliveries').select('id,reminder_id,recipient_type,recipient_reference,channel,status,scheduled_at,sent_at,error_message,created_at').eq('event_id', eventId).order('created_at', { ascending: false }).returns<DeliveryStatusRow[]>()
           : Promise.resolve({ data: [] as DeliveryStatusRow[], error: null }),
+        occurrenceReminders,
       ])
       if (guests.error) throw guests.error
       if (reminders.error) throw reminders.error
@@ -191,8 +207,13 @@ export function CalendarPage() {
         if (error || !data) throw error ?? new Error('ไม่สามารถเปิดไฟล์แนบได้')
         return { ...file, signedUrl: data.signedUrl }
       }))
-      const keys = reminders.data.map(reminderKey).filter((key): key is ReminderKey => Boolean(key))
-      return { guestEmails: guests.data.map((guest) => guest.email), guestAcknowledgements: Object.fromEntries(guests.data.map((guest) => [guest.email.toLowerCase(), guest.acknowledged_at])), reminderKeys: keys, notifyEmail: reminders.data.some((item) => item.channel_email), notifyLine: reminders.data.some((item) => item.channel_line), attachments: attachmentViews, notificationDeliveries: notificationDeliveries.data }
+      const keys = meetingReminderKeysFromTemplates(reminders.data.map((row) => ({
+        occurrenceId: row.occurrence_id,
+        offsetValue: row.offset_value,
+        offsetUnit: row.offset_unit,
+      })))
+      const selectedReminderIds = new Set(selectedReminders.map((reminder) => reminder.id))
+      return { guestEmails: guests.data.map((guest) => guest.email), guestAcknowledgements: Object.fromEntries(guests.data.map((guest) => [guest.email.toLowerCase(), guest.acknowledged_at])), reminderKeys: keys, notifyEmail: reminders.data.some((item) => item.channel_email), notifyLine: reminders.data.some((item) => item.channel_line), attachments: attachmentViews, occurrenceReminders: selectedReminders, occurrenceNotificationDeliveries: notificationDeliveries.data.filter((delivery) => delivery.reminder_id && selectedReminderIds.has(delivery.reminder_id)), notificationDeliveries: notificationDeliveries.data.filter((delivery) => !delivery.reminder_id) }
     },
   })
 
@@ -243,13 +264,18 @@ export function CalendarPage() {
       const eventUserId = userData.user.id
       if (!event && isPastBangkokDate(draft.date)) throw new Error('ไม่สามารถสร้าง Meeting ในวันที่ผ่านมาแล้ว')
       const startIso = toIso(draft.date, draft.start, draft.all_day)
-      const payload = { title: draft.title.trim(), description: draft.description.trim(), location: draft.location.trim(), affiliation: draft.affiliation.trim(), all_day: draft.all_day, start_datetime: startIso, end_datetime: draft.end ? toIso(draft.date, draft.end, draft.all_day) : null, recurrence_rule: recurrenceRule(draft.recurrence) }
+      const payload = {
+        title: draft.title.trim(), description: draft.description.trim(), location: draft.location.trim(), affiliation: draft.affiliation.trim(), all_day: draft.all_day,
+        start_datetime: startIso, end_datetime: draft.end ? toIso(draft.date, draft.end, draft.all_day) : null,
+        recurrence_rule: meetingRecurrenceRule(draft.recurrence), recurrence_until: draft.recurrence.until ? endOfBangkokDay(draft.recurrence.until) : null,
+        recurrence_count: draft.recurrence.count,
+      }
       let eventId = event?.id
       if (eventId) {
         const { error } = await supabase.from('events').update({ ...payload, suppress_guest_notifications: true }).eq('id', eventId)
         if (error) throw error
       } else {
-        const { data, error } = await supabase.rpc('create_meeting_event', meetingCreateArgs(payload)).single<EventRow>()
+        const { data, error } = await supabase.rpc('create_meeting_event_v2', meetingCreateArgs(payload)).single<EventRow>()
         if (error) throw error
         eventId = data.id
       }
@@ -277,9 +303,13 @@ export function CalendarPage() {
           const [value, unit] = key.split(':') as [string, 'minute' | 'day' | 'week' | 'month']
           const scheduledAt = reminderDate(start, key)
           return { event_id: eventId!, offset_value: Number(value), offset_unit: unit, scheduled_at: scheduledAt.toISOString(), channel_email: draft.notifyEmail, channel_line: draft.notifyLine,
-            status: event && !notifyRecipients && scheduledAt.getTime() <= Date.now() ? 'cancelled' as const : 'scheduled' as const }
+            status: meetingReminderStatus(scheduledAt) }
         })
         const { error } = await supabase.from('reminders').insert(reminders)
+        if (error) throw error
+      }
+      if (payload.recurrence_rule) {
+        const { error } = await supabase.rpc('refresh_meeting_occurrences', { target_event_id: eventId! })
         if (error) throw error
       }
       for (const file of draft.files) {
@@ -289,7 +319,14 @@ export function CalendarPage() {
         const { error } = await supabase.from('attachments').insert({ event_id: eventId, file_name: file.name, mime_type: file.type, file_size: file.size, storage_path: storagePath, uploaded_by: eventUserId })
         if (error) { await supabase.storage.from('meeting-documents').remove([storagePath]); throw error }
       }
-      if (event) {
+      if (!event) {
+        const { error } = await supabase.from('events').update({ suppress_guest_notifications: false }).eq('id', eventId)
+        if (error) throw error
+        if (draft.sendImmediate) {
+          const { error: notificationError } = await supabase.rpc('queue_meeting_initial_notifications', { target_event_id: eventId! })
+          if (notificationError) throw notificationError
+        }
+      } else {
         const { error } = await supabase.from('events').update({
           suppress_guest_notifications: false,
           ...(notifyRecipients ? { notification_requested_at: new Date().toISOString() } : {}),
@@ -492,7 +529,7 @@ export function CalendarPage() {
   const calendarEntries = [
     ...(showMeetings ? eventRows.flatMap((event) => expandEvent(event, occurrenceStart, occurrenceEnd).map((occurrence) => {
       const isOverdue = isPastBangkokDate(calendarDayKey(occurrence.start))
-      return { id: `event-${occurrence.key}`, title: event.title, start: occurrence.start, end: occurrence.end || undefined, allDay: event.all_day, backgroundColor: isOverdue ? '#fee2e2' : event.owner_user_id === user?.id ? '#edddf6' : '#f1e7fa', borderColor: 'transparent', textColor: isOverdue ? '#991b1b' : '#6b2170', extendedProps: { kind: 'event', row: event, isOverdue } }
+      return { id: `event-${occurrence.key}`, title: event.title, start: occurrence.start, end: occurrence.end || undefined, allDay: event.all_day, backgroundColor: isOverdue ? '#fee2e2' : event.owner_user_id === user?.id ? '#edddf6' : '#f1e7fa', borderColor: 'transparent', textColor: isOverdue ? '#991b1b' : '#6b2170', extendedProps: { kind: 'event', row: event, isOverdue, occurrenceStart: occurrence.start } }
     })) : []),
     ...(showTasks ? taskRows.map((task) => {
       const isOverdue = isTaskOverdue(task.status, task.due_date)
@@ -510,7 +547,7 @@ export function CalendarPage() {
   const completedCount = (tasksQuery.data ?? []).filter((task) => task.status === 'completed').length
   const openCalendarEntry = (entry: (typeof calendarEntries)[number]) => {
     if (entry.extendedProps.kind === 'task') setTaskDialog({ open: true, task: entry.extendedProps.row as TaskRow })
-    else setEventDialog({ open: true, event: entry.extendedProps.row as EventRow })
+    else setEventDialog({ open: true, event: entry.extendedProps.row as EventRow, occurrenceStart: (entry.extendedProps as { occurrenceStart?: string }).occurrenceStart })
   }
   const openRecentDocument = (document: RecentDocument) => {
     if (document.parent === 'task') {
@@ -547,13 +584,13 @@ export function CalendarPage() {
   const busy = eventMutation.isPending || taskMutation.isPending || deleteEventMutation.isPending || deleteTaskMutation.isPending || deleteEventAttachmentMutation.isPending || deleteTaskAttachmentMutation.isPending || toggleTaskMutation.isPending || acknowledgeTaskMutation.isPending
   const warnPastCreation = async (date: string) => {
     if (!isPastBangkokDate(date)) return false
-    await confirm({ title: 'ไม่สามารถสร้างรายการย้อนหลัง', message: `ไม่สามารถสร้าง Meeting หรือ Task ก่อนวันที่ ${bangkokDate()} ได้`, confirmLabel: 'รับทราบ', tone: 'danger' })
+    await confirm({ title: text('ไม่สามารถสร้างรายการย้อนหลัง', 'Cannot create an item in the past'), message: text(`ไม่สามารถสร้าง Meeting หรือ Task ก่อนวันที่ ${bangkokDate()} ได้`, `Meetings and Tasks cannot be created before ${bangkokDate()}.`), confirmLabel: text('รับทราบ', 'OK'), tone: 'danger' })
     return true
   }
 
   return (
     <main className="mx-auto max-w-[1600px] p-4 sm:p-6 xl:flex xl:h-[calc(100vh-4rem)] xl:flex-col xl:overflow-hidden xl:p-3">
-      <section className="relative mb-6 min-h-64 overflow-hidden rounded-[28px] border border-purple-100 bg-gradient-to-r from-[#f0dcff] via-[#fff0f7] to-[#eee6ff] px-6 py-7 shadow-sm sm:min-h-72 sm:px-8 xl:mb-2 xl:h-40 xl:min-h-0 xl:shrink-0 xl:px-8 xl:py-3" aria-label="ยินดีต้อนรับ">
+      <section className="relative mb-6 min-h-64 overflow-hidden rounded-[28px] border border-purple-100 bg-gradient-to-r from-[#f0dcff] via-[#fff0f7] to-[#eee6ff] px-6 py-7 shadow-sm sm:min-h-72 sm:px-8 xl:mb-2 xl:h-40 xl:min-h-0 xl:shrink-0 xl:px-8 xl:py-3" aria-label={text('ยินดีต้อนรับ', 'Welcome')}>
         <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[28px]" aria-hidden="true">
           <span className="absolute -left-16 -top-24 h-64 w-64 rounded-full bg-white/35 blur-2xl" />
           <span className="absolute -bottom-24 right-8 h-64 w-64 rounded-full bg-purple-300/25 blur-2xl" />
@@ -570,36 +607,36 @@ export function CalendarPage() {
           <span className="absolute bottom-3 left-[65%] hidden h-12 w-24 rounded-[50%] border-t-2 border-purple-400/20 xl:block" />
         </div>
         <div className="relative z-20 max-w-full sm:max-w-[54%] xl:max-w-[56%]">
-          <p className="mb-2 flex items-center gap-2 text-sm font-bold text-brand-800 xl:mb-0.5 xl:text-[11px]"><Sparkles size={16} />จัดการนัดหมาย ประชุม งานสำคัญ <CalendarCheck2 className="text-violet-500" size={18} /></p>
-          <h1 className="text-3xl font-extrabold leading-tight text-brand-900 sm:text-4xl xl:text-[1.65rem]">ให้ทุกวันเป็นวันของความสำเร็จ</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 xl:mt-1 xl:text-xs xl:leading-5">ปฏิทินอัจฉริยะสำหรับชาว กฟภ. ช่วยให้การทำงานเป็นระบบมากขึ้น<br className="hidden xl:block" /> นัดหมายง่าย ไม่พลาดทุกภารกิจ สู่อนาคตพลังงานที่ยั่งยืน</p>
-          <p className="mt-4 inline-flex rounded-full bg-white/55 px-5 py-2 text-sm font-bold text-brand-700 shadow-sm backdrop-blur-sm xl:mt-2 xl:px-4 xl:py-1 xl:text-xs">“ ร่วมขับเคลื่อนพลังงาน เพื่อชีวิตที่ดีกว่าของทุกคน ”</p>
+          <p className="mb-2 flex items-center gap-2 text-sm font-bold text-brand-800 xl:mb-0.5 xl:text-[11px]"><Sparkles size={16} />{text('จัดการนัดหมาย ประชุม งานสำคัญ', 'Manage appointments, meetings, and important tasks')} <CalendarCheck2 className="text-violet-500" size={18} /></p>
+          <h1 className="text-3xl font-extrabold leading-tight text-brand-900 sm:text-4xl xl:text-[1.65rem]">{text('ให้ทุกวันเป็นวันของความสำเร็จ', 'Make every day a success')}</h1>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 xl:mt-1 xl:text-xs xl:leading-5">{text('ปฏิทินอัจฉริยะสำหรับชาว กฟภ. ช่วยให้การทำงานเป็นระบบมากขึ้น นัดหมายง่าย ไม่พลาดทุกภารกิจ สู่อนาคตพลังงานที่ยั่งยืน', 'A smart calendar for PEA teams. Organize work, keep every appointment in view, and move toward a sustainable energy future.')}</p>
+          <p className="mt-4 inline-flex rounded-full bg-white/55 px-5 py-2 text-sm font-bold text-brand-700 shadow-sm backdrop-blur-sm xl:mt-2 xl:px-4 xl:py-1 xl:text-xs">{text('“ ร่วมขับเคลื่อนพลังงาน เพื่อชีวิตที่ดีกว่าของทุกคน ”', '“ Driving energy for a better life for everyone ”')}</p>
         </div>
         <div className="absolute right-[25.5rem] top-2 z-30 hidden -rotate-2 rounded-[22px] border border-purple-200/70 bg-white/80 px-4 py-2 pr-8 text-center text-xs font-bold leading-4 text-brand-800 shadow-sm backdrop-blur-sm xl:block">
           <span className="absolute -right-2 top-1/2 h-4 w-4 -translate-y-1/2 rotate-45 border-r border-t border-purple-200/70 bg-white/80" />
-          <span className="relative z-10">นัดง่าย<br />งานราบรื่น<br />ไปด้วยกัน</span>
+          <span className="relative z-10">{text('นัดง่าย', 'Plan easily')}<br />{text('งานราบรื่น', 'Work smoothly')}<br />{text('ไปด้วยกัน', 'Together')}</span>
           <Zap className="absolute right-2 top-1/2 -translate-y-1/2 text-amber-500" size={18} />
         </div>
-        <div className="absolute right-4 top-3 z-30 hidden rounded-[20px] bg-white/65 px-4 py-2 text-center text-[10px] font-bold leading-4 text-brand-800 shadow-sm backdrop-blur-sm xl:block">พลังงาน<br />เชื่อมโยงอนาคต <span className="text-pink-500">♥</span></div>
-        <img src={bannerHero} alt="มาสคอต PEA โบกมือข้างปฏิทินและต้นไม้" className="pointer-events-none absolute bottom-0 right-2 z-10 hidden w-[46%] max-w-[40rem] object-contain drop-shadow-[0_12px_8px_rgba(76,15,93,0.28)] sm:block xl:right-8 xl:h-[9.75rem] xl:w-auto xl:max-w-none" />
+        <div className="absolute right-4 top-3 z-30 hidden rounded-[20px] bg-white/65 px-4 py-2 text-center text-[10px] font-bold leading-4 text-brand-800 shadow-sm backdrop-blur-sm xl:block">{text('พลังงาน', 'Energy')}<br />{text('เชื่อมโยงอนาคต', 'for the future')} <span className="text-pink-500">♥</span></div>
+        <img src={bannerHero} alt={text('มาสคอต PEA โบกมือข้างปฏิทินและต้นไม้', 'PEA mascot waving beside a calendar and trees')} className="pointer-events-none absolute bottom-0 right-2 z-10 hidden w-[46%] max-w-[40rem] object-contain drop-shadow-[0_12px_8px_rgba(76,15,93,0.28)] sm:block xl:right-8 xl:h-[9.75rem] xl:w-auto xl:max-w-none" />
       </section>
       <div className="grid gap-5 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,1fr)_260px] xl:gap-3">
       <div className="min-w-0 xl:flex xl:min-h-0 xl:flex-col">
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between xl:mb-1 xl:min-h-9 xl:shrink-0">
-        <div><h2 className="text-2xl font-bold text-brand-900 xl:text-lg">ปฏิทิน Meeting & Task</h2></div>
-        <div className="flex flex-wrap gap-2 xl:gap-1.5"><button className="btn-secondary xl:min-h-9 xl:px-3 xl:py-1.5 xl:text-sm" onClick={() => setTaskDialog({ open: true, task: null })}><ListTodo size={16} />เพิ่ม Task</button><button className="btn-primary xl:min-h-9 xl:px-3 xl:py-1.5 xl:text-sm" onClick={() => setEventDialog({ open: true, event: null })}><CalendarPlus size={16} />เพิ่ม Meeting</button></div>
+        <div><h2 className="text-2xl font-bold text-brand-900 xl:text-lg">{text('ปฏิทิน Meeting & Task', 'Meeting & Task Calendar')}</h2></div>
+        <div className="flex flex-wrap gap-2 xl:gap-1.5"><button className="btn-secondary xl:min-h-9 xl:px-3 xl:py-1.5 xl:text-sm" onClick={() => setTaskDialog({ open: true, task: null })}><ListTodo size={16} />{text('เพิ่ม Task', 'Add task')}</button><button className="btn-primary xl:min-h-9 xl:px-3 xl:py-1.5 xl:text-sm" onClick={() => setEventDialog({ open: true, event: null })}><CalendarPlus size={16} />{text('เพิ่ม Meeting', 'Add meeting')}</button></div>
       </div>
       <div className="card p-3 sm:p-5 xl:flex xl:min-h-0 xl:flex-1 xl:flex-col xl:p-3">
         <div className="mb-4 grid gap-3 lg:grid-cols-[minmax(235px,1fr)_minmax(0,2fr)] lg:items-start lg:gap-4 xl:mb-2 xl:grid-cols-[180px_minmax(0,1fr)] xl:gap-2 xl:shrink-0">
-          <div className="relative w-full max-w-md xl:max-w-none"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} /><input className="field-input pl-10 xl:px-3 xl:py-1.5 xl:pl-9 xl:text-xs" placeholder="ค้นหา Meeting หรือ Task" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
-          <div className="flex flex-wrap justify-start gap-1.5 text-xs font-semibold lg:justify-end xl:flex-nowrap xl:gap-1" aria-label="ตัวกรองรายการในปฏิทิน">
-            <label className={`flex min-h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-xl border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-purple-300 xl:min-h-7 xl:gap-1 xl:px-1.5 xl:py-1 xl:text-[10px] ${showMeetings ? 'border-purple-300 bg-purple-100 text-purple-900' : 'border-slate-200 bg-white text-slate-500'}`}><input type="checkbox" className="h-4 w-4 accent-brand-600 xl:h-3 xl:w-3" checked={showMeetings} onChange={(event) => setShowMeetings(event.target.checked)} /><CalendarDays size={15} aria-hidden="true" /><span className="xl:hidden">แสดง Meeting</span><span className="hidden xl:inline">Meeting</span></label>
-            <label className={`flex min-h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-xl border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-amber-300 xl:min-h-7 xl:gap-1 xl:px-1.5 xl:py-1 xl:text-[10px] ${showTasks ? 'border-amber-300 bg-amber-100 text-amber-900' : 'border-slate-200 bg-white text-slate-500'}`}><input type="checkbox" className="h-4 w-4 accent-amber-600 xl:h-3 xl:w-3" checked={showTasks} onChange={(event) => setShowTasks(event.target.checked)} /><ListTodo size={15} aria-hidden="true" /><span className="xl:hidden">แสดง Task</span><span className="hidden xl:inline">Task</span></label>
-            <label className={`flex min-h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-xl border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-green-300 xl:min-h-7 xl:gap-1 xl:px-1.5 xl:py-1 xl:text-[10px] ${showCompletedTasks ? 'border-green-300 bg-green-100 text-green-900' : 'border-slate-200 bg-white text-slate-500'}`}><input type="checkbox" className="h-4 w-4 accent-green-600 xl:h-3 xl:w-3" checked={showCompletedTasks} onChange={(event) => setShowCompletedTasks(event.target.checked)} /><CheckCircle2 size={15} aria-hidden="true" /><span className="xl:hidden">แสดง Task ที่เสร็จแล้ว</span><span className="hidden xl:inline">Task เสร็จแล้ว</span></label>
-            <label className={`flex min-h-9 max-w-full cursor-pointer items-center gap-1.5 rounded-xl border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-red-300 lg:whitespace-nowrap xl:min-h-7 xl:gap-1 xl:px-1.5 xl:py-1 xl:text-[10px] ${showOverdue ? 'border-red-300 bg-red-100 text-red-900' : 'border-slate-200 bg-white text-slate-500'}`}><input type="checkbox" className="h-4 w-4 shrink-0 accent-red-600 xl:h-3 xl:w-3" checked={showOverdue} onChange={(event) => setShowOverdue(event.target.checked)} /><Clock3 size={15} className="shrink-0" aria-hidden="true" /><span className="xl:hidden">แสดง Task / Meeting เกินวันครบกำหนด/นัดหมาย</span><span className="hidden xl:inline">เกินกำหนด</span></label>
+          <div className="relative w-full max-w-md xl:max-w-none"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} /><input className="field-input pl-10 xl:px-3 xl:py-1.5 xl:pl-9 xl:text-xs" placeholder={text('ค้นหา Meeting หรือ Task', 'Search meetings or tasks')} value={search} onChange={(event) => setSearch(event.target.value)} /></div>
+          <div className="flex flex-wrap justify-start gap-1.5 text-xs font-semibold lg:justify-end xl:flex-nowrap xl:gap-1" aria-label={text('ตัวกรองรายการในปฏิทิน', 'Calendar filters')}>
+            <label className={`flex min-h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-xl border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-purple-300 xl:min-h-7 xl:gap-1 xl:px-1.5 xl:py-1 xl:text-[10px] ${showMeetings ? 'border-purple-300 bg-purple-100 text-purple-900' : 'border-slate-200 bg-white text-slate-500'}`}><input type="checkbox" className="h-4 w-4 accent-brand-600 xl:h-3 xl:w-3" checked={showMeetings} onChange={(event) => setShowMeetings(event.target.checked)} /><CalendarDays size={15} aria-hidden="true" /><span>{text('แสดง Meeting', 'Show meetings')}</span></label>
+            <label className={`flex min-h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-xl border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-amber-300 xl:min-h-7 xl:gap-1 xl:px-1.5 xl:py-1 xl:text-[10px] ${showTasks ? 'border-amber-300 bg-amber-100 text-amber-900' : 'border-slate-200 bg-white text-slate-500'}`}><input type="checkbox" className="h-4 w-4 accent-amber-600 xl:h-3 xl:w-3" checked={showTasks} onChange={(event) => setShowTasks(event.target.checked)} /><ListTodo size={15} aria-hidden="true" /><span>{text('แสดง Task', 'Show tasks')}</span></label>
+            <label className={`flex min-h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-xl border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-green-300 xl:min-h-7 xl:gap-1 xl:px-1.5 xl:py-1 xl:text-[10px] ${showCompletedTasks ? 'border-green-300 bg-green-100 text-green-900' : 'border-slate-200 bg-white text-slate-500'}`}><input type="checkbox" className="h-4 w-4 accent-green-600 xl:h-3 xl:w-3" checked={showCompletedTasks} onChange={(event) => setShowCompletedTasks(event.target.checked)} /><CheckCircle2 size={15} aria-hidden="true" /><span>{text('แสดง Task ที่เสร็จแล้ว', 'Show completed tasks')}</span></label>
+            <label className={`flex min-h-9 max-w-full cursor-pointer items-center gap-1.5 rounded-xl border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-red-300 lg:whitespace-nowrap xl:min-h-7 xl:gap-1 xl:px-1.5 xl:py-1 xl:text-[10px] ${showOverdue ? 'border-red-300 bg-red-100 text-red-900' : 'border-slate-200 bg-white text-slate-500'}`}><input type="checkbox" className="h-4 w-4 shrink-0 accent-red-600 xl:h-3 xl:w-3" checked={showOverdue} onChange={(event) => setShowOverdue(event.target.checked)} /><Clock3 size={15} className="shrink-0" aria-hidden="true" /><span>{text('แสดง Task / Meeting เกินวันครบกำหนด/นัดหมาย', 'Show overdue tasks and past meetings')}</span></label>
           </div>
         </div>
-        {(eventsQuery.isError || tasksQuery.isError || profilesQuery.isError) && <p className="mb-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">โหลดข้อมูลไม่สำเร็จ กรุณาตรวจสอบว่าได้รัน migration ล่าสุดแล้ว</p>}
+        {(eventsQuery.isError || tasksQuery.isError || profilesQuery.isError) && <p className="mb-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{text('โหลดข้อมูลไม่สำเร็จ กรุณาตรวจสอบว่าได้รัน migration ล่าสุดแล้ว', 'Could not load data. Check that the latest migrations have been applied.')}</p>}
         <div className="calendar-fill relative xl:min-h-0 xl:flex-1">
         <FullCalendar
           plugins={[dayGridPlugin, interactionPlugin]}
@@ -621,7 +658,7 @@ export function CalendarPage() {
           eventClick={(info) => {
             setCalendarTooltip(null)
             if (info.event.extendedProps.kind === 'task') setTaskDialog({ open: true, task: info.event.extendedProps.row as TaskRow })
-            else setEventDialog({ open: true, event: info.event.extendedProps.row as EventRow })
+            else setEventDialog({ open: true, event: info.event.extendedProps.row as EventRow, occurrenceStart: info.event.extendedProps.occurrenceStart as string | undefined })
           }}
           eventMouseEnter={showCalendarTooltip}
           eventMouseLeave={() => setCalendarTooltip(null)}
@@ -630,7 +667,7 @@ export function CalendarPage() {
             const isTask = info.event.extendedProps.kind === 'task'
             const task = isTask ? info.event.extendedProps.row as TaskRow : null
             const Icon = isTask ? ListTodo : CalendarDays
-            return <div className="flex min-w-0 items-center gap-0.5 px-0.5"><Icon size={12} aria-hidden="true" /><div className="fc-event-title truncate">{task?.status === 'completed' ? 'เสร็จแล้ว: ' : ''}{info.event.title}</div></div>
+            return <div className="flex min-w-0 items-center gap-0.5 px-0.5"><Icon size={12} aria-hidden="true" /><div className="fc-event-title truncate">{task?.status === 'completed' ? text('เสร็จแล้ว: ', 'Completed: ') : ''}{info.event.title}</div></div>
           }}
           events={calendarEntries}
           headerToolbar={{ left: 'prev,next today', center: 'title', right: '' }}
@@ -638,58 +675,58 @@ export function CalendarPage() {
         />
         {calendarTooltip && <div role="tooltip" className="pointer-events-none fixed z-50 max-h-[70vh] w-72 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-xl" style={{ left: calendarTooltip.x, top: calendarTooltip.y }}>
           {calendarTooltip.items.map((item, index) => <section key={`${item.kind}-${item.title}-${index}`} className={index ? 'mt-3 border-t border-slate-100 pt-3' : undefined}>
-            <p className={`mb-2 text-xs font-bold ${item.kind === 'task' ? 'text-amber-700' : 'text-brand-700'}`}>{item.kind === 'task' ? 'Task' : 'Meeting'}</p>
+            <p className={`mb-2 text-xs font-bold ${item.kind === 'task' ? 'text-amber-700' : 'text-brand-700'}`}>{item.kind === 'task' ? text('งาน', 'Task') : text('การประชุม', 'Meeting')}</p>
             <dl className="space-y-1.5 text-sm text-slate-700">
-              <div><dt className="inline font-semibold text-slate-500">ชื่อ: </dt><dd className="inline break-words">{item.title}</dd></div>
-              <div><dt className="inline font-semibold text-slate-500">หน่วยงาน: </dt><dd className="inline break-words">{item.affiliation}</dd></div>
-              <div><dt className="inline font-semibold text-slate-500">{item.kind === 'task' ? 'วันครบกำหนด: ' : 'วันนัดหมาย: '}</dt><dd className="inline">{calendarDateLabel(item.date, language)}</dd></div>
-              {item.isOverdue && <p className="pt-1 font-semibold text-red-600">{item.kind === 'task' ? 'เกินวันครบกำหนดแล้ว' : 'เลยวันนัดหมายแล้ว'}</p>}
+              <div><dt className="inline font-semibold text-slate-500">{text('ชื่อ: ', 'Title: ')}</dt><dd className="inline break-words">{item.title}</dd></div>
+              <div><dt className="inline font-semibold text-slate-500">{text('หน่วยงาน: ', 'Department: ')}</dt><dd className="inline break-words">{item.affiliation}</dd></div>
+              <div><dt className="inline font-semibold text-slate-500">{item.kind === 'task' ? text('วันครบกำหนด: ', 'Due date: ') : text('วันนัดหมาย: ', 'Meeting date: ')}</dt><dd className="inline">{calendarDateLabel(item.date, language)}</dd></div>
+              {item.isOverdue && <p className="pt-1 font-semibold text-red-600">{item.kind === 'task' ? text('เกินวันครบกำหนดแล้ว', 'Past the due date') : text('เลยวันนัดหมายแล้ว', 'Past the meeting date')}</p>}
             </dl>
           </section>)}
         </div>}
         </div>
       </div>
       </div>
-      <aside className="grid content-start gap-4 sm:grid-cols-2 xl:min-h-0 xl:grid-cols-1 xl:gap-3 xl:overflow-y-auto" aria-label="สรุปปฏิทิน">
+      <aside className="grid content-start gap-4 sm:grid-cols-2 xl:min-h-0 xl:grid-cols-1 xl:gap-3 xl:overflow-y-auto" aria-label={text('สรุปปฏิทิน', 'Calendar summary')}>
         <section className="card p-4">
-          <div className="mb-3 flex items-center justify-between"><h2 className="font-bold text-brand-900">นัดหมายวันนี้</h2><span className="rounded-full bg-purple-50 px-2.5 py-1 text-sm font-bold text-brand-700">{todayEntries.length}</span></div>
+          <div className="mb-3 flex items-center justify-between"><h2 className="font-bold text-brand-900">{text('นัดหมายวันนี้', "Today's appointments")}</h2><span className="rounded-full bg-purple-50 px-2.5 py-1 text-sm font-bold text-brand-700">{todayEntries.length}</span></div>
           {todayEntries.length ? <div className="space-y-2">{todayEntries.slice(0, 4).map((entry) =>
-            <button key={entry.id} type="button" onClick={() => openCalendarEntry(entry)} className="flex w-full min-w-0 items-start gap-2 rounded-xl bg-purple-50/70 p-3 text-left hover:bg-purple-100"><span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${entry.extendedProps.isOverdue ? 'bg-red-500' : entry.extendedProps.kind === 'task' ? 'bg-amber-500' : 'bg-brand-600'}`} /><span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-800">{entry.title}</span><span className="text-xs text-slate-500">{entry.extendedProps.kind === 'task' ? 'Task' : 'Meeting'}</span></span></button>
-          )}</div> : <p className="rounded-xl bg-purple-50/70 p-3 text-sm text-slate-500">วันนี้ยังไม่มีรายการในปฏิทิน</p>}
+            <button key={entry.id} type="button" onClick={() => openCalendarEntry(entry)} className="flex w-full min-w-0 items-start gap-2 rounded-xl bg-purple-50/70 p-3 text-left hover:bg-purple-100"><span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${entry.extendedProps.isOverdue ? 'bg-red-500' : entry.extendedProps.kind === 'task' ? 'bg-amber-500' : 'bg-brand-600'}`} /><span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-800">{entry.title}</span><span className="text-xs text-slate-500">{entry.extendedProps.kind === 'task' ? text('งาน', 'Task') : text('การประชุม', 'Meeting')}</span></span></button>
+          )}</div> : <p className="rounded-xl bg-purple-50/70 p-3 text-sm text-slate-500">{text('วันนี้ยังไม่มีรายการในปฏิทิน', 'No calendar items today.')}</p>}
         </section>
         <section className="card p-4">
-          <h2 className="mb-3 font-bold text-brand-900">ภาพรวมงาน</h2>
+          <h2 className="mb-3 font-bold text-brand-900">{text('ภาพรวมงาน', 'Task overview')}</h2>
           <div className="grid grid-cols-3 gap-2 text-center">
-            <div className="rounded-xl bg-amber-50 px-1 py-3"><Clock3 className="mx-auto mb-1 text-amber-600" size={20} /><strong className="block text-xl text-amber-800">{pendingCount}</strong><span className="text-[11px] text-slate-600">รอดำเนินการ</span></div>
-            <div className="rounded-xl bg-green-50 px-1 py-3"><CheckCircle2 className="mx-auto mb-1 text-green-600" size={20} /><strong className="block text-xl text-green-700">{completedCount}</strong><span className="text-[11px] text-slate-600">เสร็จแล้ว</span></div>
-            <div className="rounded-xl bg-purple-50 px-1 py-3"><CalendarDays className="mx-auto mb-1 text-brand-600" size={20} /><strong className="block text-xl text-brand-700">{todayEntries.filter((entry) => entry.extendedProps.kind === 'event').length}</strong><span className="text-[11px] text-slate-600">ประชุมวันนี้</span></div>
+            <div className="rounded-xl bg-amber-50 px-1 py-3"><Clock3 className="mx-auto mb-1 text-amber-600" size={20} /><strong className="block text-xl text-amber-800">{pendingCount}</strong><span className="text-[11px] text-slate-600">{text('รอดำเนินการ', 'Pending')}</span></div>
+            <div className="rounded-xl bg-green-50 px-1 py-3"><CheckCircle2 className="mx-auto mb-1 text-green-600" size={20} /><strong className="block text-xl text-green-700">{completedCount}</strong><span className="text-[11px] text-slate-600">{text('เสร็จแล้ว', 'Completed')}</span></div>
+            <div className="rounded-xl bg-purple-50 px-1 py-3"><CalendarDays className="mx-auto mb-1 text-brand-600" size={20} /><strong className="block text-xl text-brand-700">{todayEntries.filter((entry) => entry.extendedProps.kind === 'event').length}</strong><span className="text-[11px] text-slate-600">{text('ประชุมวันนี้', 'Meetings today')}</span></div>
           </div>
         </section>
         <section className="card p-4 sm:col-span-2 xl:col-span-1">
-          <h2 className="sr-only">รายการถัดไปและเอกสารล่าสุด</h2>
+          <h2 className="sr-only">{text('รายการถัดไปและเอกสารล่าสุด', 'Upcoming items and recent documents')}</h2>
           <div className="mb-3 flex rounded-xl bg-purple-50 p-1 text-xs font-bold">
-            <button type="button" aria-pressed={sideTab === 'upcoming'} onClick={() => setSideTab('upcoming')} className={`flex-1 rounded-lg px-2 py-2 transition ${sideTab === 'upcoming' ? 'bg-white text-brand-900 shadow-sm' : 'text-slate-500 hover:text-brand-700'}`}>รายการถัดไป</button>
-            <button type="button" aria-pressed={sideTab === 'documents'} onClick={() => setSideTab('documents')} className={`flex-1 rounded-lg px-2 py-2 transition ${sideTab === 'documents' ? 'bg-white text-brand-900 shadow-sm' : 'text-slate-500 hover:text-brand-700'}`}>เอกสารล่าสุด</button>
+            <button type="button" aria-pressed={sideTab === 'upcoming'} onClick={() => setSideTab('upcoming')} className={`flex-1 rounded-lg px-2 py-2 transition ${sideTab === 'upcoming' ? 'bg-white text-brand-900 shadow-sm' : 'text-slate-500 hover:text-brand-700'}`}>{text('รายการถัดไป', 'Upcoming')}</button>
+            <button type="button" aria-pressed={sideTab === 'documents'} onClick={() => setSideTab('documents')} className={`flex-1 rounded-lg px-2 py-2 transition ${sideTab === 'documents' ? 'bg-white text-brand-900 shadow-sm' : 'text-slate-500 hover:text-brand-700'}`}>{text('เอกสารล่าสุด', 'Recent documents')}</button>
           </div>
           {sideTab === 'upcoming' ? upcomingEntries.length ? <div className="space-y-2">{upcomingEntries.map((entry) =>
             <button key={entry.id} type="button" onClick={() => openCalendarEntry(entry)} className="flex w-full items-start gap-3 rounded-xl border border-purple-50 p-2.5 text-left hover:bg-purple-50"><span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${entry.extendedProps.isOverdue ? 'bg-red-500' : entry.extendedProps.kind === 'task' ? 'bg-amber-500' : 'bg-brand-600'}`} /><span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-800">{entry.title}</span><span className="text-xs text-slate-500">{calendarDateLabel(new Date(entry.start), language)}</span></span></button>
-          )}</div> : <p className="text-sm text-slate-500">ยังไม่มีรายการถัดไป</p>
-            : recentDocumentsQuery.isLoading ? <p className="text-sm text-slate-500">กำลังโหลดเอกสาร…</p>
-              : recentDocumentsQuery.isError ? <p className="text-sm text-red-600">โหลดเอกสารไม่สำเร็จ</p>
+          )}</div> : <p className="text-sm text-slate-500">{text('ยังไม่มีรายการถัดไป', 'No upcoming items.')}</p>
+            : recentDocumentsQuery.isLoading ? <p className="text-sm text-slate-500">{text('กำลังโหลดเอกสาร…', 'Loading documents…')}</p>
+              : recentDocumentsQuery.isError ? <p className="text-sm text-red-600">{text('โหลดเอกสารไม่สำเร็จ', 'Could not load documents.')}</p>
                 : recentDocuments.length ? <div className="space-y-2">{recentDocuments.map((document) =>
                   <button key={document.id} type="button" onClick={() => openRecentDocument(document)} className="flex w-full items-start gap-2.5 rounded-xl border border-purple-50 p-2.5 text-left hover:bg-purple-50">
                     <span className="mt-0.5 text-brand-600">{document.kind === 'link' ? <Link2 size={18} /> : <FileText size={18} />}</span>
-                    <span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-800">{document.name}</span><span className="text-xs text-slate-500">{document.parent === 'event' ? 'Meeting' : 'Task'} · {calendarDateLabel(new Date(document.addedAt), language)}</span></span>
+                    <span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-800">{document.name}</span><span className="text-xs text-slate-500">{document.parent === 'event' ? text('การประชุม', 'Meeting') : text('งาน', 'Task')} · {calendarDateLabel(new Date(document.addedAt), language)}</span></span>
                   </button>
-                )}</div> : <p className="text-sm text-slate-500">ยังไม่มีเอกสารที่เปิดดูได้</p>}
+                )}</div> : <p className="text-sm text-slate-500">{text('ยังไม่มีเอกสารที่เปิดดูได้', 'No documents are available to open.')}</p>}
         </section>
       </aside>
       </div>
-      {(eventMutation.isError || taskMutation.isError || deleteEventMutation.isError || deleteTaskMutation.isError || deleteEventAttachmentMutation.isError || deleteTaskAttachmentMutation.isError || toggleTaskMutation.isError || acknowledgeTaskMutation.isError || retryNotificationMutation.isError) && <p className="fixed bottom-4 right-4 rounded-xl bg-red-600 px-4 py-3 text-sm text-white shadow-lg">ดำเนินการไม่สำเร็จ กรุณาตรวจสอบข้อมูลและลองใหม่</p>}
-      {taskSaveWarning && <div className="fixed bottom-4 right-4 max-w-md rounded-xl bg-amber-100 px-4 py-3 text-sm text-amber-950 shadow-lg" role="alert"><p>{taskSaveWarning}</p><button type="button" className="mt-2 font-semibold underline" onClick={() => setTaskSaveWarning('')}>ปิด</button></div>}
+      {(eventMutation.isError || taskMutation.isError || deleteEventMutation.isError || deleteTaskMutation.isError || deleteEventAttachmentMutation.isError || deleteTaskAttachmentMutation.isError || toggleTaskMutation.isError || acknowledgeTaskMutation.isError || retryNotificationMutation.isError) && <p className="fixed bottom-4 right-4 rounded-xl bg-red-600 px-4 py-3 text-sm text-white shadow-lg">{text('ดำเนินการไม่สำเร็จ กรุณาตรวจสอบข้อมูลและลองใหม่', 'The action could not be completed. Check the details and try again.')}</p>}
+      {taskSaveWarning && <div className="fixed bottom-4 right-4 max-w-md rounded-xl bg-amber-100 px-4 py-3 text-sm text-amber-950 shadow-lg" role="alert"><p>{taskSaveWarning}</p><button type="button" className="mt-2 font-semibold underline" onClick={() => setTaskSaveWarning('')}>{text('ปิด', 'Close')}</button></div>}
 
       <EventDialog
-        open={eventDialog.open} event={selectedEvent} details={eventDetailsQuery.data} selectedDate={eventDialog.date}
+        open={eventDialog.open} event={selectedEvent} details={eventDetailsQuery.data} selectedDate={eventDialog.date} occurrenceStart={eventDialog.occurrenceStart}
         canEdit={canEditEvent} canViewDeliveryStatus={canViewEventDeliveryStatus} busy={busy || eventDetailsQuery.isLoading}
         onClose={() => setEventDialog({ open: false, event: null })}
         onSave={(draft, notifyRecipients) => eventMutation.mutateAsync({ draft, event: selectedEvent, notifyRecipients })}

@@ -18,7 +18,12 @@ const messages = {
 } as const
 
 type MessageKey = keyof typeof messages.th
-type LanguageContextValue = { language: Language; setLanguage: (language: Language) => void; t: (key: MessageKey) => string }
+type LanguageContextValue = {
+  language: Language
+  setLanguage: (language: Language) => void
+  t: (key: MessageKey) => string
+  text: (thai: string, english: string) => string
+}
 
 const LanguageContext = createContext<LanguageContextValue | null>(null)
 
@@ -28,6 +33,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     language,
     setLanguage: (next) => { localStorage.setItem('ui-language', next); setLanguageState(next) },
     t: (key) => messages[language][key],
+    text: (thai, english) => language === 'th' ? thai : english,
   }), [language])
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>
 }

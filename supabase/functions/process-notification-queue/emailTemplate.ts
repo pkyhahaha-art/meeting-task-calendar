@@ -25,11 +25,19 @@ function formatDate(value: unknown) {
 function recurrenceLabel(value: unknown) {
   const rule = text(value)
   if (!rule) return ''
-  if (rule.includes('BYDAY=MO,TU,WE,TH,FR')) return 'ทุกวันทำการ'
-  if (rule.includes('FREQ=DAILY')) return 'ทุกวัน'
-  if (rule.includes('FREQ=WEEKLY')) return 'ทุกสัปดาห์'
-  if (rule.includes('FREQ=MONTHLY')) return 'ทุกเดือน'
-  if (rule.includes('FREQ=YEARLY')) return 'ทุกปี'
+  const parts = new Map<string, string>(rule.split(';').map((part) => part.split('=', 2) as [string, string]))
+  const interval = Math.max(1, Number(parts.get('INTERVAL')) || 1)
+  const every = interval === 1 ? 'ทุก' : `ทุก ${interval}`
+  const weekdays = (parts.get('BYDAY') ?? '').split(',').filter(Boolean)
+  const weekdayLabels: Record<string, string> = { MO: 'จันทร์', TU: 'อังคาร', WE: 'พุธ', TH: 'พฤหัสบดี', FR: 'ศุกร์', SA: 'เสาร์', SU: 'อาทิตย์' }
+  if (parts.get('FREQ') === 'DAILY') return interval === 1 ? 'ทุกวัน' : `${every} วัน`
+  if (parts.get('FREQ') === 'WEEKLY') {
+    if (interval === 1 && weekdays.join(',') === 'MO,TU,WE,TH,FR') return 'ทุกวันทำการ'
+    const days = weekdays.map((day) => weekdayLabels[day] ?? day).join(', ')
+    return `${every} สัปดาห์${days ? ` (${days})` : ''}`
+  }
+  if (parts.get('FREQ') === 'MONTHLY') return interval === 1 ? 'ทุกเดือน' : `${every} เดือน`
+  if (parts.get('FREQ') === 'YEARLY') return interval === 1 ? 'ทุกปี' : `${every} ปี`
   return rule
 }
 

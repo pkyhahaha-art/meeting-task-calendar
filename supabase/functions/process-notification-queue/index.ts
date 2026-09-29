@@ -88,6 +88,8 @@ async function payloadWithMeetingDetails(delivery: Delivery, payload: Record<str
     .eq('id', delivery.event_id).maybeSingle()
   if (eventError) throw new Error(`Unable to load Meeting details for email: ${errorMessage(eventError)}`)
   if (!event) throw new Error(`Unable to load Meeting details for email: event ${delivery.event_id} was not found`)
+  const occurrenceStart = text(payload.start_datetime)
+  const occurrenceEnd = text(payload.end_datetime)
   const [owner, attachments, documentLinks] = await Promise.all([
     supabase.from('profiles').select('full_name, email').eq('id', event.owner_user_id).maybeSingle(),
     supabase.from('attachments').select('id, file_name, file_size, storage_path').eq('event_id', event.id).order('uploaded_at'),
@@ -122,8 +124,8 @@ async function payloadWithMeetingDetails(delivery: Delivery, payload: Record<str
     title: event.title,
     description: event.description,
     affiliation: event.affiliation,
-    start_datetime: event.start_datetime,
-    end_datetime: event.end_datetime,
+    start_datetime: occurrenceStart || event.start_datetime,
+    end_datetime: occurrenceEnd || event.end_datetime,
     all_day: event.all_day,
     location: event.location,
     timezone: event.timezone,
@@ -200,12 +202,13 @@ Deno.serve(async (request) => {
   if (!cronSecret || request.headers.get('authorization') !== `Bearer ${cronSecret}`) {
     return new Response('Unauthorized', { status: 401 })
   }
-  const [{ error: recoveryError }, { error: lineReminderError }, { error: reminderError }] = await Promise.all([
+  const [{ error: recoveryError }, { error: staleReminderError }, { error: lineReminderError }, { error: reminderError }] = await Promise.all([
     supabase.rpc('requeue_stale_email_deliveries'),
+    supabase.rpc('cancel_stale_meeting_reminders'),
     supabase.rpc('queue_due_line_reminders'),
     supabase.rpc('queue_due_email_reminders'),
   ])
-  if (recoveryError || lineReminderError || reminderError) return new Response(recoveryError?.message ?? lineReminderError?.message ?? reminderError!.message, { status: 500 })
+  if (recoveryError || staleReminderError || lineReminderError || reminderError) return new Response(recoveryError?.message ?? staleReminderError?.message ?? lineReminderError?.message ?? reminderError!.message, { status: 500 })
 
   const now = new Date().toISOString()
   const { data, error } = await supabase
