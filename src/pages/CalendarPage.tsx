@@ -742,18 +742,18 @@ export function CalendarPage() {
       </div>
       </div>
       <aside className="grid content-start gap-4 sm:grid-cols-2 xl:flex xl:min-h-0 xl:flex-col xl:gap-3 xl:overflow-hidden" aria-label={text('สรุปปฏิทิน', 'Calendar summary')}>
-        <section className="card p-4">
-          <div className="mb-3 flex items-center justify-between"><h2 className="font-bold text-brand-900">{text('นัดหมายวันนี้', "Today's appointments")}</h2><span className="rounded-full bg-purple-50 px-2.5 py-1 text-sm font-bold text-brand-700">{todayEntries.length}</span></div>
-          {todayEntries.length ? <div className="space-y-2">{todayEntries.slice(0, 4).map((entry) =>
-            <button key={entry.id} type="button" onClick={() => openCalendarEntry(entry)} className="flex w-full min-w-0 items-start gap-2 rounded-xl bg-purple-50/70 p-3 text-left hover:bg-purple-100"><span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${entry.extendedProps.isOverdue ? 'bg-red-500' : entry.extendedProps.kind === 'task' ? 'bg-amber-500' : 'bg-brand-600'}`} /><span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-800">{entry.title}</span><span className="text-xs text-slate-500">{entry.extendedProps.kind === 'task' ? text('งาน', 'Task') : text('การประชุม', 'Meeting')}</span></span></button>
+        <section className="card p-4 xl:shrink-0 xl:p-2">
+          <div className="mb-3 flex items-center justify-between xl:mb-1"><h2 className="font-bold text-brand-900">{text('นัดหมายวันนี้', "Today's appointments")}</h2><span className="rounded-full bg-purple-50 px-2.5 py-1 text-sm font-bold text-brand-700 xl:px-2 xl:py-0.5 xl:text-xs">{todayEntries.length}</span></div>
+          {todayEntries.length ? <div className="space-y-2 xl:space-y-0.5">{todayEntries.slice(0, 4).map((entry) =>
+            <button key={entry.id} type="button" onClick={() => openCalendarEntry(entry)} className="flex w-full min-w-0 items-start gap-2 rounded-xl bg-purple-50/70 p-3 text-left hover:bg-purple-100 xl:gap-1.5 xl:p-1.5"><span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${entry.extendedProps.isOverdue ? 'bg-red-500' : entry.extendedProps.kind === 'task' ? 'bg-amber-500' : 'bg-brand-600'}`} /><span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-800 xl:text-xs">{entry.title}</span><span className="text-xs text-slate-500 xl:text-[10px]">{entry.extendedProps.kind === 'task' ? text('งาน', 'Task') : text('การประชุม', 'Meeting')}</span></span></button>
           )}</div> : <p className="rounded-xl bg-purple-50/70 p-3 text-sm text-slate-500">{text('วันนี้ยังไม่มีรายการในปฏิทิน', 'No calendar items today.')}</p>}
         </section>
-        <section className="card p-4">
-          <h2 className="mb-3 font-bold text-brand-900">{text('ภาพรวมงาน', 'Task overview')}</h2>
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <div className="rounded-xl bg-amber-50 px-1 py-3"><Clock3 className="mx-auto mb-1 text-amber-600" size={20} /><strong className="block text-xl text-amber-800">{pendingCount}</strong><span className="text-[11px] text-slate-600">{text('รอดำเนินการ', 'Pending')}</span></div>
-            <div className="rounded-xl bg-green-50 px-1 py-3"><CheckCircle2 className="mx-auto mb-1 text-green-600" size={20} /><strong className="block text-xl text-green-700">{completedCount}</strong><span className="text-[11px] text-slate-600">{text('เสร็จแล้ว', 'Completed')}</span></div>
-            <div className="rounded-xl bg-purple-50 px-1 py-3"><CalendarDays className="mx-auto mb-1 text-brand-600" size={20} /><strong className="block text-xl text-brand-700">{todayEntries.filter((entry) => entry.extendedProps.kind === 'event').length}</strong><span className="text-[11px] text-slate-600">{text('ประชุมวันนี้', 'Meetings today')}</span></div>
+        <section className="card p-4 xl:shrink-0 xl:p-2">
+          <h2 className="mb-3 font-bold text-brand-900 xl:mb-1">{text('ภาพรวมงาน', 'Task overview')}</h2>
+          <div className="grid grid-cols-3 gap-2 text-center xl:gap-1">
+            <div className="rounded-xl bg-amber-50 px-1 py-3 xl:py-1.5"><Clock3 className="mx-auto mb-1 text-amber-600" size={20} /><strong className="block text-xl text-amber-800 xl:text-lg">{pendingCount}</strong><span className="text-[11px] text-slate-600 xl:text-[10px]">{text('รอดำเนินการ', 'Pending')}</span></div>
+            <div className="rounded-xl bg-green-50 px-1 py-3 xl:py-1.5"><CheckCircle2 className="mx-auto mb-1 text-green-600" size={20} /><strong className="block text-xl text-green-700 xl:text-lg">{completedCount}</strong><span className="text-[11px] text-slate-600 xl:text-[10px]">{text('เสร็จแล้ว', 'Completed')}</span></div>
+            <div className="rounded-xl bg-purple-50 px-1 py-3 xl:py-1.5"><CalendarDays className="mx-auto mb-1 text-brand-600" size={20} /><strong className="block text-xl text-brand-700 xl:text-lg">{todayEntries.filter((entry) => entry.extendedProps.kind === 'event').length}</strong><span className="text-[11px] text-slate-600 xl:text-[10px]">{text('ประชุมวันนี้', 'Meetings today')}</span></div>
           </div>
         </section>
         <section className="card p-4 sm:col-span-2 xl:col-span-1 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">

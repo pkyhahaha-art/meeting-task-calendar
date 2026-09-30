@@ -80,6 +80,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .fc .fc-daygrid-more-link { display: inline-flex; align-items: center; margin: 2px 2px 1px; padding: 2px 6px; border: 1px solid #e4c5ec; border-radius: 9999px; background: #faf0fc; color: #741273; font-size: .62rem; font-weight: 700; line-height: 1.2; text-decoration: none; transition: background-color .15s, border-color .15s, color .15s; }
 .fc .fc-daygrid-more-link:hover { border-color: #c778d0; background: #f2dff5; color: #5a0e59; }
 .fc .fc-daygrid-more-link:focus-visible { outline: 2px solid rgba(133, 20, 132, .38); outline-offset: 1px; }
+.fc .fc-more-popover { display: flex; max-height: min(22rem, calc(100vh - 2rem)); flex-direction: column; border-color: #d9b5e2; border-radius: 14px; box-shadow: 0 12px 28px rgba(76, 15, 93, .2); overflow: hidden; }
+.fc .fc-more-popover .fc-popover-header { flex: none; background: #f8ebfa; color: #5a0e59; font-weight: 700; }
+.fc .fc-more-popover .fc-popover-body { min-height: 0; overflow-y: auto; }
+.fc .fc-view-harness:has(.fc-daygrid-body tr:last-child .fc-more-link[aria-expanded="true"]) .fc-more-popover { transform: translateY(calc(-100% + 1.5rem)); }
 .fc .fc-event.calendar-meeting { background: #e9d5f4 !important; border: 0 !important; border-left: 3px solid #851484 !important; }
 .fc .fc-event.calendar-meeting .fc-event-main { color: #4e0d53 !important; }
 .fc .fc-event.calendar-task { background: #ffebbd !important; border: 0 !important; border-left: 3px solid #d97706 !important; }
