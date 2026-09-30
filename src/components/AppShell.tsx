@@ -69,7 +69,7 @@ export function AppShell() {
   const displayName = profile?.full_name || user?.email || text('ผู้ใช้งาน', 'User')
 
   return (
-    <div className={`min-h-screen bg-[#f8f6fb] text-slate-900 lg:grid lg:grid-cols-[254px_minmax(0,1fr)] ${location.pathname === '/calendar' ? 'xl:h-screen xl:overflow-hidden' : ''}`}>
+    <div className={`min-h-screen bg-[#f8f6fb] text-slate-900 lg:grid lg:grid-cols-[254px_minmax(0,1fr)] ${location.pathname === '/calendar' ? 'calendar-page-shell' : ''}`}>
       <header className="sticky top-0 z-30 flex min-h-16 flex-wrap items-center justify-between gap-2 border-b border-purple-100 bg-white/95 px-4 py-2 backdrop-blur lg:hidden">
         <button type="button" onClick={() => setMenuOpen(true)} className="rounded-xl p-2 text-brand-700 hover:bg-purple-50" aria-label={text('เปิดเมนู', 'Open menu')}><Menu size={24} /></button>
         <span className="truncate text-sm font-bold text-brand-700">{t('appName')}</span>
@@ -99,7 +99,7 @@ export function AppShell() {
           <button type="button" onClick={() => void logout()} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-600 hover:bg-red-50 hover:text-red-700" aria-label={t('signOut')}><LogOut size={17} />{t('signOut')}</button>
         </div>
       </aside>
-      <div className={location.pathname === '/calendar' ? 'min-w-0 xl:h-screen xl:overflow-hidden' : 'min-w-0'}>
+      <div className={location.pathname === '/calendar' ? 'calendar-page-content min-w-0' : 'min-w-0'}>
         <header className="hidden min-h-16 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-b border-purple-100 bg-white/90 px-6 lg:grid">
           <div className="flex min-w-0 items-center gap-3">
             {location.pathname !== '/calendar' && <button type="button" onClick={() => navigate('/calendar')} className="btn-secondary min-h-9 px-3" aria-label={text('กลับไปหน้าปฏิทิน', 'Back to calendar')}><ArrowLeft size={16} />{text('กลับ', 'Back')}</button>}

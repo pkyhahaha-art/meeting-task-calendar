@@ -642,7 +642,7 @@ export function CalendarPage() {
   }
 
   return (
-    <main className="mx-auto max-w-[1600px] p-4 sm:p-6 xl:flex xl:h-[calc(100vh-4rem)] xl:flex-col xl:overflow-hidden xl:p-3">
+    <main className="calendar-page-main mx-auto max-w-[1600px] p-4 sm:p-6 xl:flex xl:flex-col xl:p-3">
       <section className="relative mb-6 min-h-64 overflow-hidden rounded-[28px] border border-purple-100 bg-gradient-to-r from-[#f0dcff] via-[#fff0f7] to-[#eee6ff] px-6 py-7 shadow-sm sm:min-h-72 sm:px-8 xl:mb-2 xl:h-40 xl:min-h-0 xl:shrink-0 xl:px-8 xl:py-3" aria-label={text('ยินดีต้อนรับ', 'Welcome')}>
         <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[28px]" aria-hidden="true">
           <span className="absolute -left-16 -top-24 h-64 w-64 rounded-full bg-white/35 blur-2xl" />
@@ -724,7 +724,8 @@ export function CalendarPage() {
           }}
           events={calendarEntries}
           headerToolbar={{ left: 'prev,next today', center: 'title', right: '' }}
-          dayMaxEvents={4}
+          dayMaxEvents
+          moreLinkContent={(info) => text(`+${info.num} เพิ่มเติม`, `+${info.num} more`)}
         />
         {calendarTooltip && <div role="tooltip" className="pointer-events-none fixed z-50 max-h-[70vh] w-72 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-xl" style={{ left: calendarTooltip.x, top: calendarTooltip.y }}>
           {calendarTooltip.items.map((item, index) => <section key={`${item.kind}-${item.title}-${index}`} className={index ? 'mt-3 border-t border-slate-100 pt-3' : undefined}>
@@ -740,7 +741,7 @@ export function CalendarPage() {
         </div>
       </div>
       </div>
-      <aside className="grid content-start gap-4 sm:grid-cols-2 xl:min-h-0 xl:grid-cols-1 xl:gap-3 xl:overflow-y-auto" aria-label={text('สรุปปฏิทิน', 'Calendar summary')}>
+      <aside className="grid content-start gap-4 sm:grid-cols-2 xl:flex xl:min-h-0 xl:flex-col xl:gap-3 xl:overflow-hidden" aria-label={text('สรุปปฏิทิน', 'Calendar summary')}>
         <section className="card p-4">
           <div className="mb-3 flex items-center justify-between"><h2 className="font-bold text-brand-900">{text('นัดหมายวันนี้', "Today's appointments")}</h2><span className="rounded-full bg-purple-50 px-2.5 py-1 text-sm font-bold text-brand-700">{todayEntries.length}</span></div>
           {todayEntries.length ? <div className="space-y-2">{todayEntries.slice(0, 4).map((entry) =>
@@ -755,7 +756,7 @@ export function CalendarPage() {
             <div className="rounded-xl bg-purple-50 px-1 py-3"><CalendarDays className="mx-auto mb-1 text-brand-600" size={20} /><strong className="block text-xl text-brand-700">{todayEntries.filter((entry) => entry.extendedProps.kind === 'event').length}</strong><span className="text-[11px] text-slate-600">{text('ประชุมวันนี้', 'Meetings today')}</span></div>
           </div>
         </section>
-        <section className="card p-4 sm:col-span-2 xl:col-span-1">
+        <section className="card p-4 sm:col-span-2 xl:col-span-1 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
           <h2 className="sr-only">{text('รายการถัดไปและเอกสารล่าสุด', 'Upcoming items and recent documents')}</h2>
           <div className="mb-3 flex rounded-xl bg-purple-50 p-1 text-xs font-bold">
             <button type="button" aria-pressed={sideTab === 'upcoming'} onClick={() => setSideTab('upcoming')} className={`flex-1 rounded-lg px-2 py-2 transition ${sideTab === 'upcoming' ? 'bg-white text-brand-900 shadow-sm' : 'text-slate-500 hover:text-brand-700'}`}>{text('รายการถัดไป', 'Upcoming')}</button>

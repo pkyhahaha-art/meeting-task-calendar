@@ -77,6 +77,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .fc .fc-day-today .fc-daygrid-day-number { display: flex; align-items: center; justify-content: center; width: 1.8rem; height: 1.8rem; margin: .2rem; border-radius: 9999px; background: #851484; color: #fff; font-weight: 700; box-shadow: 0 2px 5px rgba(133, 20, 132, 0.24); }
 .fc .fc-event { min-height: 15px; border-radius: 6px; padding: 0 2px; cursor: pointer; font-size: .63rem; line-height: 1.05; }
 .fc .fc-daygrid-event-harness { margin-top: 1px; }
+.fc .fc-daygrid-more-link { display: inline-flex; align-items: center; margin: 2px 2px 1px; padding: 2px 6px; border: 1px solid #e4c5ec; border-radius: 9999px; background: #faf0fc; color: #741273; font-size: .62rem; font-weight: 700; line-height: 1.2; text-decoration: none; transition: background-color .15s, border-color .15s, color .15s; }
+.fc .fc-daygrid-more-link:hover { border-color: #c778d0; background: #f2dff5; color: #5a0e59; }
+.fc .fc-daygrid-more-link:focus-visible { outline: 2px solid rgba(133, 20, 132, .38); outline-offset: 1px; }
 .fc .fc-event.calendar-meeting { background: #e9d5f4 !important; border: 0 !important; border-left: 3px solid #851484 !important; }
 .fc .fc-event.calendar-meeting .fc-event-main { color: #4e0d53 !important; }
 .fc .fc-event.calendar-task { background: #ffebbd !important; border: 0 !important; border-left: 3px solid #d97706 !important; }
@@ -86,9 +89,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .fc .fc-event.calendar-overdue { background: #fee2e2 !important; border: 0 !important; border-left: 3px solid #dc2626 !important; }
 .fc .fc-event.calendar-overdue .fc-event-main { color: #991b1b !important; }
 @media (min-width: 1280px) {
+  .calendar-page-shell { height: 100vh; overflow: hidden; }
+  .calendar-page-content { height: 100vh; overflow: hidden; }
+  .calendar-page-main { height: calc(100vh - 4rem); overflow: hidden; }
   .calendar-fill { overflow: hidden; }
   .calendar-fill .fc { height: 100%; }
   .calendar-fill .fc-scroller { overflow: hidden !important; }
+  .calendar-fill .fc-event { min-height: 13px; font-size: .58rem; }
 }
 @media (max-width: 1279px) {
   .calendar-fill .fc { min-height: 34rem; }
