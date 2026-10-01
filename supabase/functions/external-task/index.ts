@@ -56,7 +56,7 @@ async function issueToken(request: Request) {
     const token = randomToken()
     const tokenHash = await hashToken(token)
     const recipientTaskUrl = externalTaskUrl(publicAppUrl, token)
-    const { error: tokenError } = await admin.from('external_task_tokens').insert({ task_id: task.id, external_email: recipient.email, token_hash: tokenHash })
+    const { error: tokenError } = await admin.from('external_task_tokens').insert({ task_id: task.id, external_email: recipient.email, token_hash: tokenHash, expires_at: new Date(Date.now() + 30 * 24 * 60 * 60_000).toISOString() })
     if (tokenError) throw tokenError
     deliveries.push({ task_id: task.id, recipient_type: 'external_assignee', recipient_reference: recipient.email, channel: 'email', idempotency_key: `external-task:${notificationType}:${task.id}:${tokenHash}`, scheduled_at: now, template_key: notificationType, payload: { entity: 'task', id: task.id, title: task.title, description: task.description, due_date: task.due_date, due_time: task.due_time, external_url: recipientTaskUrl } })
   }

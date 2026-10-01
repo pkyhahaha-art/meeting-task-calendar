@@ -181,6 +181,7 @@ async function issueExternalTaskUrl(delivery: Delivery, taskId: string) {
     task_id: taskId,
     external_email: delivery.recipient_reference,
     token_hash: await hashToken(token),
+    expires_at: new Date(Date.now() + 30 * 24 * 60 * 60_000).toISOString(),
   })
   if (error) throw error
   const url = new URL(publicAppUrl)
