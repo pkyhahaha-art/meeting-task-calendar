@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useSearchParams, Link } from 'react-router-dom'
 import {
   Smartphone,
@@ -19,6 +20,7 @@ import peaLogo from '../../ภาพประกอบUI/PEA Logo (1).png'
 import { useLanguage } from '../i18n/LanguageProvider'
 import { currentPushSupport, tokenFromPairingLink } from '../lib/pushSupport'
 import { appUrl } from '../lib/appUrl'
+import { loadMobilePushConfig } from '../lib/mobilePushConfig'
 import {
   verifyPairingToken,
   completeDevicePairing,
@@ -41,7 +43,8 @@ export function PairDevicePage() {
   const [linkError, setLinkError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const support = currentPushSupport()
-  const pushConfigured = Boolean(import.meta.env.VITE_VAPID_PUBLIC_KEY?.trim())
+  const pushConfig = useQuery({ queryKey: ['mobile-push-config'], queryFn: () => loadMobilePushConfig(import.meta.env.VITE_SUPABASE_URL), retry: false, staleTime: 0 })
+  const pushConfigured = pushConfig.data?.ready === true
 
   const importPairingLink = () => {
     const nextToken = tokenFromPairingLink(pastedLink)
@@ -98,7 +101,7 @@ export function PairDevicePage() {
     setErrorMessage(null)
 
     try {
-      const result = await completeDevicePairing(token, deviceName)
+      const result = await completeDevicePairing(token, deviceName, pushConfig.data?.publicKey || undefined)
       if (result.success) {
         setSuccess(true)
         setPairedUserName(result.userName || null)
@@ -282,7 +285,10 @@ export function PairDevicePage() {
 
               {support === 'insecure' && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{text('กรุณาเปิดเว็บไซต์ผ่าน HTTPS เพื่อเปิดการแจ้งเตือน', 'Open this site over HTTPS to enable notifications.')}</p>}
               {support === 'unsupported' && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{text('กรุณาอัปเดต iOS เป็น 16.4 ขึ้นไป และเปิดจากไอคอน PEA Calendar บนหน้าจอโฮม สำหรับ Android ให้เปิดด้วย Chrome', 'Update to iOS 16.4 or later and open the Home Screen app. On Android, use Chrome.')}</p>}
-              {!pushConfigured && support === 'ready' && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{text('ระบบยังไม่ได้ตั้งค่าการส่งแจ้งเตือนมือถือ กรุณาติดต่อผู้ดูแลระบบ', 'Mobile notification delivery has not been configured. Contact your administrator.')}</p>}
+              {!pushConfigured && support === 'ready' && <div role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900 space-y-2">
+                <p>{pushConfig.isFetching ? text('กำลังตรวจสอบระบบส่งแจ้งเตือน…', 'Checking the notification server…') : pushConfig.error?.message || text('ระบบส่งแจ้งเตือนมือถือยังไม่พร้อม กรุณาตรวจสอบอีกครั้งหลังผู้ดูแลตั้งค่าแล้ว', 'Mobile delivery is not ready. Check again after setup.')}</p>
+                <button type="button" disabled={pushConfig.isFetching} onClick={() => void pushConfig.refetch()} className="min-h-11 rounded-xl border border-amber-300 px-4 py-2 font-semibold disabled:opacity-60">{text('ตรวจสอบระบบอีกครั้ง', 'Check server again')}</button>
+              </div>}
 
               <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
                 <ShieldCheck size={14} className="text-green-600" />

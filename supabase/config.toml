@@ -10,6 +10,9 @@ verify_jwt = false
 [functions.process-notification-queue]
 verify_jwt = false
 
+[functions.mobile-push]
+verify_jwt = false # Public GET config; POST explicitly verifies user JWT and ownership.
+
 [functions.line-webhook]
 verify_jwt = false
 

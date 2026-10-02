@@ -18,20 +18,20 @@ import {
   AlertCircle,
   Loader2,
   Wifi,
-  Globe,
   Settings2
 } from 'lucide-react'
 import mascotHoldingPad from '../../ภาพประกอบUI/02_Hand I-Pad.jpg'
-import mascotThumbsUp from '../../ภาพประกอบUI/Thumb Up Mascot 3D.png'
 import { useAuth } from '../auth/AuthProvider'
 import { useLanguage } from '../i18n/LanguageProvider'
 import { useConfirm } from '../components/ConfirmDialogProvider'
 import { appUrl } from '../lib/appUrl'
+import { loadMobilePushConfig } from '../lib/mobilePushConfig'
 import {
   createPairingToken,
   getConnectedDevices,
   deleteConnectedDevice,
   sendTestNotification,
+  sendDeviceTestNotification,
   type ConnectedDevice,
 } from '../lib/mobilePush'
 
@@ -50,6 +50,9 @@ export function MobilePushPage() {
   const [isTesting, setIsTesting] = useState(false)
   const [testError, setTestError] = useState<string | null>(null)
   const initialGeneratedRef = useRef(false)
+  const [testingDevice, setTestingDevice] = useState<string | null>(null)
+  const [remoteTestStatus, setRemoteTestStatus] = useState<string | null>(null)
+  const pushConfig = useQuery({ queryKey: ['mobile-push-config'], queryFn: () => loadMobilePushConfig(import.meta.env.VITE_SUPABASE_URL), retry: false })
 
   // Query connected devices
   const devicesQuery = useQuery({
@@ -198,11 +201,24 @@ export function MobilePushPage() {
     }
   }
 
+  const handleDeviceTest = async (device: ConnectedDevice) => {
+    setTestingDevice(device.id)
+    setRemoteTestStatus(null)
+    try {
+      await sendDeviceTestNotification(device.id)
+      setRemoteTestStatus(text('เซิร์ฟเวอร์ส่งข้อความทดสอบให้ผู้ให้บริการ Push แล้ว กรุณาตรวจบนมือถือ', 'The push provider accepted the test. Check your phone.'))
+    } catch (error) {
+      setRemoteTestStatus(error instanceof Error ? error.message : text('ส่งไม่สำเร็จ', 'Send failed'))
+    } finally {
+      setTestingDevice(null)
+    }
+  }
+
   return (
     <main className="min-h-screen p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-6">
-      {!import.meta.env.VITE_VAPID_PUBLIC_KEY?.trim() && (
+      {!pushConfig.data?.ready && !pushConfig.isFetching && (
         <p role="status" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          {text('ระบบยังไม่ได้ตั้งค่าการส่งแจ้งเตือนมือถือ คุณสามารถเตรียมแอปบนหน้าจอโฮมตามขั้นตอนด้านล่างได้ แต่ยังเปิดรับการแจ้งเตือนไม่ได้', 'Mobile notification delivery is not configured yet. You can install the Home Screen app below, but notification pairing is not available yet.')}
+          {pushConfig.error?.message || text('ระบบส่งแจ้งเตือนมือถือยังไม่พร้อม คุณสามารถติดตั้งแอปบนหน้าจอโฮมไว้ก่อน แล้วกดตรวจสอบระบบอีกครั้งบนมือถือเมื่อผู้ดูแลตั้งค่าแล้ว', 'Mobile delivery is not ready yet. Install the Home Screen app, then check the server again after setup.')}
         </p>
       )}
       {/* Hero Header Banner */}
@@ -577,6 +593,8 @@ export function MobilePushPage() {
                     </div>
                   </div>
 
+                  <div className="flex shrink-0 items-center gap-1">
+                  <button type="button" onClick={() => void handleDeviceTest(device)} disabled={Boolean(testingDevice) || !pushConfig.data?.ready} className="min-h-11 rounded-xl px-3 text-xs font-semibold text-brand-700 hover:bg-purple-100 disabled:opacity-50">{testingDevice === device.id ? text('กำลังส่ง…', 'Sending…') : text('ส่งทดสอบไปเครื่องนี้', 'Send test to device')}</button>
                   <button
                     type="button"
                     onClick={() => handleDeleteDevice(device)}
@@ -586,11 +604,13 @@ export function MobilePushPage() {
                   >
                     <Trash2 size={18} />
                   </button>
+                  </div>
                 </div>
               )
             })}
           </div>
         )}
+      {remoteTestStatus && <p role="status" className="rounded-xl bg-purple-50 p-3 text-sm text-brand-800">{remoteTestStatus}</p>}
       </section>
     </main>
   )

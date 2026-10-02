@@ -213,8 +213,8 @@ export interface Database {
         Relationships: []
       }
       notification_deliveries: {
-        Row: { id: string; reminder_id: string | null; task_reminder_id: string | null; event_id: string | null; task_id: string | null; recipient_type: string; recipient_reference: string; channel: 'email' | 'line'; idempotency_key: string; attempt: number; scheduled_at: string; next_attempt_at: string | null; sent_at: string | null; status: 'queued' | 'processing' | 'sent' | 'retry' | 'failed' | 'skipped' | 'deferred_quota'; provider_reference: string | null; error_code: string | null; error_message: string | null; template_key: string; payload: Json; created_at: string; updated_at: string }
-        Insert: Partial<Database['public']['Tables']['notification_deliveries']['Row']> & { recipient_type: string; recipient_reference: string; channel: 'email' | 'line'; idempotency_key: string; scheduled_at: string }
+        Row: { id: string; reminder_id: string | null; task_reminder_id: string | null; event_id: string | null; task_id: string | null; recipient_type: string; recipient_reference: string; channel: 'email' | 'line' | 'push'; idempotency_key: string; attempt: number; scheduled_at: string; next_attempt_at: string | null; sent_at: string | null; status: 'queued' | 'processing' | 'sent' | 'retry' | 'failed' | 'skipped' | 'deferred_quota'; provider_reference: string | null; error_code: string | null; error_message: string | null; template_key: string; payload: Json; created_at: string; updated_at: string }
+        Insert: Partial<Database['public']['Tables']['notification_deliveries']['Row']> & { recipient_type: string; recipient_reference: string; channel: 'email' | 'line' | 'push'; idempotency_key: string; scheduled_at: string }
         Update: Partial<Database['public']['Tables']['notification_deliveries']['Row']>
         Relationships: []
       }

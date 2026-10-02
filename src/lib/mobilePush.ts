@@ -136,7 +136,7 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
 /**
  * Subscribes to Push Notifications on mobile device and registers with the pairing token
  */
-export async function completeDevicePairing(token: string, customDeviceName?: string): Promise<{
+export async function completeDevicePairing(token: string, customDeviceName?: string, vapidPublicKey?: string): Promise<{
   success: boolean
   error?: string
   userName?: string
@@ -146,7 +146,6 @@ export async function completeDevicePairing(token: string, customDeviceName?: st
     if (support === 'ios-install') return { success: false, error: 'บน iPhone / iPad กรุณาเพิ่มเว็บไปยังหน้าจอโฮม แล้วเปิดจากไอคอน PEA Calendar เพื่อเปิดการแจ้งเตือน (iOS 16.4 ขึ้นไป)' }
     if (support === 'insecure') return { success: false, error: 'กรุณาเปิดเว็บไซต์ผ่าน HTTPS เพื่อเปิดการแจ้งเตือน' }
     if (support !== 'ready') return { success: false, error: 'กรุณาเปิดใน Chrome หรือแอปบนหน้าจอโฮมของ iPhone / iPad และตรวจสอบว่าอัปเดตระบบแล้ว' }
-    const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY?.trim()
     if (!vapidPublicKey) return { success: false, error: 'ระบบยังไม่ได้ตั้งค่าการส่งแจ้งเตือนมือถือ กรุณาติดต่อผู้ดูแลระบบ' }
 
     // Keep the permission request directly inside the button interaction on iOS.
@@ -249,6 +248,19 @@ export async function deleteConnectedDevice(subscriptionId: string): Promise<boo
   }
 
   return true
+}
+
+/** A provider acceptance confirms server submission, not that iOS displayed a banner. */
+export async function sendDeviceTestNotification(subscriptionId: string): Promise<void> {
+  const { data, error } = await supabase.functions.invoke('mobile-push', { body: { subscriptionId } })
+  if (error || !data?.accepted) {
+    let message = data?.error || 'ส่งแจ้งเตือนจากเซิร์ฟเวอร์ไม่สำเร็จ กรุณาลองอีกครั้ง'
+    if (error?.context instanceof Response) {
+      const response = await error.context.json().catch(() => null)
+      message = response?.error || message
+    }
+    throw new Error(message)
+  }
 }
 
 /**

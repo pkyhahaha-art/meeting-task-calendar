@@ -13,6 +13,7 @@ self.addEventListener('push', (event) => {
   }
   event.waitUntil(self.registration.showNotification(message.title || 'PEA Meeting & Task', {
     body: message.body || 'คุณมีการแจ้งเตือนใหม่ กรุณาเปิดปฏิทิน',
+    tag: typeof message.tag === 'string' ? message.tag : undefined,
     icon: new URL('icon-192.png', self.registration.scope).href,
     data: { url: message.url || './#/calendar' },
   }))

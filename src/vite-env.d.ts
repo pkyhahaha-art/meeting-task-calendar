@@ -5,7 +5,6 @@ interface ImportMetaEnv {
   readonly VITE_SUPABASE_PUBLISHABLE_KEY?: string
   readonly VITE_LINE_ADD_FRIEND_URL?: string
   readonly VITE_TURNSTILE_SITE_KEY?: string
-  readonly VITE_VAPID_PUBLIC_KEY?: string
 }
 
 interface ImportMeta {

@@ -1,4 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import webpush from 'npm:web-push@3.6.7'
+import { deliverWebPush, type PushSubscriptionRecord } from '../_shared/webPushDelivery.ts'
 import { html, subject, text } from './emailTemplate.ts'
 import { internalMeetingUrl } from './meetingLink.ts'
 import { retryDelayMinutes } from './retry.ts'
@@ -12,7 +14,7 @@ type Delivery = {
   reminder_id: string | null
   recipient_type: string
   recipient_reference: string
-  channel: 'email' | 'line'
+  channel: 'email' | 'line' | 'push'
   template_key: string
   payload: Record<string, unknown>
   attempt: number
@@ -221,6 +223,20 @@ async function payloadWithTaskDocuments(delivery: Delivery, payload: Record<stri
 }
 
 async function send(delivery: Delivery, payload: Record<string, unknown>) {
+  if (delivery.channel === 'push') {
+    const config = { publicKey: Deno.env.get('VAPID_PUBLIC_KEY') || '', privateKey: Deno.env.get('VAPID_PRIVATE_KEY') || '', subject: Deno.env.get('VAPID_SUBJECT') || publicAppUrl || '' }
+    if (!config.publicKey || !config.privateKey || !config.subject || !publicAppUrl) return new Response('Web Push sender is not configured', { status: 503 })
+    const { data: device, error } = await supabase.from('mobile_push_subscriptions').select('id,user_id,endpoint,p256dh,auth').eq('id', delivery.recipient_reference).maybeSingle()
+    if (error) throw new Error('Unable to load the push subscription')
+    if (!device) return new Response('Push device is no longer connected', { status: 410 })
+    // A device re-paired to another account must never receive an older owner's delivery.
+    if (device.user_id !== text(payload.push_user_id)) return new Response('Push recipient changed', { status: 410 })
+    const url = new URL(publicAppUrl)
+    url.hash = '/calendar'
+    const result = await deliverWebPush(device as PushSubscriptionRecord, { title: subject(delivery.template_key, payload), body: text(payload.description).slice(0, 600) || 'ถึงเวลาแจ้งเตือนจากปฏิทิน PEA', tag: `delivery-${delivery.id}`, url: url.href }, config, webpush.generateRequestDetails)
+    if (result.expired) await supabase.from('mobile_push_subscriptions').delete().eq('id', device.id).eq('user_id', device.user_id)
+    return new Response(result.sent ? 'Push provider accepted the notification' : `Push provider status ${result.status}`, { status: result.sent ? 200 : result.status })
+  }
   if (delivery.channel === 'line') {
     if (!lineAccessToken) return new Response('LINE provider is not configured', { status: 503 })
     return fetch('https://api.line.me/v2/bot/message/push', {
@@ -240,19 +256,20 @@ Deno.serve(async (request) => {
   if (!cronSecret || request.headers.get('authorization') !== `Bearer ${cronSecret}`) {
     return new Response('Unauthorized', { status: 401 })
   }
-  const [{ error: recoveryError }, { error: staleReminderError }, { error: lineReminderError }, { error: reminderError }] = await Promise.all([
+  const [{ error: recoveryError }, { error: staleReminderError }] = await Promise.all([
     supabase.rpc('requeue_stale_email_deliveries'),
     supabase.rpc('cancel_stale_meeting_reminders'),
-    supabase.rpc('queue_due_line_reminders'),
-    supabase.rpc('queue_due_email_reminders'),
   ])
+  // Queue mobile/LINE first: email completes shared reminder rows.
+  const { error: lineReminderError } = await supabase.rpc('queue_due_line_reminders')
+  const { error: reminderError } = await supabase.rpc('queue_due_email_reminders')
   if (recoveryError || staleReminderError || lineReminderError || reminderError) return new Response(recoveryError?.message ?? staleReminderError?.message ?? lineReminderError?.message ?? reminderError!.message, { status: 500 })
 
   const now = new Date().toISOString()
   const { data, error } = await supabase
     .from('notification_deliveries')
     .select('id, event_id, task_id, reminder_id, recipient_type, recipient_reference, channel, template_key, payload, attempt')
-    .in('channel', ['email', 'line']).in('status', ['queued', 'retry'])
+    .in('channel', ['email', 'line', 'push']).in('status', ['queued', 'retry'])
     .lte('scheduled_at', now)
     .or(`next_attempt_at.is.null,next_attempt_at.lte.${now}`)
     .order('scheduled_at').limit(50)
