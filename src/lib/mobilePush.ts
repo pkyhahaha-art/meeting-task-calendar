@@ -296,7 +296,7 @@ export async function sendTestNotification(title: string, body: string): Promise
             body,
             icon: '/favicon.ico',
             vibrate: [100, 50, 100],
-          })
+          } as NotificationOptions & { vibrate?: number[] })
           return true
         }
         new Notification(title, { body, icon: '/favicon.ico' })

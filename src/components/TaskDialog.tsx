@@ -672,7 +672,8 @@ export function TaskDialog({
                                 '1_day': '1 day before',
                                 '3_days': '3 days before',
                                 overdue: 'When overdue',
-                              } as const)[option.key] || option.label
+                                continuous: 'Continuous',
+                              } as Record<string, string>)[option.key] || option.label
                             )}
                           </span>
                           {isPast && (
