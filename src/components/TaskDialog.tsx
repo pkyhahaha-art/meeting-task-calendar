@@ -102,6 +102,7 @@ export function TaskDialog({
   canComplete,
   canAcknowledge,
   canViewDeliveryStatus,
+  hasConnectedDevices = false,
   busy,
   onClose,
   onSave,
@@ -122,6 +123,7 @@ export function TaskDialog({
   canComplete: boolean
   canAcknowledge: boolean
   canViewDeliveryStatus: boolean
+  hasConnectedDevices?: boolean
   busy: boolean
   onClose: () => void
   onSave: (draft: TaskDraft, notifyRecipients: boolean) => Promise<void>
@@ -173,7 +175,7 @@ export function TaskDialog({
       reminderKeys: details?.reminderKeys.filter((k) => k !== 'continuous') ?? [],
       continuousConfig: details?.continuousConfig ?? { startDaysBefore: 3, frequency: 'daily' },
       notifyEmail: details?.notifyEmail ?? true,
-      notifyLine: details?.notifyLine ?? false,
+      notifyLine: hasConnectedDevices ? (details?.notifyLine ?? false) : false,
       files: [],
       driveLinks: details?.documentLinks.length
         ? details.documentLinks.map((link) => ({ displayName: link.display_name, url: link.url }))
@@ -200,7 +202,7 @@ export function TaskDialog({
     set('driveLinks', draft.driveLinks.map((item, itemIndex) => (itemIndex === index ? value : item)))
   const setExternalEmail = (index: number, value: string) =>
     set('externalEmails', draft.externalEmails.map((email, itemIndex) => (itemIndex === index ? value : email)))
-  
+
   const creationDateInPast = !task && isPastBangkokDate(draft.dueDate)
   const continuousStartDate = draft.dueDate ? calculateContinuousStartDate(draft.dueDate, draft.continuousConfig.startDaysBefore) : ''
   const isContinuousStartInPast = draft.reminderMode === 'continuous' && Boolean(continuousStartDate) && isPastBangkokDate(continuousStartDate)
@@ -272,13 +274,14 @@ export function TaskDialog({
       return false
     }
     const hasReminders = draft.reminderMode === 'continuous' || draft.reminderKeys.length > 0
-    if (hasReminders && !draft.notifyEmail && !draft.notifyLine) {
+    const activeNotifyLine = hasConnectedDevices && draft.notifyLine && draft.internalUserIds.length > 0
+    if (hasReminders && !draft.notifyEmail && !activeNotifyLine) {
       setError(text('กรุณาเลือกช่องทางแจ้งเตือนอย่างน้อย 1 ช่องทาง', 'Choose at least one notification channel.'))
       return false
     }
     setError('')
     try {
-      await onSave({ ...draft, driveLinks: links, notifyLine: draft.internalUserIds.length ? draft.notifyLine : false }, notifyRecipients)
+      await onSave({ ...draft, driveLinks: links, notifyLine: (hasConnectedDevices && draft.internalUserIds.length) ? draft.notifyLine : false }, notifyRecipients)
       return true
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : text('บันทึก Task ไม่สำเร็จ กรุณาลองใหม่', 'Could not save the task. Please try again.'))
@@ -507,9 +510,8 @@ export function TaskDialog({
                   aria-controls={`task-recipient-panel-${key}`}
                   aria-selected={recipientTab === key}
                   onClick={() => setRecipientTab(key)}
-                  className={`rounded-lg px-2 py-2 text-sm font-medium transition-colors ${
-                    recipientTab === key ? 'bg-white text-amber-800 shadow-sm' : 'text-slate-600 hover:bg-white/70'
-                  }`}
+                  className={`rounded-lg px-2 py-2 text-sm font-medium transition-colors ${recipientTab === key ? 'bg-white text-amber-800 shadow-sm' : 'text-slate-600 hover:bg-white/70'
+                    }`}
                 >
                   {label}
                   {count > 0 && <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">{count}</span>}
@@ -616,18 +618,16 @@ export function TaskDialog({
                 <button
                   type="button"
                   onClick={() => set('reminderMode', 'single')}
-                  className={`rounded-lg py-2 text-sm font-medium transition-all ${
-                    draft.reminderMode === 'single' ? 'bg-white text-amber-800 shadow-sm' : 'text-slate-600 hover:bg-white/60'
-                  }`}
+                  className={`rounded-lg py-2 text-sm font-medium transition-all ${draft.reminderMode === 'single' ? 'bg-white text-amber-800 shadow-sm' : 'text-slate-600 hover:bg-white/60'
+                    }`}
                 >
                   {text('1. แจ้งครั้งเดียว', '1. Single reminder')}
                 </button>
                 <button
                   type="button"
                   onClick={() => set('reminderMode', 'continuous')}
-                  className={`rounded-lg py-2 text-sm font-medium transition-all ${
-                    draft.reminderMode === 'continuous' ? 'bg-white text-amber-800 shadow-sm' : 'text-slate-600 hover:bg-white/60'
-                  }`}
+                  className={`rounded-lg py-2 text-sm font-medium transition-all ${draft.reminderMode === 'continuous' ? 'bg-white text-amber-800 shadow-sm' : 'text-slate-600 hover:bg-white/60'
+                    }`}
                 >
                   {text('2. แจ้งต่อเนื่อง', '2. Continuous reminder')}
                 </button>
@@ -646,15 +646,14 @@ export function TaskDialog({
                       return (
                         <label
                           key={option.key}
-                          className={`cursor-pointer select-none rounded-full border px-3 py-1.5 text-sm transition-colors ${
-                            isChecked && isPast
+                          className={`cursor-pointer select-none rounded-full border px-3 py-1.5 text-sm transition-colors ${isChecked && isPast
                               ? 'border-red-500 bg-red-50 font-medium text-red-800'
                               : isChecked
-                              ? 'border-amber-500 bg-amber-50 font-medium text-amber-800'
-                              : isPast
-                              ? 'border-slate-200 bg-slate-100 text-slate-400 opacity-60'
-                              : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                          }`}
+                                ? 'border-amber-500 bg-amber-50 font-medium text-amber-800'
+                                : isPast
+                                  ? 'border-slate-200 bg-slate-100 text-slate-400 opacity-60'
+                                  : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                            }`}
                         >
                           <input
                             type="checkbox"
@@ -766,11 +765,10 @@ export function TaskDialog({
                               frequency: 'daily',
                             })
                           }
-                          className={`flex-1 rounded-lg border py-2 text-xs font-medium transition-colors ${
-                            draft.continuousConfig.frequency === 'daily'
+                          className={`flex-1 rounded-lg border py-2 text-xs font-medium transition-colors ${draft.continuousConfig.frequency === 'daily'
                               ? 'border-amber-500 bg-amber-50 text-amber-800'
                               : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                          }`}
+                            }`}
                         >
                           {text('ทุกวัน', 'Every day')}
                         </button>
@@ -782,11 +780,10 @@ export function TaskDialog({
                               frequency: 'weekdays',
                             })
                           }
-                          className={`flex-1 rounded-lg border py-2 text-xs font-medium transition-colors ${
-                            draft.continuousConfig.frequency === 'weekdays'
+                          className={`flex-1 rounded-lg border py-2 text-xs font-medium transition-colors ${draft.continuousConfig.frequency === 'weekdays'
                               ? 'border-amber-500 bg-amber-50 text-amber-800'
                               : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                          }`}
+                            }`}
                         >
                           {text('ทุกวันทำงาน (จ.-ศ.)', 'Every weekday (Mon-Fri)')}
                         </button>
@@ -811,17 +808,40 @@ export function TaskDialog({
                   <Mail size={16} className="text-slate-600" />
                   Gmail
                 </label>
-                <label className={`flex items-center gap-2 select-none ${draft.internalUserIds.length ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}>
+                <label
+                  className={`flex items-center gap-2 select-none ${hasConnectedDevices && draft.internalUserIds.length ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}
+                  title={
+                    !hasConnectedDevices
+                      ? text('ยังไม่ได้เชื่อมต่อการแจ้งเตือนบนมือถือ กรุณาเชื่อมต่อในเมนู "เชื่อมต่อการแจ้งเตือนผ่านมือถือ"', 'Mobile notifications not connected. Please connect in Mobile Notifications menu.')
+                      : !draft.internalUserIds.length
+                      ? text('เลือกผู้รับที่เป็นผู้ใช้ในระบบเพื่อเปิดการแจ้งเตือนมือถือ', 'Select internal recipients to enable mobile notifications.')
+                      : ''
+                  }
+                >
                   <input
                     type="checkbox"
-                    checked={draft.notifyLine}
-                    disabled={!draft.internalUserIds.length}
+                    checked={Boolean(hasConnectedDevices && draft.notifyLine && draft.internalUserIds.length)}
+                    disabled={!hasConnectedDevices || !draft.internalUserIds.length}
                     onChange={(event) => set('notifyLine', event.target.checked)}
                   />
-                  <Smartphone size={16} className="text-slate-600" />
-                  {text('แจ้งเตือนผ่านมือถือ', 'Mobile notification')}
+                  <Smartphone size={16} className={hasConnectedDevices && draft.internalUserIds.length ? 'text-amber-700' : 'text-slate-400'} />
+                  <span>{text('แจ้งเตือนผ่านมือถือ', 'Mobile notification')}</span>
+                  {!hasConnectedDevices ? (
+                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 border border-amber-200">
+                      {text('ยังไม่เชื่อมต่อ', 'Not connected')}
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 border border-emerald-200">
+                      {text('เชื่อมต่อแล้ว', 'Connected')}
+                    </span>
+                  )}
                 </label>
               </div>
+              {!hasConnectedDevices && (
+                <p className="mt-2 text-xs text-amber-700">
+                  {text('💡 ยังไม่ได้เชื่อมต่อการแจ้งเตือนบนมือถือ ไปที่เมนู "เชื่อมต่อการแจ้งเตือนผ่านมือถือ" เพื่อสแกน QR Code เปิดใช้งาน', '💡 Mobile notification is not connected yet. Go to "Mobile Notifications" menu to pair your device.')}
+                </p>
+              )}
             </section>
 
             <section className="space-y-3 rounded-xl border border-slate-200 p-4">

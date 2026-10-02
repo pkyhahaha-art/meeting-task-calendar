@@ -129,9 +129,17 @@ export function MobilePushPage() {
         : `http://${customHost.trim()}`)
     : window.location.origin
 
-  // Pairing URL for QR code
+  // Pairing URL for QR code — must use hash router format (#/pair-device) so
+  // GitHub Pages serves index.html and the SPA router handles the route.
   const pairingUrl = pairingToken
-    ? `${effectiveBaseUrl}/pair-device?token=${pairingToken}`
+    ? (() => {
+        const base = customHost.trim()
+          ? (customHost.trim().startsWith('http://') || customHost.trim().startsWith('https://')
+              ? customHost.trim().replace(/\/$/, '')
+              : `http://${customHost.trim().replace(/\/$/, '')}`)
+          : `${window.location.origin}${window.location.pathname.replace(/\/[^/]*$/, '').replace(/\/$/, '')}`
+        return `${base}/#/pair-device?token=${pairingToken}`
+      })()
     : ''
 
   const handleSaveCustomHost = (value: string) => {
@@ -405,6 +413,46 @@ export function MobilePushPage() {
                   </p>
                 </div>
               </div>
+            </div>
+
+            {/* iOS-specific notice */}
+            <div className="rounded-2xl border border-orange-200 bg-gradient-to-r from-orange-50 to-amber-50 p-4 space-y-3">
+              <div className="flex items-center gap-2 font-bold text-orange-900 text-sm">
+                <span className="text-lg">🍎</span>
+                <span>{text('สำหรับผู้ใช้ iPhone / iPad', 'iPhone / iPad Users')}</span>
+              </div>
+              <p className="text-xs text-orange-800 leading-relaxed">
+                {text(
+                  'Safari บน iOS ต้องเพิ่มเว็บไซต์ไปที่หน้าจอหลัก (Add to Home Screen) ก่อน จึงจะขอสิทธิ์การแจ้งเตือนได้',
+                  'iOS Safari requires you to add this website to your Home Screen before notification permissions can be granted.',
+                )}
+              </p>
+              <ol className="space-y-1.5 text-xs text-orange-900">
+                <li className="flex items-start gap-2">
+                  <span className="font-bold shrink-0">1.</span>
+                  <span>{text('เปิด Safari บน iPhone แล้วเข้าเว็บนี้', 'Open Safari on your iPhone and visit this website')}</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="font-bold shrink-0">2.</span>
+                  <span>
+                    {text(
+                      'แตะปุ่ม Share (กล่องมีลูกศรขึ้น) ที่แถบล่าง → เลือก "เพิ่มลงในหน้าจอโฮม" (Add to Home Screen)',
+                      'Tap the Share button (box with arrow) at the bottom bar → select "Add to Home Screen"',
+                    )}
+                  </span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="font-bold shrink-0">3.</span>
+                  <span>{text('กด "เพิ่ม" แล้วเปิดแอปจากไอคอนบนหน้าจอหลัก', 'Tap "Add", then open the app from the Home Screen icon')}</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="font-bold shrink-0">4.</span>
+                  <span>{text('กลับมาที่หน้า "เชื่อมต่อการแจ้งเตือนผ่านมือถือ" แล้วสแกน QR Code ใหม่อีกครั้ง', 'Return to this page and scan the QR Code again')}</span>
+                </li>
+              </ol>
+              <p className="text-[11px] text-orange-700">
+                {text('⚠️ ต้องใช้ iOS 16.4 ขึ้นไป และต้องเปิดแอปจากไอคอน Home Screen เท่านั้น (ไม่ใช่ Safari โดยตรง)', '⚠️ Requires iOS 16.4+ and must be opened from the Home Screen icon, not directly from Safari.')}
+              </p>
             </div>
           </div>
 

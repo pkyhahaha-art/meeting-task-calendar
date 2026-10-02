@@ -115,6 +115,7 @@ export function EventDialog({
   occurrenceStart,
   canEdit,
   canViewDeliveryStatus,
+  hasConnectedDevices = false,
   busy,
   onClose,
   onSave,
@@ -129,6 +130,7 @@ export function EventDialog({
   occurrenceStart?: string
   canEdit: boolean
   busy: boolean
+  hasConnectedDevices?: boolean
   onClose: () => void
   onSave: (draft: EventDraft, notifyRecipients: boolean, scope: 'series' | 'occurrence') => Promise<void>
   onDelete: () => Promise<void>
@@ -184,7 +186,7 @@ export function EventDialog({
             reminderKeys: details?.reminderKeys ?? [],
             sendImmediate: false,
             notifyEmail: details?.notifyEmail ?? true,
-            notifyLine: details?.notifyLine ?? false,
+            notifyLine: hasConnectedDevices ? (details?.notifyLine ?? false) : false,
             files: [],
           }
         : blankDraft(selectedDate),
@@ -352,13 +354,14 @@ export function EventDialog({
       setError(attachmentError)
       return false
     }
-    if (!isOccurrenceEdit && draft.reminderKeys.length && !draft.notifyEmail && !draft.notifyLine) {
+    const activeNotifyLine = hasConnectedDevices && draft.notifyLine
+    if (!isOccurrenceEdit && draft.reminderKeys.length && !draft.notifyEmail && !activeNotifyLine) {
       setError(text('กรุณาเลือกช่องทางแจ้งเตือนอย่างน้อย 1 ช่องทาง', 'Choose at least one notification channel.'))
       return false
     }
     setError('')
     try {
-      await onSave(draft, isOccurrenceEdit ? false : notifyRecipients, isOccurrenceEdit ? 'occurrence' : 'series')
+      await onSave({ ...draft, notifyLine: hasConnectedDevices ? draft.notifyLine : false }, isOccurrenceEdit ? false : notifyRecipients, isOccurrenceEdit ? 'occurrence' : 'series')
       return true
     } catch (error) {
       setError(error instanceof Error && error.message.startsWith('เซสชันหมดอายุ') ? error.message : text('บันทึกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง', 'Could not save. Please try again.'))
@@ -900,15 +903,43 @@ export function EventDialog({
                     <Mail size={17} />
                     Gmail / Email
                   </label>
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input type="checkbox" checked={draft.notifyLine} onChange={(e) => set('notifyLine', e.target.checked)} className="h-4 w-4 rounded" />
-                    <Smartphone size={17} />
-                    {text('แจ้งเตือนผ่านมือถือ', 'Mobile notification')}
+                  <label
+                    className={`flex items-center gap-2 select-none ${hasConnectedDevices ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}
+                    title={
+                      !hasConnectedDevices
+                        ? text('ยังไม่ได้เชื่อมต่อการแจ้งเตือนบนมือถือ กรุณาเชื่อมต่อในเมนู "เชื่อมต่อการแจ้งเตือนผ่านมือถือ"', 'Mobile notifications not connected. Please connect in Mobile Notifications menu.')
+                        : ''
+                    }
+                  >
+                    <input
+                      type="checkbox"
+                      checked={Boolean(hasConnectedDevices && draft.notifyLine)}
+                      disabled={!hasConnectedDevices}
+                      onChange={(e) => set('notifyLine', e.target.checked)}
+                      className="h-4 w-4 rounded"
+                    />
+                    <Smartphone size={17} className={hasConnectedDevices ? 'text-brand-600' : 'text-slate-400'} />
+                    <span>{text('แจ้งเตือนผ่านมือถือ', 'Mobile notification')}</span>
+                    {!hasConnectedDevices ? (
+                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 border border-amber-200">
+                        {text('ยังไม่เชื่อมต่อ', 'Not connected')}
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 border border-emerald-200">
+                        {text('เชื่อมต่อแล้ว', 'Connected')}
+                      </span>
+                    )}
                   </label>
                 </div>
-                <p className="text-xs text-slate-500">
-                  {text('แจ้งเตือนผ่านมือถือ ใช้งานได้หลังจากเชื่อมต่ออุปกรณ์ในเมนู "เชื่อมต่อการแจ้งเตือนผ่านมือถือ"', 'Mobile push notification is available after pairing your device in Mobile Notifications.')}
-                </p>
+                {!hasConnectedDevices ? (
+                  <p className="text-xs text-amber-700">
+                    {text('💡 ยังไม่ได้เชื่อมต่อการแจ้งเตือนบนมือถือ ไปที่เมนู "เชื่อมต่อการแจ้งเตือนผ่านมือถือ" เพื่อสแกน QR Code เปิดใช้งาน', '💡 Mobile notification is not connected yet. Go to "Mobile Notifications" menu to pair your device.')}
+                  </p>
+                ) : (
+                  <p className="text-xs text-slate-500">
+                    {text('แจ้งเตือนผ่านมือถือพร้อมใช้งาน (เชื่อมต่ออุปกรณ์แล้ว)', 'Mobile notification is ready (device connected).')}
+                  </p>
+                )}
               </fieldset>
               {isOccurrenceEdit && (
                 <p className="text-xs text-slate-500">
