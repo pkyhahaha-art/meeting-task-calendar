@@ -16,6 +16,8 @@ import { AcknowledgementPage } from './pages/AcknowledgementPage'
 const CalendarPage = lazy(() => import('./pages/CalendarPage').then((module) => ({ default: module.CalendarPage })))
 const ProfilePage = lazy(() => import('./pages/ProfilePage').then((module) => ({ default: module.ProfilePage })))
 const AdminPage = lazy(() => import('./pages/AdminPage').then((module) => ({ default: module.AdminPage })))
+const MobilePushPage = lazy(() => import('./pages/MobilePushPage').then((module) => ({ default: module.MobilePushPage })))
+const PairDevicePage = lazy(() => import('./pages/PairDevicePage').then((module) => ({ default: module.PairDevicePage })))
 
 const pageFallback = <div className="p-8 text-center text-slate-500">กำลังโหลด…</div>
 
@@ -30,8 +32,10 @@ export default function App() {
     <Route path="/external-task" element={<ExternalTaskPage />} />
     <Route path="/guest-event" element={<GuestEventPage />} />
     <Route path="/acknowledged" element={<AcknowledgementPage />} />
+    <Route path="/pair-device" element={<Suspense fallback={pageFallback}><PairDevicePage /></Suspense>} />
     <Route element={<ProtectedRoute />}><Route element={<AppShell />}>
       <Route path="/calendar" element={<Suspense fallback={pageFallback}><CalendarPage /></Suspense>} />
+      <Route path="/mobile-push" element={<Suspense fallback={pageFallback}><MobilePushPage /></Suspense>} />
       <Route path="/profile" element={<Suspense fallback={pageFallback}><ProfilePage /></Suspense>} />
       <Route path="/admin" element={<Suspense fallback={pageFallback}><AdminPage /></Suspense>} />
     </Route></Route>

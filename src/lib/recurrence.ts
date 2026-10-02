@@ -14,6 +14,20 @@ export type EventOccurrence<T extends RecurringEvent> = {
   end: string | null
 }
 
+export type RecurringTask = {
+  id: string
+  due_date: string
+  due_time: string | null
+  recurrence_rule: string | null
+  recurrence_end_at?: string | null
+}
+
+export type TaskOccurrence<T extends RecurringTask> = {
+  key: string
+  task: T
+  dueDate: string
+}
+
 const weekdayCodes = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA']
 const bangkokParts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit' })
 
@@ -78,4 +92,28 @@ export function expandEvent<T extends RecurringEvent>(event: T, rangeStart: Date
     })
   }
   return occurrences
+}
+
+export function expandTask<T extends RecurringTask>(task: T, rangeStart: Date, rangeEnd: Date): TaskOccurrence<T>[] {
+  if (!task.recurrence_rule) {
+    const taskDate = new Date(`${task.due_date}T12:00:00+07:00`)
+    return taskDate >= rangeStart && taskDate <= rangeEnd
+      ? [{ key: task.id, task, dueDate: task.due_date }]
+      : []
+  }
+
+  const startIso = new Date(`${task.due_date}T${task.due_time?.slice(0, 5) || '00:00'}:00+07:00`).toISOString()
+  const adapted: RecurringEvent = {
+    id: task.id,
+    start_datetime: startIso,
+    end_datetime: null,
+    recurrence_rule: task.recurrence_rule,
+    recurrence_until: task.recurrence_end_at ?? null,
+  }
+
+  return expandEvent(adapted, rangeStart, rangeEnd).map((occurrence) => ({
+    key: occurrence.key,
+    task,
+    dueDate: localDate(new Date(occurrence.start)),
+  }))
 }

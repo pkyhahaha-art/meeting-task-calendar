@@ -11,7 +11,7 @@ export function TimeSelect({ id, value, onChange, optional = false, disabled = f
   disabled?: boolean
 }) {
   const { text } = useLanguage()
-  const [hour = '', minute = ''] = value.split(':')
+  const [hour = '', minute = ''] = (value || '').split(':')
 
   return <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
     <select id={id} className="field-input" value={hour} disabled={disabled} onChange={(event) => onChange(event.target.value ? `${event.target.value}:${minute || '00'}` : '')} aria-label={text('ชั่วโมง (ระบบ 24 ชั่วโมง)', 'Hour (24-hour clock)')}>

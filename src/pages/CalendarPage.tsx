@@ -21,7 +21,15 @@ import { bangkokDate, isPastBangkokDate, meetingRecurrenceRule, meetingReminderK
 import { appUrl } from '../lib/appUrl'
 import { canManageMeeting, meetingCreateArgs } from '../lib/meetingAccess'
 import { expandEvent } from '../lib/recurrence'
-import { isTaskOverdue, normalizeExternalEmails, taskDueDateTime, taskReminderDate, type TaskReminderKey } from '../lib/taskForm'
+import {
+  generateContinuousReminderDates,
+  isTaskOverdue,
+  normalizeExternalEmails,
+  taskDueDateTime,
+  taskReminderDate,
+  type TaskContinuousConfig,
+  type TaskReminderKey,
+} from '../lib/taskForm'
 import { supabase } from '../lib/supabase'
 
 type EventRow = Database['public']['Tables']['events']['Row']
@@ -278,8 +286,30 @@ export function CalendarPage() {
         if (error || !data) throw error ?? new Error('ไม่สามารถเปิดเอกสารประกอบได้')
         return { ...file, signedUrl: data.signedUrl }
       }))
+      const isContinuous = reminders.data.some((item) => item.reminder_key === 'continuous')
+      let continuousConfig: TaskContinuousConfig = { startDaysBefore: 3, frequency: 'daily' }
+      if (isContinuous && selectedTask) {
+        const scheduledDates = reminders.data
+          .filter((item) => item.reminder_key === 'continuous')
+          .map((item) => new Date(item.scheduled_at))
+        if (scheduledDates.length > 0) {
+          const dueDateObj = new Date(`${selectedTask.due_date}T00:00:00+07:00`)
+          const minDate = new Date(Math.min(...scheduledDates.map((d) => d.getTime())))
+          const diffDays = Math.max(1, Math.round((dueDateObj.getTime() - minDate.getTime()) / (24 * 60 * 60 * 1000)))
+          const hasWeekend = scheduledDates.some((d) => {
+            const day = d.getDay()
+            return day === 0 || day === 6
+          })
+          continuousConfig = {
+            startDaysBefore: diffDays,
+            frequency: hasWeekend ? 'daily' : 'weekdays',
+          }
+        }
+      }
       return {
+        reminderMode: isContinuous ? 'continuous' : 'single',
         reminderKeys: [...new Set(reminders.data.map((item) => item.reminder_key))] as TaskReminderKey[],
+        continuousConfig,
         notifyEmail: reminders.data.some((item) => item.channel_email),
         notifyLine: reminders.data.some((item) => item.channel_line),
         attachments: attachmentViews,
@@ -422,7 +452,7 @@ export function CalendarPage() {
         assignee_user_id: primaryInternal,
         external_assignee_email: primaryExternal,
         linked_event_id: draft.linkedEventId || null,
-        recurrence_rule: recurrenceRule(draft.recurrence),
+        recurrence_rule: null,
       }
       let taskId = task?.id
       let taskSaved = false
@@ -449,13 +479,32 @@ export function CalendarPage() {
         if (deletedReminders.error) throw deletedReminders.error
         if (deletedLinks.error) throw deletedLinks.error
 
-        if (draft.reminderKeys.length) {
+        if (draft.reminderMode === 'continuous') {
+          const continuousDates = generateContinuousReminderDates(draft.dueDate, draft.dueTime, draft.continuousConfig)
+          if (continuousDates.length) {
+            const reminders = continuousDates.map((date) => ({
+              task_id: taskId!,
+              reminder_key: 'continuous' as const,
+              scheduled_at: date.toISOString(),
+              channel_email: draft.notifyEmail,
+              channel_line: hasInternal && draft.notifyLine,
+              status: task && !notifyRecipients && date.getTime() <= Date.now() ? ('cancelled' as const) : ('scheduled' as const),
+            }))
+            const { error } = await supabase.from('task_reminders').insert(reminders)
+            if (error) throw error
+          }
+        } else if (draft.reminderKeys.length) {
           const due = taskDueDateTime(draft.dueDate, draft.dueTime)
           const reminders = draft.reminderKeys.map((key) => {
             const scheduledAt = taskReminderDate(due, key)
-            return { task_id: taskId!, reminder_key: key, scheduled_at: scheduledAt.toISOString(),
-              channel_email: draft.notifyEmail, channel_line: hasInternal && draft.notifyLine,
-              status: task && !notifyRecipients && scheduledAt.getTime() <= Date.now() ? 'cancelled' as const : 'scheduled' as const }
+            return {
+              task_id: taskId!,
+              reminder_key: key,
+              scheduled_at: scheduledAt.toISOString(),
+              channel_email: draft.notifyEmail,
+              channel_line: hasInternal && draft.notifyLine,
+              status: task && !notifyRecipients && scheduledAt.getTime() <= Date.now() ? ('cancelled' as const) : ('scheduled' as const),
+            }
           })
           const { error } = await supabase.from('task_reminders').insert(reminders)
           if (error) throw error
@@ -584,9 +633,20 @@ export function CalendarPage() {
       const isOverdue = isPastBangkokDate(calendarDayKey(occurrence.start))
       return { id: `event-${occurrence.key}`, title: event.title, start: occurrence.start, end: occurrence.end || undefined, allDay: event.all_day, backgroundColor: isOverdue ? '#fee2e2' : event.owner_user_id === user?.id ? '#edddf6' : '#f1e7fa', borderColor: 'transparent', textColor: isOverdue ? '#991b1b' : '#6b2170', extendedProps: { kind: 'event', row: event, isOverdue, occurrenceStart: occurrence.start } }
     })) : []),
-    ...(showTasks ? taskRows.map((task) => {
+    ...(showTasks ? taskRows.flatMap((task) => {
+      if (task.recurrence_series_id) return []
+      if (task.status === 'completed' && !showCompletedTasks) return []
       const isOverdue = isTaskOverdue(task.status, task.due_date)
-      return { id: `task-${task.id}`, title: task.title, start: task.due_time ? `${task.due_date}T${task.due_time.slice(0, 5)}:00+07:00` : task.due_date, allDay: !task.due_time, backgroundColor: isOverdue ? '#fee2e2' : task.status === 'completed' ? '#dcf8e9' : '#fff0ce', borderColor: 'transparent', textColor: isOverdue ? '#991b1b' : task.status === 'completed' ? '#166534' : '#92400e', extendedProps: { kind: 'task', row: task, isOverdue } }
+      return [{
+        id: `task-${task.id}`,
+        title: task.title,
+        start: task.due_time ? `${task.due_date}T${task.due_time.slice(0, 5)}:00+07:00` : task.due_date,
+        allDay: !task.due_time,
+        backgroundColor: isOverdue ? '#fee2e2' : task.status === 'completed' ? '#dcf8e9' : '#fff0ce',
+        borderColor: 'transparent',
+        textColor: isOverdue ? '#991b1b' : task.status === 'completed' ? '#166534' : '#92400e',
+        extendedProps: { kind: 'task', row: task, isOverdue },
+      }]
     }) : []),
   ].filter((entry) => showOverdue || !entry.extendedProps.isOverdue)
   const today = bangkokDate()
@@ -596,7 +656,7 @@ export function CalendarPage() {
   const recentDocuments = (recentDocumentsQuery.data ?? []).filter((document) => document.parent === 'event'
     ? eventsQuery.data?.some((event) => event.id === document.parentId)
     : tasksQuery.data?.some((task) => task.id === document.parentId)).slice(0, 3)
-  const pendingCount = (tasksQuery.data ?? []).filter((task) => task.status === 'pending').length
+  const pendingCount = (tasksQuery.data ?? []).filter((task) => task.status === 'pending' && !task.recurrence_series_id).length
   const completedCount = (tasksQuery.data ?? []).filter((task) => task.status === 'completed').length
   const openCalendarEntry = (entry: (typeof calendarEntries)[number]) => {
     if (entry.extendedProps.kind === 'task') setTaskDialog({ open: true, task: entry.extendedProps.row as TaskRow })

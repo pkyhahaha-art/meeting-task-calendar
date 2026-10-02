@@ -1,11 +1,68 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { bangkokDate, formatDisplayDate, invalidGuestEmails, isPastBangkokDate, meetingRecurrenceFromRule, meetingRecurrenceRule, meetingReminderKeysFromTemplates, meetingReminderStatus, pastMeetingReminderKeys, parseDisplayDate, parseGuestEmails, recurrenceFromRule, recurrenceRule, reminderDate } from './eventForm.js'
+import {
+  bangkokDate,
+  endOfYearBangkokDate,
+  formatDisplayDate,
+  invalidGuestEmails,
+  isMeetingReminderKeyPast,
+  isPastBangkokDate,
+  meetingRecurrenceFromRule,
+  meetingRecurrenceRule,
+  meetingRecurrenceSummary,
+  meetingReminderKeysFromTemplates,
+  meetingReminderOptionLabel,
+  meetingReminderStatus,
+  pastMeetingReminderKeys,
+  parseDisplayDate,
+  parseGuestEmails,
+  recurrenceFromRule,
+  recurrenceRule,
+  reminderDate,
+} from './eventForm.js'
 
 test('parses and deduplicates guest emails', () => {
   assert.deepEqual(parseGuestEmails('A@gmail.com, b@gmail.com\na@gmail.com'), ['a@gmail.com', 'b@gmail.com'])
   assert.deepEqual(parseGuestEmails(['A@gmail.com', '', 'a@gmail.com', 'b@gmail.com']), ['a@gmail.com', 'b@gmail.com'])
   assert.deepEqual(invalidGuestEmails('good@gmail.com bad-email'), ['bad-email'])
+})
+
+test('generates clear meeting recurrence summaries in Thai and English', () => {
+  assert.equal(
+    meetingRecurrenceSummary({ frequency: 'none', interval: 1, weekdays: [], until: '', count: null }, '2026-10-05'),
+    'ไม่ทำซ้ำ (นัดหมายครั้งเดียว)',
+  )
+  assert.equal(
+    meetingRecurrenceSummary(
+      { frequency: 'week', interval: 1, weekdays: ['MO', 'TU', 'WE', 'TH', 'FR'], until: '2026-12-31', count: null },
+      '2026-10-05',
+      '09:00',
+      '10:00',
+      'th',
+    ),
+    'ทำซ้ำทุกวันทำงาน (จันทร์ – ศุกร์) เวลา 09:00 - 10:00 น. จนถึงวันที่ 31/12/2026',
+  )
+  assert.equal(
+    meetingRecurrenceSummary(
+      { frequency: 'week', interval: 1, weekdays: ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'], until: '2026-12-31', count: null },
+      '2026-10-05',
+      '09:00',
+      '10:00',
+      'th',
+    ),
+    'ทำซ้ำทุกวัน (จันทร์ – อาทิตย์) เวลา 09:00 - 10:00 น. จนถึงวันที่ 31/12/2026',
+  )
+  assert.equal(
+    meetingRecurrenceSummary(
+      { frequency: 'week', interval: 1, weekdays: ['WE'], until: '', count: 8 },
+      '2026-10-05',
+      '13:30',
+      '15:00',
+      'th',
+    ),
+    'ทำซ้ำทุกสัปดาห์ (วันพ) เวลา 13:30 - 15:00 น. รวมทั้งหมด 8 ครั้ง',
+  )
+  assert.equal(endOfYearBangkokDate('2026-10-05'), '2026-12-31')
 })
 
 test('maps recurrence values both ways', () => {
@@ -65,4 +122,20 @@ test('converts valid dates between ISO and dd/mm/yyyy', () => {
   assert.equal(parseDisplayDate('29/02/2027'), null)
   assert.equal(parseDisplayDate('31/04/2026'), null)
   assert.equal(parseDisplayDate('2026-09-28'), null)
+})
+
+test('identifies past meeting reminder keys correctly', () => {
+  // Current time: 2026-10-02 11:37:00 Bangkok (04:37:00 UTC)
+  const now = new Date('2026-10-02T04:37:00.000Z')
+
+  // Meeting today at 14:00 (07:00 UTC)
+  const meetingTodayAfternoon = new Date('2026-10-02T07:00:00.000Z')
+  assert.equal(isMeetingReminderKeyPast(meetingTodayAfternoon, '1:month', now), true)
+  assert.equal(isMeetingReminderKeyPast(meetingTodayAfternoon, '1:week', now), true)
+  assert.equal(isMeetingReminderKeyPast(meetingTodayAfternoon, '3:day', now), true)
+  assert.equal(isMeetingReminderKeyPast(meetingTodayAfternoon, '1:day', now), true)
+  assert.equal(isMeetingReminderKeyPast(meetingTodayAfternoon, '0:minute', now), false)
+
+  assert.equal(meetingReminderOptionLabel('1:day', 'th'), '1 วันก่อน')
+  assert.equal(meetingReminderOptionLabel('0:minute', 'th'), 'เมื่อถึงเวลานัด')
 })

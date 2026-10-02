@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, CalendarDays, LogOut, Menu, Settings, ShieldCheck, UserRound, X } from 'lucide-react'
+import { ArrowLeft, CalendarDays, LogOut, Menu, Settings, ShieldCheck, Smartphone, UserRound, X } from 'lucide-react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import peaLogo from '../../ภาพประกอบUI/PEA Logo (1).png'
 import mascot from '../../ภาพประกอบUI/Thumb Up Mascot 3D.png'
@@ -84,6 +84,7 @@ export function AppShell() {
         </div>
         <nav className="space-y-1 px-3 py-5" aria-label={text('เมนูหลัก', 'Main navigation')}>
           <NavLink to="/calendar" onClick={() => setMenuOpen(false)} className={navClass}><CalendarDays size={19} />{t('calendar')}</NavLink>
+          <NavLink to="/mobile-push" onClick={() => setMenuOpen(false)} className={navClass}><Smartphone size={19} />{text('เชื่อมต่อการแจ้งเตือนผ่านมือถือ', 'Mobile notifications')}</NavLink>
           <NavLink to="/profile" onClick={() => setMenuOpen(false)} className={navClass}><UserRound size={19} />{text('โปรไฟล์และตั้งค่า', 'Profile & settings')}</NavLink>
           {profile?.role === 'admin' && <NavLink to="/admin" onClick={() => setMenuOpen(false)} className={navClass}><ShieldCheck size={19} />Admin</NavLink>}
         </nav>

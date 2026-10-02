@@ -26,6 +26,18 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['line_connections']['Insert']>
         Relationships: []
       }
+      mobile_push_pairing_tokens: {
+        Row: { id: string; user_id: string; token: string; expires_at: string; used_at: string | null; device_info: string | null; created_at: string }
+        Insert: { id?: string; user_id: string; token: string; expires_at: string; used_at?: string | null; device_info?: string | null; created_at?: string }
+        Update: Partial<Database['public']['Tables']['mobile_push_pairing_tokens']['Insert']>
+        Relationships: []
+      }
+      mobile_push_subscriptions: {
+        Row: { id: string; user_id: string; endpoint: string; p256dh: string | null; auth: string | null; device_name: string | null; user_agent: string | null; created_at: string; last_used_at: string }
+        Insert: { id?: string; user_id: string; endpoint: string; p256dh?: string | null; auth?: string | null; device_name?: string | null; user_agent?: string | null; created_at?: string; last_used_at?: string }
+        Update: Partial<Database['public']['Tables']['mobile_push_subscriptions']['Insert']>
+        Relationships: []
+      }
       events: {
         Row: {
           id: string
@@ -156,7 +168,7 @@ export interface Database {
         Row: {
           id: string
           task_id: string
-          reminder_key: 'due' | '1_hour' | '1_day' | '3_days' | 'overdue'
+          reminder_key: 'due' | '1_hour' | '1_day' | '3_days' | 'overdue' | 'continuous'
           scheduled_at: string
           channel_email: boolean
           channel_line: boolean
@@ -167,7 +179,7 @@ export interface Database {
         Insert: {
           id?: string
           task_id: string
-          reminder_key: 'due' | '1_hour' | '1_day' | '3_days' | 'overdue'
+          reminder_key: 'due' | '1_hour' | '1_day' | '3_days' | 'overdue' | 'continuous'
           scheduled_at: string
           channel_email?: boolean
           channel_line?: boolean
@@ -278,6 +290,17 @@ export interface Database {
       replace_task_internal_recipients: { Args: { target_task_id: string; recipient_user_ids: string[] }; Returns: undefined }
       acknowledge_task: { Args: { target_task_id: string }; Returns: string }
       retry_notification_delivery: { Args: { target_delivery_id: string }; Returns: string }
+      pair_mobile_device: {
+        Args: {
+          target_token: string
+          target_endpoint: string
+          target_p256dh: string
+          target_auth: string
+          target_device_name: string
+          target_user_agent: string
+        }
+        Returns: { success: boolean; error?: string; subscription_id?: string; user_name?: string; employee_id?: string }
+      }
     }
     Enums: Record<string, never>
     CompositeTypes: Record<string, never>

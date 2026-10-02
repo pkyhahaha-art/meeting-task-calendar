@@ -18,8 +18,93 @@ function recurrenceParts(rule: string | null) {
   return new Map((rule ?? '').split(';').map((part) => part.split('=', 2) as [string, string]))
 }
 
+export const weekdayThaiShort: Record<MeetingWeekday, string> = {
+  SU: 'อา', MO: 'จ', TU: 'อ', WE: 'พ', TH: 'พฤ', FR: 'ศ', SA: 'ส',
+}
+
+export const weekdayThaiFull: Record<MeetingWeekday, string> = {
+  SU: 'วันอาทิตย์', MO: 'วันจันทร์', TU: 'วันอังคาร', WE: 'วันพุธ', TH: 'วันพฤหัสบดี', FR: 'วันศุกร์', SA: 'วันเสาร์',
+}
+
+export const weekdayEnglishShort: Record<MeetingWeekday, string> = {
+  SU: 'Sun', MO: 'Mon', TU: 'Tue', WE: 'Wed', TH: 'Thu', FR: 'Fri', SA: 'Sat',
+}
+
+export const weekdayEnglishFull: Record<MeetingWeekday, string> = {
+  SU: 'Sunday', MO: 'Monday', TU: 'Tuesday', WE: 'Wednesday', TH: 'Thursday', FR: 'Friday', SA: 'Saturday',
+}
+
 export function meetingWeekdayForDate(date: string): MeetingWeekday {
-  return weekdayCodes[new Date(`${date}T12:00:00+07:00`).getUTCDay()]
+  if (!date || typeof date !== 'string') return 'MO'
+  const d = new Date(`${date.slice(0, 10)}T12:00:00+07:00`)
+  if (Number.isNaN(d.getTime())) return 'MO'
+  return weekdayCodes[d.getUTCDay()] ?? 'MO'
+}
+
+export function endOfYearBangkokDate(date: string): string {
+  const year = (date || '').slice(0, 4) || new Date().getFullYear().toString()
+  return `${year}-12-31`
+}
+
+export function meetingRecurrenceSummary(
+  value: MeetingRecurrence,
+  startDate: string,
+  startTime?: string,
+  endTime?: string,
+  language: 'th' | 'en' = 'th',
+): string {
+  if (value.frequency === 'none') {
+    return language === 'th' ? 'ไม่ทำซ้ำ (นัดหมายครั้งเดียว)' : 'Does not repeat (single meeting)'
+  }
+
+  const isTh = language === 'th'
+  const timePart = startTime ? (isTh ? ` เวลา ${startTime}${endTime ? ` - ${endTime} น.` : ' น.'}` : ` at ${startTime}${endTime ? ` - ${endTime}` : ''}`) : ''
+  let patternText = ''
+
+  if (value.frequency === 'day') {
+    patternText = value.interval === 1 ? (isTh ? 'ทุกวัน' : 'Daily') : (isTh ? `ทุก ๆ ${value.interval} วัน` : `Every ${value.interval} days`)
+  } else if (value.frequency === 'week') {
+    const isWeekdays = value.interval === 1 && value.weekdays.length === 5 && ['MO', 'TU', 'WE', 'TH', 'FR'].every((d) => value.weekdays.includes(d as MeetingWeekday))
+    const isAllDays = value.interval === 1 && value.weekdays.length === 7
+    if (isAllDays) {
+      patternText = isTh ? 'ทุกวัน (จันทร์ – อาทิตย์)' : 'Every day (Monday–Sunday)'
+    } else if (isWeekdays) {
+      patternText = isTh ? 'ทุกวันทำงาน (จันทร์ – ศุกร์)' : 'Every weekday (Monday–Friday)'
+    } else {
+      const dayNames = value.weekdays.map((d) => isTh ? weekdayThaiShort[d] : weekdayEnglishShort[d]).join(', ')
+      if (value.interval === 1) {
+        patternText = isTh ? `ทุกสัปดาห์ (วัน${dayNames})` : `Weekly on ${dayNames}`
+      } else if (value.interval === 2) {
+        patternText = isTh ? `ทุก 2 สัปดาห์ (วัน${dayNames})` : `Every 2 weeks on ${dayNames}`
+      } else {
+        patternText = isTh ? `ทุก ๆ ${value.interval} สัปดาห์ (วัน${dayNames})` : `Every ${value.interval} weeks on ${dayNames}`
+      }
+    }
+  } else if (value.frequency === 'month') {
+    const dayNumber = Number(startDate.slice(8, 10)) || 1
+    if (value.interval === 1) {
+      patternText = isTh ? `ทุกเดือน (ทุกวันที่ ${dayNumber} ของเดือน)` : `Monthly on day ${dayNumber}`
+    } else {
+      patternText = isTh ? `ทุก ๆ ${value.interval} เดือน (ทุกวันที่ ${dayNumber})` : `Every ${value.interval} months on day ${dayNumber}`
+    }
+  } else if (value.frequency === 'year') {
+    if (value.interval === 1) {
+      patternText = isTh ? `ทุกปี (ทุกวันที่ ${formatDisplayDate(startDate)})` : `Yearly on ${formatDisplayDate(startDate)}`
+    } else {
+      patternText = isTh ? `ทุก ๆ ${value.interval} ปี` : `Every ${value.interval} years`
+    }
+  }
+
+  let endText = ''
+  if (value.until) {
+    endText = isTh ? ` จนถึงวันที่ ${formatDisplayDate(value.until)}` : ` until ${formatDisplayDate(value.until)}`
+  } else if (value.count) {
+    endText = isTh ? ` รวมทั้งหมด ${value.count} ครั้ง` : ` for ${value.count} times`
+  } else {
+    endText = isTh ? ' (สูงสุดไม่เกิน 1 ปี)' : ' (up to 1 year)'
+  }
+
+  return `${isTh ? 'ทำซ้ำ' : 'Repeats '}${patternText}${timePart}${endText}`
 }
 
 export function meetingRecurrenceFromRule(rule: string | null, startDate: string, until: string | null, count: number | null): MeetingRecurrence {
@@ -119,10 +204,36 @@ export function pastMeetingReminderKeys(start: Date, keys: ReminderKey[], now = 
   return keys.filter((key) => meetingReminderStatus(reminderDate(start, key), now) === 'cancelled')
 }
 
+export function isMeetingReminderKeyPast(start: Date, key: ReminderKey, now = new Date()): boolean {
+  if (!start || Number.isNaN(start.getTime())) return false
+  return meetingReminderStatus(reminderDate(start, key), now) === 'cancelled'
+}
+
+export function meetingReminderOptionLabel(key: ReminderKey, language: 'th' | 'en' = 'th'): string {
+  const labels: Record<ReminderKey, { th: string; en: string }> = {
+    '0:minute': { th: 'เมื่อถึงเวลานัด', en: 'At the meeting time' },
+    '1:month': { th: '1 เดือนก่อน', en: '1 month before' },
+    '1:week': { th: '1 สัปดาห์ก่อน', en: '1 week before' },
+    '3:day': { th: '3 วันก่อน', en: '3 days before' },
+    '1:day': { th: '1 วันก่อน', en: '1 day before' },
+  }
+  return labels[key]?.[language] || key
+}
+
+export function daysBetweenBangkokDates(startDate: string, endDate: string): number {
+  const [y1, m1, d1] = startDate.split('-').map(Number)
+  const [y2, m2, d2] = endDate.split('-').map(Number)
+  if (!y1 || !m1 || !d1 || !y2 || !m2 || !d2) return 0
+  const t1 = Date.UTC(y1, m1 - 1, d1)
+  const t2 = Date.UTC(y2, m2 - 1, d2)
+  return Math.round((t2 - t1) / (24 * 60 * 60 * 1000))
+}
+
 export function bangkokDate(now = new Date()) {
+  const safeDate = !now || Number.isNaN(now.getTime()) ? new Date() : now
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).formatToParts(now)
+  }).formatToParts(safeDate)
   const read = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value
   return `${read('year')}-${read('month')}-${read('day')}`
 }

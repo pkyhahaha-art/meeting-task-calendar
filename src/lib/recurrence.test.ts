@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { expandEvent } from './recurrence'
+import { expandEvent, expandTask } from './recurrence'
 
 const base = { id: 'event-1', start_datetime: '2026-09-21T02:00:00.000Z', end_datetime: '2026-09-21T03:00:00.000Z' }
 
@@ -32,4 +32,22 @@ test('expands a custom biweekly Meeting on its selected weekdays and honors its 
 test('stops after the configured number of custom occurrences', () => {
   const rows = expandEvent({ ...base, recurrence_rule: 'FREQ=WEEKLY;BYDAY=MO,WE', recurrence_count: 3 }, new Date('2026-09-20'), new Date('2026-10-31'))
   assert.deepEqual(rows.map((row) => row.start.slice(0, 10)), ['2026-09-21', '2026-09-23', '2026-09-28'])
+})
+
+const taskBase = { id: 'task-1', due_date: '2026-09-21', due_time: '09:00:00' as string | null, recurrence_end_at: null as string | null }
+
+test('expandTask generates daily task occurrences', () => {
+  const rows = expandTask({ ...taskBase, recurrence_rule: 'FREQ=DAILY' }, new Date('2026-09-20'), new Date('2026-09-24'))
+  assert.deepEqual(rows.map((row) => row.dueDate), ['2026-09-21', '2026-09-22', '2026-09-23', '2026-09-24'])
+})
+
+test('expandTask returns a single entry for non-recurring tasks', () => {
+  const rows = expandTask({ ...taskBase, recurrence_rule: null }, new Date('2026-09-20'), new Date('2026-09-25'))
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].dueDate, '2026-09-21')
+})
+
+test('expandTask respects recurrence_end_at', () => {
+  const rows = expandTask({ ...taskBase, recurrence_rule: 'FREQ=DAILY', recurrence_end_at: '2026-09-23T16:59:59.999Z' }, new Date('2026-09-20'), new Date('2026-09-30'))
+  assert.deepEqual(rows.map((row) => row.dueDate), ['2026-09-21', '2026-09-22', '2026-09-23'])
 })
