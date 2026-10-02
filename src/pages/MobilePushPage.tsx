@@ -26,6 +26,7 @@ import mascotThumbsUp from '../../ภาพประกอบUI/Thumb Up Mascot 
 import { useAuth } from '../auth/AuthProvider'
 import { useLanguage } from '../i18n/LanguageProvider'
 import { useConfirm } from '../components/ConfirmDialogProvider'
+import { appUrl } from '../lib/appUrl'
 import {
   createPairingToken,
   getConnectedDevices,
@@ -71,6 +72,9 @@ export function MobilePushPage() {
   const generateNewToken = useCallback(async () => {
     if (!user?.id) return
     setIsGenerating(true)
+    setPairingToken(null)
+    setExpiresAt(null)
+    setTimeLeft(0)
     setTestError(null)
     try {
       const result = await createPairingToken(user.id)
@@ -91,10 +95,11 @@ export function MobilePushPage() {
 
   // Initialize pairing token on mount or when user loads
   useEffect(() => {
-    if (user?.id && !pairingToken) {
+    if (user?.id && !initialGeneratedRef.current) {
+      initialGeneratedRef.current = true
       void generateNewToken()
     }
-  }, [user?.id, pairingToken, generateNewToken])
+  }, [user?.id, generateNewToken])
 
   // Countdown timer effect
   useEffect(() => {
@@ -129,17 +134,16 @@ export function MobilePushPage() {
         : `http://${customHost.trim()}`)
     : window.location.origin
 
-  // Pairing URL for QR code — must use hash router format (#/pair-device) so
-  // GitHub Pages serves index.html and the SPA router handles the route.
+  // Pairing URL for QR code — uses appUrl to ensure GitHub Pages subpath is preserved
   const pairingUrl = pairingToken
-    ? (() => {
-        const base = customHost.trim()
-          ? (customHost.trim().startsWith('http://') || customHost.trim().startsWith('https://')
-              ? customHost.trim().replace(/\/$/, '')
-              : `http://${customHost.trim().replace(/\/$/, '')}`)
-          : `${window.location.origin}${window.location.pathname.replace(/\/[^/]*$/, '').replace(/\/$/, '')}`
-        return `${base}/#/pair-device?token=${pairingToken}`
-      })()
+    ? isLocalhost && customHost.trim()
+      ? (() => {
+          const base = customHost.trim().startsWith('http://') || customHost.trim().startsWith('https://')
+            ? customHost.trim().replace(/\/$/, '')
+            : `http://${customHost.trim().replace(/\/$/, '')}`
+          return `${base}/#/pair-device?token=${pairingToken}`
+        })()
+      : appUrl(`pair-device?token=${pairingToken}`)
     : ''
 
   const handleSaveCustomHost = (value: string) => {
@@ -258,7 +262,7 @@ export function MobilePushPage() {
                   value={pairingUrl}
                   size={210}
                   level="M"
-                  includeMargin={true}
+                  marginSize={4}
                 />
               </div>
             ) : (

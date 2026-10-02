@@ -290,6 +290,10 @@ export interface Database {
       replace_task_internal_recipients: { Args: { target_task_id: string; recipient_user_ids: string[] }; Returns: undefined }
       acknowledge_task: { Args: { target_task_id: string }; Returns: string }
       retry_notification_delivery: { Args: { target_delivery_id: string }; Returns: string }
+      verify_mobile_pairing_token: {
+        Args: { target_token: string }
+        Returns: { valid: boolean; error?: string }
+      }
       pair_mobile_device: {
         Args: {
           target_token: string

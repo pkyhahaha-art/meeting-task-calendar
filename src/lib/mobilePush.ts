@@ -73,11 +73,8 @@ export async function createPairingToken(userId: string): Promise<{ token: strin
       .single()
 
     if (error || !data) {
-      console.warn('Database pairing token insert notice:', error?.message)
-      return {
-        token,
-        expiresAt,
-      }
+      console.error('Database pairing token insert error:', error)
+      throw new Error(error?.message ? `ไม่สามารถสร้าง Token ในฐานข้อมูลได้ (${error.message})` : 'ไม่สามารถสร้าง Token ในฐานข้อมูลได้ กรุณาตรวจสอบตารางบน Supabase')
     }
 
     return {
@@ -85,11 +82,8 @@ export async function createPairingToken(userId: string): Promise<{ token: strin
       expiresAt: new Date(data.expires_at),
     }
   } catch (err) {
-    console.warn('createPairingToken fallback:', err)
-    return {
-      token,
-      expiresAt,
-    }
+    console.error('createPairingToken error:', err)
+    throw err
   }
 }
 
@@ -99,29 +93,27 @@ export async function createPairingToken(userId: string): Promise<{ token: strin
 export async function verifyPairingToken(token: string): Promise<{
   valid: boolean
   error?: string
-  userId?: string
 }> {
   if (!token) return { valid: false, error: 'ไม่พบรหัส Token สำหรับเชื่อมต่อ' }
 
-  const { data, error } = await supabase
-    .from('mobile_push_pairing_tokens')
-    .select('id, user_id, expires_at, used_at')
-    .eq('token', token)
-    .maybeSingle()
+  // The scanned token authorizes this lookup; the phone does not need a login
+  // or direct access to the pairing-token table.
+  const { data, error } = await supabase.rpc('verify_mobile_pairing_token', {
+    target_token: token,
+  })
 
-  if (error || !data) {
+  if (error) {
+    console.error('verifyPairingToken database error:', error)
+    return { valid: false, error: error.code === 'PGRST202'
+      ? 'ระบบเชื่อมต่อมือถือยังไม่ได้อัปเดตฐานข้อมูล กรุณาให้ผู้ดูแลรัน SQL 202610020004_fix_mobile_pairing_access.sql แล้วสแกน QR Code ใหม่'
+      : `ไม่สามารถตรวจสอบข้อมูล Token บนเซิร์ฟเวอร์ได้ (${error.message})` }
+  }
+
+  if (!data) {
     return { valid: false, error: 'QR Code หรือลิงก์เชื่อมต่อไม่ถูกต้อง หรือหมดอายุแล้ว' }
   }
 
-  if (data.used_at) {
-    return { valid: false, error: 'QR Code นี้ถูกใช้งานเพื่อเชื่อมต่ออุปกรณ์ไปแล้ว กรุณาสร้าง QR Code ใหม่' }
-  }
-
-  if (new Date(data.expires_at).getTime() < Date.now()) {
-    return { valid: false, error: 'QR Code หมดอายุแล้ว (จำกัดเวลา 10 นาที) กรุณากดสร้างใหม่บนหน้าจอคอมพิวเตอร์' }
-  }
-
-  return { valid: true, userId: data.user_id }
+  return data
 }
 
 /**
