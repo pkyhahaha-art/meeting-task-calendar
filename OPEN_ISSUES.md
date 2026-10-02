@@ -1,17 +1,48 @@
 # ปัญหาที่ค้างอยู่
 
-อัปเดตล่าสุด: 28 กันยายน 2026
+อัปเดตล่าสุด: 2 ตุลาคม 2026 (เย็น - ก่อนพักงานทำต่อคืนนี้)
 
-หมายเหตุการตรวจ Git: route `/acknowledged` และ Edge Function `email-acknowledgement` อยู่ใน commit `8e1d78c` แล้ว และ commit นี้อยู่บน `origin/main` ณ วันที่ตรวจ ส่วนการ deploy และการทดสอบอีเมลจริงบน production ยังต้องยืนยันแยกต่างหาก ข้อความด้านล่างที่ระบุว่า “ยังไม่ push” เป็นบันทึก ณ เวลาที่หยุดงานวันที่ 27 กันยายน
+### 📌 จุดที่หยุดงานไว้เพื่อทำต่อคืนนี้ (2 ตุลาคม 2026)
 
-### จุดที่หยุดงานไว้เพื่อทำต่อวันถัดไป
+1. **ระบบ Checkbox แจ้งเตือนผ่านมือถือ (EventDialog / TaskDialog / CalendarPage):**
+   - แก้ไขโค้ดเสร็จสมบูรณ์แล้วในเครื่องและ commit/push ขึ้น GitHub แล้ว (commit `ad15c9d`)
+   - เมื่อยังไม่เชื่อมต่อมือถือ: Checkbox จะ Disable สีเทา พร้อม Badge ส้ม `ยังไม่เชื่อมต่อ`
+   - เมื่อเชื่อมต่อมือถือแล้ว: Checkbox จะปลดล็อกให้ติ๊กได้ พร้อม Badge เขียว `เชื่อมต่อแล้ว`
+   - อัปเดต `src/pages/MobilePushPage.tsx` ให้ใช้ `appUrl` สร้างลิงก์ QR Code ป้องกันปัญหา Subpath บน GitHub Pages
 
-- โค้ด local เพิ่ม SweetAlert2 ที่ route `/acknowledged` แล้ว และผ่าน build, lint และ tests 30/30
-- เมื่อกดปุ่มรับทราบ ระบบฐานข้อมูลบันทึก `acknowledged_at` ได้จริง และฟอร์ม local รีเฟรชสถานะผู้รับทุก 3 วินาที
-- อีเมล production ยังไม่แสดง SweetAlert เพราะหน้าเว็บเวอร์ชันนี้ยังไม่ได้ push/deploy และยังไม่มี route `/acknowledged` บน production
-- ยังไม่มี Git commit/push ตามคำสั่งให้หยุดก่อน; งานต่อไปคือเผยแพร่ frontend รอบนี้ แล้ว deploy/ตรวจ `email-acknowledgement` ให้ redirect ไป `/acknowledged` จากอีเมลจริง
+2. **ทางเลือกช่องทางแจ้งเตือนทางโทรศัพท์ (กำลังพิจารณากลับมาใช้ LINE):**
+   - ผู้ใช้พิจารณาว่าจะ**กลับมาใช้การแจ้งเตือนผ่าน LINE** (LINE Official Account / Messaging API) แทน Web Push เนื่องจาก:
+     - ฐานข้อมูลและระบบเดิมมีคอลัมน์ `channel_line`, ตาราง `line_connections` และฟังก์ชัน webhook รองรับอยู่แล้ว
+     - ไม่ติดข้อจำกัดของ iOS Safari (เช่น เรื่อง PWA / Add to Home Screen / Service Worker)
+     - สะดวกและคุ้นเคยกับผู้ใช้ในองค์กร (PEA) มากกว่า
+   - **ทางเลือกในการดำเนินการคืนนี้:**
+     - **ทางเลือก A (กลับมาใช้ LINE):** สลับ UI กลับมาแสดง LINE แจ้งเตือน เชื่อมต่อ LINE OA และทดสอบส่งแจ้งเตือนผ่าน LINE
+     - **ทางเลือก B (ทำ Web Push ต่อ):** รัน SQL `202610020003_mobile_push_device_pairing.sql` บน Supabase แล้วทดสอบบน iPhone ต่อ
 
-เอกสารนี้แยกสถานะ **แก้ในโค้ด**, **ตรวจบน production แล้ว** และ **ยังต้องดำเนินการ** เพื่อไม่ให้นับการแก้ในเครื่องว่าใช้งานจริงแล้ว
+3. **ปัญหาสแกน QR Code จาก GitHub Pages (ผลตรวจจริง 2 ตุลาคม 2026):**
+   - โค้ดที่เผยแพร่ตัด `/meeting-task-calendar/` ออกจาก URL ทำให้เปิดผิดหน้า แก้และ push แล้วใน commit `cd14ace`
+   - ตรวจ REST API จริงแล้ว: ตาราง `mobile_push_pairing_tokens` มีอยู่ แต่การอ่านจากมือถือที่ไม่ได้ล็อกอินตอบ `401 / 42501 permission denied` ไม่ใช่ตารางไม่มีอยู่
+   - ทดสอบ `pair_mobile_device` ด้วย token ที่ไม่ถูกต้องแล้วตอบ HTTP 200 และปฏิเสธ token ตามคาด แสดงว่าฟังก์ชันนี้มีอยู่ใน production
+   - เพิ่ม RPC `verify_mobile_pairing_token` สำหรับตรวจเฉพาะ token ที่สแกน พร้อม grants สำหรับเจ้าของบัญชี และปิดการอ่านรายการ token โดยผู้ใช้ที่ไม่ได้ล็อกอิน
+   - **production:** GitHub Pages deploy commit `cd14ace` สำเร็จ และรัน `202610020004_fix_mobile_pairing_access.sql` ผ่าน SQL Editor แล้ว
+   - **ตรวจแล้ว:** API แบบไม่ได้ล็อกอินเรียก `verify_mobile_pairing_token` ได้ (HTTP 200); token ไม่ถูกต้องถูกปฏิเสธ; อ่านรายการ token โดย anon ยังถูกปิด (HTTP 401); ทดสอบ token ใช้ได้/หมดอายุ/ใช้แล้วบน SQL ด้วยข้อมูลชั่วคราวและ rollback ทั้งหมด ผ่านครบ พร้อมยืนยันสิทธิ์สร้าง token ของ authenticated
+   - **ผลจากมือถือผู้ใช้:** Safari บน iPhone แจ้งว่าไม่รองรับ Push เนื่องจากยังเปิดในแท็บเบราว์เซอร์ ไม่ใช่ Home Screen app
+   - เพิ่ม manifest `display: standalone`, icons และ service worker ที่ใช้โฟลเดอร์ GitHub Pages ถูกต้อง พร้อมหน้าคัดลอกลิงก์/ติดตั้ง/วางลิงก์ในแอป โดยไม่ต้องอาศัย storage ร่วมกับ Safari (commit `e42bbc0`)
+   - GitHub Pages deploy `e42bbc0` สำเร็จแล้ว ตรวจ manifest/service worker/icons บนเว็บจริงได้ HTTP 200 ครบ และหน้า `#/pair-device` แสดงช่องวางลิงก์ตามคาด
+   - เอา endpoint จำลอง `device://` ออก ไม่บันทึกว่าเชื่อมต่อสำเร็จหากสมัคร Push ไม่สำเร็จ และไม่นับอุปกรณ์จำลองเก่าเป็นอุปกรณ์ที่เชื่อมต่อ
+   - tests ผ่าน 58/58 และ build ผ่าน; lint ไฟล์ PairDevicePage/mobilePush/pushSupport/tests ที่แก้ผ่าน ส่วน lint ทั้งโปรเจกต์ยังมีข้อผิดพลาดเดิม
+   - **ยังต้องทำเพื่อส่ง Web Push จริง:** ตั้งค่า key ของตัวส่งใน `VITE_VAPID_PUBLIC_KEY` (workflow รองรับ secret แล้ว) และ implement/deploy ตัวส่งที่ใช้ private key คู่กันกับการเชื่อมต่อคิวแจ้งเตือน ปัจจุบัน worker คิวส่งเพียง email/LINE จึงยังส่งงานหรือประชุมผ่าน Web Push ไม่ได้ หน้าเว็บแสดงสถานะนี้และปิดปุ่มสมัครเมื่อไม่มี public key
+   - **ยังต้องทดสอบบน iPhone:** สร้าง QR ใหม่ คัดลอกลิงก์ใน Safari เพิ่มไอคอน PEA Calendar ใหม่ เปิดจากไอคอน แล้ววางลิงก์ในแอป
+
+4. **ปุ่มทดสอบแจ้งเตือนบน Home Screen และเมนูมือถือ (2 ตุลาคม 2026):**
+   - ผู้ใช้รายงานว่ากดทดสอบแล้วไม่มีแจ้งเตือน แต่ยังไม่ได้ส่งผล permission หรือข้อความใต้ปุ่ม จึงยังยืนยันสาเหตุเฉพาะบน iPhone เครื่องจริงไม่ได้
+   - แก้ใน commit `20cc2aa`: รอ Service Worker ที่ลงทะเบียนใน scope ของเว็บนี้ให้ activate แทนการรอ `navigator.serviceWorker.ready` แบบไม่กำหนดเวลา พร้อม timeout และข้อผิดพลาดที่แสดงให้ผู้ใช้เห็น
+   - deploy GitHub Pages สำเร็จแล้ว ตรวจ bundle เว็บจริงพบชื่อปุ่มใหม่, `getNotifications` และรูปแบบเมนูใหม่ครบ
+   - ปุ่มแสดงสถานะกำลังทดสอบ ป้องกันการกดซ้ำ และเก็บข้อความผลไว้จนทดสอบใหม่ ตรวจ `getNotifications` ด้วย tag เฉพาะก่อนแสดงว่าอุปกรณ์มีแจ้งเตือน ไม่อ้างว่า iOS แสดงแบนเนอร์สำเร็จ
+   - เปลี่ยนชื่อปุ่มเป็นทดสอบบนอุปกรณ์นี้ เพื่อให้ชัดว่าเป็น local notification และไม่ได้ส่งจากคอมพิวเตอร์ไปมือถือ
+   - เมนูเชื่อมต่อมือถือคงข้อความเดิม ใช้ `nowrap` / อักษร 12px และไอคอนที่ไม่หด ตรวจ layout ที่ Sidebar 254px แล้วไม่ล้น (link clientWidth/scrollWidth เท่ากัน 230px)
+   - tests ผ่าน 63/63 และ build ผ่าน; lint ของ AppShell/mobilePush/notificationWorker/tests ผ่าน ส่วน MobilePushPage มี unused imports เดิม 2 รายการ
+   - ต้องให้ผู้ใช้ปิด/เปิด Home Screen app แล้วทดสอบเวอร์ชันใหม่ เพื่อตรวจผล permission / การสร้าง notification และการแสดงแบนเนอร์จริง
 
 ## การแก้ไข Task แล้วส่งให้ผู้รับภายนอกไม่สำเร็จ
 
