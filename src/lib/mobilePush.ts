@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
-import { appUrl } from './appUrl'
 import { currentPushSupport } from './pushSupport'
+import { activeNotificationWorker, showLocalTestNotification } from './notificationWorker'
 
 export interface ConnectedDevice {
   id: string
@@ -126,12 +126,7 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
     return null
   }
   try {
-    const workerUrl = new URL('sw.js', appUrl('/').split('#')[0])
-    const reg = await navigator.serviceWorker.register(workerUrl.href, {
-      scope: new URL('./', workerUrl).pathname,
-    })
-    await navigator.serviceWorker.ready
-    return reg
+    return await activeNotificationWorker()
   } catch (err) {
     console.warn('Service worker registration failed:', err)
     return null
@@ -257,16 +252,14 @@ export async function deleteConnectedDevice(subscriptionId: string): Promise<boo
 }
 
 /**
- * Trigger a test notification (via local notification or push channel)
+ * Show and verify a local notification on the device running this page.
  */
 export async function sendTestNotification(title: string, body: string): Promise<boolean> {
   const support = currentPushSupport()
   if (support === 'ios-install') throw new Error('กรุณาเปิด PEA Calendar จากไอคอนบนหน้าจอโฮมก่อนทดสอบการแจ้งเตือน')
   if (support !== 'ready') throw new Error('อุปกรณ์นี้ยังไม่พร้อมเปิดการแจ้งเตือน กรุณาใช้เบราว์เซอร์ที่รองรับและ HTTPS')
   const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission()
-  if (permission !== 'granted') throw new Error('กรุณาอนุญาตการแจ้งเตือนก่อนทดสอบ')
-  const reg = await registerServiceWorker()
-  if (!reg) throw new Error('ไม่สามารถเตรียมการแจ้งเตือนบนอุปกรณ์นี้ได้')
-  await reg.showNotification(title, { body, icon: new URL('icon-192.png', reg.scope).href })
-  return true
+  if (permission !== 'granted') throw new Error('ยังไม่ได้อนุญาตแจ้งเตือน กรุณาไปที่การตั้งค่า iPhone → การแจ้งเตือน → PEA Calendar → อนุญาตการแจ้งเตือน แล้วลองใหม่')
+  const reg = await activeNotificationWorker()
+  return showLocalTestNotification(reg, title, body)
 }

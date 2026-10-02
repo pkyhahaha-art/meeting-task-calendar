@@ -47,6 +47,7 @@ export function MobilePushPage() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [copied, setCopied] = useState(false)
   const [testSent, setTestSent] = useState(false)
+  const [isTesting, setIsTesting] = useState(false)
   const [testError, setTestError] = useState<string | null>(null)
   const initialGeneratedRef = useRef(false)
 
@@ -178,18 +179,22 @@ export function MobilePushPage() {
   }
 
   const handleTestNotification = async () => {
+    if (isTesting) return
+    setIsTesting(true)
     setTestError(null)
     setTestSent(false)
     try {
-      await sendTestNotification(
+      const confirmed = await sendTestNotification(
         '⚡ ทดสอบการแจ้งเตือน PEA Meeting & Task',
-        `การแจ้งเตือนทำงานได้สมบูรณ์แบบ! ส่งถึงคุณ ${profile?.full_name || user?.email}`
+        `ข้อความทดสอบบนอุปกรณ์ที่เปิดหน้านี้ สำหรับ ${profile?.full_name || user?.email}`
       )
-      setTestSent(true)
-      setTimeout(() => setTestSent(false), 3500)
+      if (confirmed) setTestSent(true)
+      else setTestError('เบราว์เซอร์ยังไม่ยืนยันว่ามีแจ้งเตือน กรุณาตรวจศูนย์การแจ้งเตือน และการตั้งค่า iPhone → การแจ้งเตือน → PEA Calendar รวมถึงโหมดโฟกัส')
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'ไม่สามารถส่งการแจ้งเตือนได้'
       setTestError(msg)
+    } finally {
+      setIsTesting(false)
     }
   }
 
@@ -474,7 +479,7 @@ export function MobilePushPage() {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900">{text('ทดสอบการแจ้งเตือน', 'Test Notifications')}</h3>
-                  <p className="text-xs text-slate-500">{text('กดส่งข้อความแจ้งเตือนทดสอบมายังอุปกรณ์ของคุณ', 'Send a test push alert to verify delivery')}</p>
+                  <p className="text-xs text-slate-500">{text('ทดสอบบนอุปกรณ์ที่เปิดหน้านี้ หากกดบนคอมพิวเตอร์ แจ้งเตือนจะแสดงบนคอมพิวเตอร์', 'Test on this device. Clicking on a computer displays the notification on that computer.')}</p>
                 </div>
               </div>
             </div>
@@ -482,21 +487,22 @@ export function MobilePushPage() {
             <button
               type="button"
               onClick={handleTestNotification}
-              className="w-full inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-700 via-fuchsia-600 to-amber-500 px-4 py-2.5 font-semibold text-white shadow-md shadow-purple-300/40 hover:from-brand-800 hover:via-fuchsia-700 hover:to-amber-600 transition"
+              disabled={isTesting}
+              className="w-full inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-700 via-fuchsia-600 to-amber-500 px-4 py-2.5 font-semibold text-white shadow-md shadow-purple-300/40 hover:from-brand-800 hover:via-fuchsia-700 hover:to-amber-600 transition disabled:opacity-60"
             >
-              <Send size={16} />
-              {text('ส่งการแจ้งเตือนทดสอบเดี๋ยวนี้', 'Send Test Notification Now')}
+              {isTesting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+              {isTesting ? text('กำลังทดสอบการแจ้งเตือน…', 'Testing notification…') : text('ทดสอบแจ้งเตือนบนอุปกรณ์นี้', 'Test notification on this device')}
             </button>
 
             {testSent && (
-              <div className="rounded-xl bg-green-50 border border-green-200 p-3 text-xs font-semibold text-green-800 flex items-center gap-2">
+              <div role="status" className="rounded-xl bg-green-50 border border-green-200 p-3 text-xs font-semibold text-green-800 flex items-center gap-2">
                 <CheckCircle2 size={16} className="text-green-600 shrink-0" />
-                <span>{text('ส่งการแจ้งเตือนทดสอบเรียบร้อยแล้ว! ตรวจสอบที่หน้าจอของคุณ', 'Test notification sent successfully!')}</span>
+                <span>{text('พบแจ้งเตือนทดสอบในระบบของอุปกรณ์นี้แล้ว หากไม่เห็นแบนเนอร์ ให้เปิดศูนย์การแจ้งเตือนและตรวจโหมดโฟกัส / ห้ามรบกวน', 'The device lists the test notification. If no banner appears, check Notification Center and Focus / Do Not Disturb.')}</span>
               </div>
             )}
 
             {testError && (
-              <div className="rounded-xl bg-red-50 border border-red-200 p-3 text-xs font-semibold text-red-800 flex items-center gap-2">
+              <div role="alert" className="rounded-xl bg-red-50 border border-red-200 p-3 text-xs font-semibold text-red-800 flex items-center gap-2">
                 <AlertCircle size={16} className="text-red-600 shrink-0" />
                 <span>{testError}</span>
               </div>

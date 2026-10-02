@@ -84,7 +84,7 @@ export function AppShell() {
         </div>
         <nav className="space-y-1 px-3 py-5" aria-label={text('เมนูหลัก', 'Main navigation')}>
           <NavLink to="/calendar" onClick={() => setMenuOpen(false)} className={navClass}><CalendarDays size={19} />{t('calendar')}</NavLink>
-          <NavLink to="/mobile-push" onClick={() => setMenuOpen(false)} className={navClass}><Smartphone size={19} />{text('เชื่อมต่อการแจ้งเตือนผ่านมือถือ', 'Mobile notifications')}</NavLink>
+          <NavLink to="/mobile-push" onClick={() => setMenuOpen(false)} className={({ isActive }) => `flex min-h-11 items-center gap-2 rounded-xl px-3 text-xs font-semibold whitespace-nowrap transition ${isActive ? 'bg-amber-50 text-amber-700' : 'text-slate-600 hover:bg-purple-50 hover:text-brand-700'}`}><Smartphone size={19} className="shrink-0" /><span>{text('เชื่อมต่อการแจ้งเตือนผ่านมือถือ', 'Mobile notifications')}</span></NavLink>
           <NavLink to="/profile" onClick={() => setMenuOpen(false)} className={navClass}><UserRound size={19} />{text('โปรไฟล์และตั้งค่า', 'Profile & settings')}</NavLink>
           {profile?.role === 'admin' && <NavLink to="/admin" onClick={() => setMenuOpen(false)} className={navClass}><ShieldCheck size={19} />Admin</NavLink>}
         </nav>
