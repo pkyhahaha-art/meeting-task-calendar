@@ -2,6 +2,14 @@
 
 Internal shared calendar built with React, TypeScript, Tailwind CSS, FullCalendar, and Supabase.
 
+## iPhone / iPad notification setup
+
+Requires iOS / iPadOS 16.4 or later. After scanning the QR code in Safari, copy the pairing link, use Share → Add to Home Screen, and open the new PEA Calendar icon. Paste the link in the app and verify it before enabling notifications. The app starts at `#/pair-device` so the pairing link can be transferred without relying on shared Safari/PWA storage. QR tokens expire after 10 minutes.
+
+The manifest, icons, and notification service worker use relative paths for GitHub Pages project hosting. Pairing requires a real Push subscription and never stores a simulated `device://` endpoint. The test button displays a local notification on the device where it is clicked.
+
+**Server delivery is still unfinished:** configure the frontend `VITE_VAPID_PUBLIC_KEY` repository secret only with the key belonging to the deployed sender. The current notification queue processes email and LINE; it does not send Web Push yet. A matching VAPID sender and queue integration are required before claiming that scheduled mobile reminders work. Until the public key is configured, the pairing page shows that mobile delivery is unavailable.
+
 ## Current implementation
 
 - Gmail/Password registration with confirmation link

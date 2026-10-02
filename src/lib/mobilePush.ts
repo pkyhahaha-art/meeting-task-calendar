@@ -1,4 +1,6 @@
 import { supabase } from './supabase'
+import { appUrl } from './appUrl'
+import { currentPushSupport } from './pushSupport'
 
 export interface ConnectedDevice {
   id: string
@@ -124,7 +126,10 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
     return null
   }
   try {
-    const reg = await navigator.serviceWorker.register('/sw.js')
+    const workerUrl = new URL('sw.js', appUrl('/').split('#')[0])
+    const reg = await navigator.serviceWorker.register(workerUrl.href, {
+      scope: new URL('./', workerUrl).pathname,
+    })
     await navigator.serviceWorker.ready
     return reg
   } catch (err) {
@@ -142,11 +147,14 @@ export async function completeDevicePairing(token: string, customDeviceName?: st
   userName?: string
 }> {
   try {
-    // 1. Request Notification permission
-    if (!('Notification' in window)) {
-      return { success: false, error: 'เบราว์เซอร์นี้ไม่รองรับการแจ้งเตือน Push Notification' }
-    }
+    const support = currentPushSupport()
+    if (support === 'ios-install') return { success: false, error: 'บน iPhone / iPad กรุณาเพิ่มเว็บไปยังหน้าจอโฮม แล้วเปิดจากไอคอน PEA Calendar เพื่อเปิดการแจ้งเตือน (iOS 16.4 ขึ้นไป)' }
+    if (support === 'insecure') return { success: false, error: 'กรุณาเปิดเว็บไซต์ผ่าน HTTPS เพื่อเปิดการแจ้งเตือน' }
+    if (support !== 'ready') return { success: false, error: 'กรุณาเปิดใน Chrome หรือแอปบนหน้าจอโฮมของ iPhone / iPad และตรวจสอบว่าอัปเดตระบบแล้ว' }
+    const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY?.trim()
+    if (!vapidPublicKey) return { success: false, error: 'ระบบยังไม่ได้ตั้งค่าการส่งแจ้งเตือนมือถือ กรุณาติดต่อผู้ดูแลระบบ' }
 
+    // Keep the permission request directly inside the button interaction on iOS.
     const permission = await Notification.requestPermission()
     if (permission !== 'granted') {
       return { success: false, error: 'กรุณากด "อนุญาต (Allow)" การแจ้งเตือนบนเบราว์เซอร์ เพื่อรับการแจ้งเตือนงานและการประชุม' }
@@ -154,38 +162,17 @@ export async function completeDevicePairing(token: string, customDeviceName?: st
 
     // 2. Register Service Worker
     const reg = await registerServiceWorker()
-    let endpoint = ''
-    let p256dh = ''
-    let auth = ''
-
-    if (reg && 'pushManager' in reg) {
-      try {
-        const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY
-        let subscription = await reg.pushManager.getSubscription()
-
-        if (!subscription && vapidPublicKey) {
-          subscription = await reg.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: vapidPublicKey,
-          })
-        }
-
-        if (subscription) {
-          endpoint = subscription.endpoint
-          const p256dhKey = subscription.getKey('p256dh')
-          const authKey = subscription.getKey('auth')
-          if (p256dhKey) p256dh = btoa(String.fromCharCode(...new Uint8Array(p256dhKey)))
-          if (authKey) auth = btoa(String.fromCharCode(...new Uint8Array(authKey)))
-        }
-      } catch (pushErr) {
-        console.warn('Push subscription failed, using device fallback:', pushErr)
-      }
-    }
-
-    if (!endpoint) {
-      // Fallback endpoint for local test / browser client token
-      endpoint = `device://${generateSecureToken()}`
-    }
+    if (!reg || !('pushManager' in reg)) return { success: false, error: 'ไม่สามารถเตรียมการแจ้งเตือนบนอุปกรณ์นี้ได้ กรุณาปิดแอปแล้วเปิดใหม่' }
+    const subscription = await reg.pushManager.getSubscription() || await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: vapidPublicKey,
+    })
+    const p256dhKey = subscription.getKey('p256dh')
+    const authKey = subscription.getKey('auth')
+    if (!p256dhKey || !authKey) return { success: false, error: 'ไม่สามารถสมัครการแจ้งเตือนได้ กรุณาลองใหม่' }
+    const endpoint = subscription.endpoint
+    const p256dh = btoa(String.fromCharCode(...new Uint8Array(p256dhKey)))
+    const auth = btoa(String.fromCharCode(...new Uint8Array(authKey)))
 
     const deviceName = customDeviceName || detectDeviceName()
     const userAgent = navigator.userAgent
@@ -213,17 +200,10 @@ export async function completeDevicePairing(token: string, customDeviceName?: st
     // Trigger local welcome notification
     if (Notification.permission === 'granted') {
       try {
-        if (reg) {
-          reg.showNotification('⚡ PEA Meeting & Task', {
-            body: 'เชื่อมต่อการแจ้งเตือนสำเร็จแล้ว! คุณจะได้รับการแจ้งเตือนงานและการประชุมบนมือถือนี้',
-            icon: '/favicon.ico',
-          })
-        } else {
-          new Notification('⚡ PEA Meeting & Task', {
-            body: 'เชื่อมต่อการแจ้งเตือนสำเร็จแล้ว! คุณจะได้รับการแจ้งเตือนงานและการประชุมบนมือถือนี้',
-            icon: '/favicon.ico',
-          })
-        }
+        await reg.showNotification('⚡ PEA Meeting & Task', {
+          body: 'เชื่อมต่ออุปกรณ์นี้สำเร็จแล้ว',
+          icon: new URL('icon-192.png', reg.scope).href,
+        })
       } catch {
         // Notification API fallback
       }
@@ -248,6 +228,7 @@ export async function getConnectedDevices(userId: string): Promise<ConnectedDevi
     .from('mobile_push_subscriptions')
     .select('*')
     .eq('user_id', userId)
+    .like('endpoint', 'https://%')
     .order('created_at', { ascending: false })
 
   if (error) {
@@ -279,30 +260,13 @@ export async function deleteConnectedDevice(subscriptionId: string): Promise<boo
  * Trigger a test notification (via local notification or push channel)
  */
 export async function sendTestNotification(title: string, body: string): Promise<boolean> {
-  if ('Notification' in window) {
-    if (Notification.permission === 'granted') {
-      try {
-        const reg = await registerServiceWorker()
-        if (reg) {
-          await reg.showNotification(title, {
-            body,
-            icon: '/favicon.ico',
-            vibrate: [100, 50, 100],
-          } as NotificationOptions & { vibrate?: number[] })
-          return true
-        }
-        new Notification(title, { body, icon: '/favicon.ico' })
-        return true
-      } catch {
-        // Continue
-      }
-    } else if (Notification.permission !== 'denied') {
-      const permission = await Notification.requestPermission()
-      if (permission === 'granted') {
-        new Notification(title, { body, icon: '/favicon.ico' })
-        return true
-      }
-    }
-  }
+  const support = currentPushSupport()
+  if (support === 'ios-install') throw new Error('กรุณาเปิด PEA Calendar จากไอคอนบนหน้าจอโฮมก่อนทดสอบการแจ้งเตือน')
+  if (support !== 'ready') throw new Error('อุปกรณ์นี้ยังไม่พร้อมเปิดการแจ้งเตือน กรุณาใช้เบราว์เซอร์ที่รองรับและ HTTPS')
+  const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission()
+  if (permission !== 'granted') throw new Error('กรุณาอนุญาตการแจ้งเตือนก่อนทดสอบ')
+  const reg = await registerServiceWorker()
+  if (!reg) throw new Error('ไม่สามารถเตรียมการแจ้งเตือนบนอุปกรณ์นี้ได้')
+  await reg.showNotification(title, { body, icon: new URL('icon-192.png', reg.scope).href })
   return true
 }

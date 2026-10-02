@@ -195,6 +195,11 @@ export function MobilePushPage() {
 
   return (
     <main className="min-h-screen p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-6">
+      {!import.meta.env.VITE_VAPID_PUBLIC_KEY?.trim() && (
+        <p role="status" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          {text('ระบบยังไม่ได้ตั้งค่าการส่งแจ้งเตือนมือถือ คุณสามารถเตรียมแอปบนหน้าจอโฮมตามขั้นตอนด้านล่างได้ แต่ยังเปิดรับการแจ้งเตือนไม่ได้', 'Mobile notification delivery is not configured yet. You can install the Home Screen app below, but notification pairing is not available yet.')}
+        </p>
+      )}
       {/* Hero Header Banner */}
       <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand-900 via-brand-800 to-purple-950 p-6 sm:p-8 text-white shadow-xl shadow-purple-950/20">
         <div className="absolute -right-12 -top-12 h-64 w-64 rounded-full bg-purple-500/20 blur-3xl" />
@@ -411,9 +416,9 @@ export function MobilePushPage() {
                   3
                 </span>
                 <div className="space-y-0.5">
-                  <h3 className="text-sm font-bold text-slate-900">{text('พร้อมรับการแจ้งเตือนทันที', 'Ready to Receive Alerts')}</h3>
+                  <h3 className="text-sm font-bold text-slate-900">{text('ตรวจสอบสถานะการเชื่อมต่อ', 'Check Connection Status')}</h3>
                   <p className="text-xs text-slate-600 leading-relaxed">
-                    {text('ระบบจะส่งเสียงและป๊อปอัปแจ้งเตือนก่อนถึงเวลานัดหมายและการส่งงานโดยอัตโนมัติ', 'You will receive timely push notifications before meetings and task deadlines.')}
+                    {text('เมื่อสมัครการแจ้งเตือนสำเร็จ อุปกรณ์จะปรากฏในรายการด้านล่าง การส่งแจ้งเตือนต้องเปิดใช้งานจากระบบก่อน', 'After subscribing, your device appears below. Notification delivery must also be enabled on the server.')}
                   </p>
                 </div>
               </div>
@@ -434,7 +439,7 @@ export function MobilePushPage() {
               <ol className="space-y-1.5 text-xs text-orange-900">
                 <li className="flex items-start gap-2">
                   <span className="font-bold shrink-0">1.</span>
-                  <span>{text('เปิด Safari บน iPhone แล้วเข้าเว็บนี้', 'Open Safari on your iPhone and visit this website')}</span>
+                  <span>{text('สแกน QR ด้วย iPhone เปิดลิงก์ใน Safari แล้วกดคัดลอกลิงก์เชื่อมต่อ', 'Scan the QR, open the link in Safari, and copy the pairing link')}</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="font-bold shrink-0">2.</span>
@@ -451,7 +456,7 @@ export function MobilePushPage() {
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="font-bold shrink-0">4.</span>
-                  <span>{text('กลับมาที่หน้า "เชื่อมต่อการแจ้งเตือนผ่านมือถือ" แล้วสแกน QR Code ใหม่อีกครั้ง', 'Return to this page and scan the QR Code again')}</span>
+                  <span>{text('วางลิงก์ที่คัดลอกในแอป PEA Calendar กดตรวจสอบลิงก์ แล้วเปิดการแจ้งเตือน', 'Paste the copied link in the PEA Calendar app, verify it, and enable notifications')}</span>
                 </li>
               </ol>
               <p className="text-[11px] text-orange-700">

@@ -10,11 +10,15 @@ import {
   ShieldCheck,
   CalendarDays,
   Check,
-  ArrowRight
+  ArrowRight,
+  Copy,
+  Share,
 } from 'lucide-react'
 import mascotHoldingPad from '../../ภาพประกอบUI/02_Hand I-Pad.jpg'
 import peaLogo from '../../ภาพประกอบUI/PEA Logo (1).png'
 import { useLanguage } from '../i18n/LanguageProvider'
+import { currentPushSupport, tokenFromPairingLink } from '../lib/pushSupport'
+import { appUrl } from '../lib/appUrl'
 import {
   verifyPairingToken,
   completeDevicePairing,
@@ -22,7 +26,7 @@ import {
 } from '../lib/mobilePush'
 
 export function PairDevicePage() {
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const token = searchParams.get('token') || ''
   const { text } = useLanguage()
 
@@ -33,19 +37,47 @@ export function PairDevicePage() {
   const [success, setSuccess] = useState(false)
   const [pairedUserName, setPairedUserName] = useState<string | null>(null)
   const [deviceName, setDeviceName] = useState('')
+  const [pastedLink, setPastedLink] = useState('')
+  const [linkError, setLinkError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  const support = currentPushSupport()
+  const pushConfigured = Boolean(import.meta.env.VITE_VAPID_PUBLIC_KEY?.trim())
+
+  const importPairingLink = () => {
+    const nextToken = tokenFromPairingLink(pastedLink)
+    if (!nextToken) {
+      setLinkError(text('กรุณาวางลิงก์เชื่อมต่อที่คัดลอกจากหน้า QR Code', 'Paste the pairing link copied from the QR page.'))
+      return
+    }
+    setLinkError(null)
+    setSearchParams({ token: nextToken })
+  }
+
+  const copyPairingLink = async () => {
+    try {
+      await navigator.clipboard.writeText(appUrl(`/pair-device?token=${encodeURIComponent(token)}`))
+      setCopied(true)
+    } catch {
+      setLinkError(text('คัดลอกไม่ได้ กรุณาคัดลอกลิงก์จากแถบที่อยู่ Safari', 'Copy the link from the Safari address bar.'))
+    }
+  }
 
   useEffect(() => {
+    let cancelled = false
     setDeviceName(detectDeviceName())
+    setTokenValid(false)
+    setSuccess(false)
+    setErrorMessage(null)
 
     async function checkToken() {
       if (!token) {
-        setErrorMessage('ไม่พบรหัสเชื่อมต่อ (Token) กรุณาสแกน QR Code ใหม่อีกครั้ง')
         setLoading(false)
         return
       }
 
       setLoading(true)
       const res = await verifyPairingToken(token)
+      if (cancelled) return
       if (!res.valid) {
         setErrorMessage(res.error || 'QR Code ไม่ถูกต้อง หรือหมดอายุแล้ว')
         setTokenValid(false)
@@ -57,6 +89,7 @@ export function PairDevicePage() {
     }
 
     checkToken()
+    return () => { cancelled = true }
   }, [token])
 
   const handleEnablePush = async () => {
@@ -114,11 +147,36 @@ export function PairDevicePage() {
             )}
           </div>
 
+          {support === 'ios-install' && (
+            <section className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left text-sm text-amber-950 space-y-3">
+              <h2 className="flex items-center gap-2 font-bold"><Share size={18} />{text('เพิ่มไปยังหน้าจอโฮมก่อนเปิดแจ้งเตือน', 'Add to Home Screen first')}</h2>
+              <p>{text('Safari บน iPhone / iPad ขอสิทธิ์แจ้งเตือนได้เมื่อเปิดจากไอคอนแอปบนหน้าจอโฮมเท่านั้น (iOS 16.4 ขึ้นไป)', 'On iOS 16.4 or later, open the Home Screen app to enable notifications.')}</p>
+              <ol className="list-decimal pl-5 space-y-2">
+                <li>{text('คัดลอกลิงก์เชื่อมต่อด้วยปุ่มด้านล่าง', 'Copy the pairing link below.')}</li>
+                <li>{text('แตะปุ่มแชร์ใน Safari → เพิ่มไปยังหน้าจอโฮม → เพิ่ม', 'Tap Share in Safari → Add to Home Screen → Add.')}</li>
+                <li>{text('เปิดไอคอน PEA Calendar ที่เพิ่มใหม่ แล้ววางลิงก์ที่คัดลอกไว้', 'Open the new PEA Calendar icon and paste the copied link.')}</li>
+                <li>{text('กดตรวจสอบลิงก์ แล้วเปิดการแจ้งเตือนและกดอนุญาต', 'Verify the link, enable notifications, and tap Allow.')}</li>
+              </ol>
+              {token && <button type="button" onClick={copyPairingLink} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-brand-700 px-4 py-2 font-bold text-white"><Copy size={16} />{copied ? text('คัดลอกแล้ว', 'Copied') : text('คัดลอกลิงก์เชื่อมต่อ', 'Copy pairing link')}</button>}
+              <p className="text-xs">{text('หากมีไอคอนเก่าที่เปิดกลับเข้า Safari ให้เพิ่มไอคอนใหม่ ลิงก์เชื่อมต่อหมดอายุใน 10 นาที', 'If an old icon opens Safari, add a new icon. Pairing links expire after 10 minutes.')}</p>
+              {linkError && <p role="alert" className="text-red-700">{linkError}</p>}
+            </section>
+          )}
+
           {loading ? (
             <div className="py-8 space-y-3">
               <Loader2 size={32} className="mx-auto animate-spin text-brand-600" />
               <p className="text-sm font-semibold text-slate-600">กำลังตรวจสอบข้อมูลการเชื่อมต่อ…</p>
             </div>
+          ) : !token ? (
+            <form onSubmit={(event) => { event.preventDefault(); importPairingLink() }} className="space-y-4 text-left">
+              <h1 className="text-xl font-extrabold text-slate-900">{text('เชื่อมต่อมือถือกับปฏิทิน', 'Pair this device')}</h1>
+              <p className="text-sm text-slate-600">{text('วางลิงก์ที่คัดลอกไว้จากหน้า QR Code เพื่อเชื่อมต่อโดยไม่ต้องล็อกอินอีกครั้ง', 'Paste the copied QR pairing link without signing in again.')}</p>
+              <label htmlFor="pairing-link" className="block text-sm font-semibold">{text('ลิงก์เชื่อมต่อ', 'Pairing link')}</label>
+              <input id="pairing-link" type="text" value={pastedLink} onChange={(event) => setPastedLink(event.target.value)} placeholder="https://…/#/pair-device?token=…" autoComplete="off" className="field-input w-full" />
+              {linkError && <p role="alert" className="text-sm text-red-600">{linkError}</p>}
+              <button type="submit" className="w-full min-h-11 rounded-xl bg-brand-700 px-4 py-2 font-bold text-white">{text('ตรวจสอบลิงก์เชื่อมต่อ', 'Verify pairing link')}</button>
+            </form>
           ) : success ? (
             /* Success View */
             <div className="space-y-5 animate-fadeIn">
@@ -129,7 +187,7 @@ export function PairDevicePage() {
 
               <div className="space-y-2">
                 <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900">
-                  {text('พร้อมรับการแจ้งเตือนแล้ว!', 'Notifications Enabled!')}
+                  {text('เปิดการแจ้งเตือนบนอุปกรณ์แล้ว!', 'Device Notifications Enabled!')}
                 </h1>
                 <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
                   {pairedUserName
@@ -146,7 +204,7 @@ export function PairDevicePage() {
                 <ul className="list-disc pl-5 space-y-1 text-slate-600">
                   <li>การแจ้งเตือนก่อนถึงเวลานัดหมายการประชุม</li>
                   <li>การแจ้งเตือนงานที่ได้รับมอบหมายและวันครบกำหนดส่งงาน</li>
-                  <li>ไม่ต้องเปิดแอปค้างไว้ ระบบจะแจ้งเตือนอัตโนมัติ</li>
+                  <li>การส่งแจ้งเตือนจากระบบต้องเปิดใช้งานโดยผู้ดูแล</li>
                 </ul>
               </div>
 
@@ -174,8 +232,12 @@ export function PairDevicePage() {
                 {errorMessage}
               </p>
               <p className="text-xs text-slate-500">
-                {text('กรุณาเปิดหน้า "เชื่อมต่อการแจ้งเตือนผ่านมือถือ" บนคอมพิวเตอร์ แล้วสแกน QR Code ใหม่อีกครั้ง', 'Please refresh the QR code on your desktop screen and scan again.')}
+                {tokenValid
+                  ? text('ตรวจสอบการอนุญาตแจ้งเตือนในการตั้งค่า แล้วลองใหม่', 'Check notification permissions in settings and try again.')
+                  : text('กรุณาสร้าง QR Code ใหม่บนคอมพิวเตอร์ แล้วคัดลอกลิงก์ใหม่', 'Generate a new QR code on your desktop and copy the new link.')}
               </p>
+              {tokenValid && support === 'ready' && <button type="button" onClick={() => setErrorMessage(null)} className="min-h-11 rounded-xl bg-brand-700 px-4 py-2 font-bold text-white">{text('ลองใหม่', 'Try again')}</button>}
+              {!tokenValid && <button type="button" onClick={() => setSearchParams({})} className="min-h-11 rounded-xl bg-brand-700 px-4 py-2 font-bold text-white">{text('วางลิงก์ใหม่', 'Paste a new link')}</button>}
             </div>
           ) : (
             /* Ready to Pair View */
@@ -202,7 +264,7 @@ export function PairDevicePage() {
               <button
                 type="button"
                 onClick={handleEnablePush}
-                disabled={pairing}
+                disabled={pairing || support !== 'ready' || !pushConfigured}
                 className="w-full inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-brand-700 via-fuchsia-600 to-amber-500 px-5 py-3 font-bold text-white shadow-lg shadow-purple-400/30 hover:from-brand-800 hover:via-fuchsia-700 hover:to-amber-600 transition disabled:opacity-60 text-base"
               >
                 {pairing ? (
@@ -217,6 +279,10 @@ export function PairDevicePage() {
                   </>
                 )}
               </button>
+
+              {support === 'insecure' && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{text('กรุณาเปิดเว็บไซต์ผ่าน HTTPS เพื่อเปิดการแจ้งเตือน', 'Open this site over HTTPS to enable notifications.')}</p>}
+              {support === 'unsupported' && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{text('กรุณาอัปเดต iOS เป็น 16.4 ขึ้นไป และเปิดจากไอคอน PEA Calendar บนหน้าจอโฮม สำหรับ Android ให้เปิดด้วย Chrome', 'Update to iOS 16.4 or later and open the Home Screen app. On Android, use Chrome.')}</p>}
+              {!pushConfigured && support === 'ready' && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{text('ระบบยังไม่ได้ตั้งค่าการส่งแจ้งเตือนมือถือ กรุณาติดต่อผู้ดูแลระบบ', 'Mobile notification delivery has not been configured. Contact your administrator.')}</p>}
 
               <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
                 <ShieldCheck size={14} className="text-green-600" />
