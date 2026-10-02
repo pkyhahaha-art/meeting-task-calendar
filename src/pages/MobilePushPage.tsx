@@ -80,9 +80,10 @@ export function MobilePushPage() {
         const seconds = Math.max(0, Math.floor((result.expiresAt.getTime() - Date.now()) / 1000))
         setTimeLeft(seconds)
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('generateNewToken error:', err)
-      setTestError(err.message || 'ไม่สามารถสร้าง QR Code ได้')
+      const msg = err instanceof Error ? err.message : 'ไม่สามารถสร้าง QR Code ได้'
+      setTestError(msg)
     } finally {
       setIsGenerating(false)
     }
@@ -174,8 +175,9 @@ export function MobilePushPage() {
       )
       setTestSent(true)
       setTimeout(() => setTestSent(false), 3500)
-    } catch (err: any) {
-      setTestError(err.message || 'ไม่สามารถส่งการแจ้งเตือนได้')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'ไม่สามารถส่งการแจ้งเตือนได้'
+      setTestError(msg)
     }
   }
 

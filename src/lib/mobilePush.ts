@@ -168,7 +168,7 @@ export async function completeDevicePairing(token: string, customDeviceName?: st
 
     if (reg && 'pushManager' in reg) {
       try {
-        const vapidPublicKey = (import.meta as any).env?.VITE_VAPID_PUBLIC_KEY
+        const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY
         let subscription = await reg.pushManager.getSubscription()
 
         if (!subscription && vapidPublicKey) {
@@ -241,9 +241,10 @@ export async function completeDevicePairing(token: string, customDeviceName?: st
       success: true,
       userName: res.user_name,
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Pairing error:', err)
-    return { success: false, error: err.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อ' }
+    const msg = err instanceof Error ? err.message : 'เกิดข้อผิดพลาดในการเชื่อมต่อ'
+    return { success: false, error: msg }
   }
 }
 

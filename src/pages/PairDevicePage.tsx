@@ -72,8 +72,9 @@ export function PairDevicePage() {
       } else {
         setErrorMessage(result.error || 'เกิดข้อผิดพลาดในการเปิดการแจ้งเตือน')
       }
-    } catch (err: any) {
-      setErrorMessage(err.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อ')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'เกิดข้อผิดพลาดในการเชื่อมต่อ'
+      setErrorMessage(msg)
     } finally {
       setPairing(false)
     }
