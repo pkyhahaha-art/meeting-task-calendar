@@ -19,7 +19,7 @@ import {
   recurrenceFromRule,
   recurrenceRule,
   reminderDate,
-} from './eventForm.js'
+} from './eventForm'
 
 test('parses and deduplicates guest emails', () => {
   assert.deepEqual(parseGuestEmails('A@gmail.com, b@gmail.com\na@gmail.com'), ['a@gmail.com', 'b@gmail.com'])
