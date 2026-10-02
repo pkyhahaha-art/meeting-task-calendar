@@ -65,7 +65,7 @@ export function AppShell() {
     navigate('/login', { replace: true })
   }
   const navClass = ({ isActive }: { isActive: boolean }) =>
-    `flex min-h-11 items-center gap-3 rounded-xl px-4 text-sm font-semibold transition ${isActive ? 'bg-amber-50 text-amber-700' : 'text-slate-600 hover:bg-purple-50 hover:text-brand-700'}`
+    `flex min-h-11 items-center gap-2 rounded-xl px-3 text-xs font-semibold whitespace-nowrap transition ${isActive ? 'bg-amber-50 text-amber-700' : 'text-slate-600 hover:bg-purple-50 hover:text-brand-700'}`
   const displayName = profile?.full_name || user?.email || text('ผู้ใช้งาน', 'User')
 
   return (
@@ -84,7 +84,7 @@ export function AppShell() {
         </div>
         <nav className="space-y-1 px-3 py-5" aria-label={text('เมนูหลัก', 'Main navigation')}>
           <NavLink to="/calendar" onClick={() => setMenuOpen(false)} className={navClass}><CalendarDays size={19} />{t('calendar')}</NavLink>
-          <NavLink to="/mobile-push" onClick={() => setMenuOpen(false)} className={({ isActive }) => `flex min-h-11 items-center gap-2 rounded-xl px-3 text-xs font-semibold whitespace-nowrap transition ${isActive ? 'bg-amber-50 text-amber-700' : 'text-slate-600 hover:bg-purple-50 hover:text-brand-700'}`}><Smartphone size={19} className="shrink-0" /><span>{text('เชื่อมต่อการแจ้งเตือนผ่านมือถือ', 'Mobile notifications')}</span></NavLink>
+          <NavLink to="/mobile-push" onClick={() => setMenuOpen(false)} className={navClass}><Smartphone size={19} className="shrink-0" /><span>{text('เชื่อมต่อการแจ้งเตือนผ่านมือถือ', 'Mobile notifications')}</span></NavLink>
           <NavLink to="/profile" onClick={() => setMenuOpen(false)} className={navClass}><UserRound size={19} />{text('โปรไฟล์และตั้งค่า', 'Profile & settings')}</NavLink>
           {profile?.role === 'admin' && <NavLink to="/admin" onClick={() => setMenuOpen(false)} className={navClass}><ShieldCheck size={19} />Admin</NavLink>}
         </nav>
@@ -97,7 +97,7 @@ export function AppShell() {
         </div>
         <div className="border-t border-purple-100 px-4 py-3">
           <div className="mb-2 flex min-w-0 items-center gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-purple-100 text-brand-700"><UserRound size={18} /></span><div className="min-w-0"><p className="truncate text-sm font-bold">{displayName}</p><p className="truncate text-xs text-slate-500">{profile?.employee_id || user?.email}</p></div></div>
-          <button type="button" onClick={() => void logout()} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-600 hover:bg-red-50 hover:text-red-700" aria-label={t('signOut')}><LogOut size={17} />{t('signOut')}</button>
+          <button type="button" onClick={() => void logout()} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-red-50 hover:text-red-700" aria-label={t('signOut')}><LogOut size={17} />{t('signOut')}</button>
         </div>
       </aside>
       <div className={location.pathname === '/calendar' ? 'calendar-page-content min-w-0' : 'min-w-0'}>
