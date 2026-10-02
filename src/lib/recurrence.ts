@@ -95,9 +95,19 @@ export function expandEvent<T extends RecurringEvent>(event: T, rangeStart: Date
 }
 
 export function expandTask<T extends RecurringTask>(task: T, rangeStart: Date, rangeEnd: Date): TaskOccurrence<T>[] {
+  const adjustedEnd = new Date(rangeEnd)
+  if (
+    adjustedEnd.getUTCHours() === 0 &&
+    adjustedEnd.getUTCMinutes() === 0 &&
+    adjustedEnd.getUTCSeconds() === 0 &&
+    adjustedEnd.getUTCMilliseconds() === 0
+  ) {
+    adjustedEnd.setUTCHours(23, 59, 59, 999)
+  }
+
   if (!task.recurrence_rule) {
     const taskDate = new Date(`${task.due_date}T12:00:00+07:00`)
-    return taskDate >= rangeStart && taskDate <= rangeEnd
+    return taskDate >= rangeStart && taskDate <= adjustedEnd
       ? [{ key: task.id, task, dueDate: task.due_date }]
       : []
   }
@@ -111,7 +121,7 @@ export function expandTask<T extends RecurringTask>(task: T, rangeStart: Date, r
     recurrence_until: task.recurrence_end_at ?? null,
   }
 
-  return expandEvent(adapted, rangeStart, rangeEnd).map((occurrence) => ({
+  return expandEvent(adapted, rangeStart, adjustedEnd).map((occurrence) => ({
     key: occurrence.key,
     task,
     dueDate: localDate(new Date(occurrence.start)),
