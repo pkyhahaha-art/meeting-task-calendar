@@ -99,6 +99,7 @@ export function TaskDialog({
   task,
   details,
   selectedDate,
+  defaultAffiliation = '',
   userId,
   profiles,
   canEdit,
@@ -119,6 +120,7 @@ export function TaskDialog({
   task: TaskRow | null
   details?: TaskDetails
   selectedDate?: string
+  defaultAffiliation?: string
   userId: string
   profiles: ProfileRow[]
   events: EventRow[]
@@ -144,6 +146,7 @@ export function TaskDialog({
   const [saving, setSaving] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const initializedDraft = useRef<string | null>(null)
+  const affiliationEdited = useRef(false)
 
   useEffect(() => {
     if (!open) {
@@ -154,9 +157,10 @@ export function TaskDialog({
     const key = task?.id ?? `new:${selectedDate ?? ''}`
     if (initializedDraft.current === key) return
     initializedDraft.current = key
+    affiliationEdited.current = false
     setError('')
     if (!task) {
-      setDraft(blankDraft(selectedDate, userId))
+      setDraft({ ...blankDraft(selectedDate, userId), affiliation: defaultAffiliation })
       setDueDateText(formatDisplayDate(selectedDate ?? bangkokDate()))
       setRecipientTab('self')
       return
@@ -184,7 +188,13 @@ export function TaskDialog({
         ? details.documentLinks.map((link) => ({ displayName: link.display_name, url: link.url }))
         : [{ displayName: '', url: '' }],
     })
-  }, [details, open, selectedDate, task, userId, hasConnectedDevices])
+  }, [details, open, selectedDate, task, userId, hasConnectedDevices, defaultAffiliation])
+
+  useEffect(() => {
+    if (open && !task && !affiliationEdited.current && defaultAffiliation) {
+      setDraft((current) => current.affiliation === defaultAffiliation ? current : { ...current, affiliation: defaultAffiliation })
+    }
+  }, [open, task, defaultAffiliation])
 
   if (!open) return null
 
@@ -431,9 +441,10 @@ export function TaskDialog({
                   className="field-input"
                   placeholder={text('กคน.ฝลส.', 'e.g. Department')}
                   value={draft.affiliation}
-                  onChange={(event) => set('affiliation', event.target.value)}
+                  onChange={(event) => { affiliationEdited.current = true; set('affiliation', event.target.value) }}
                   maxLength={250}
                 />
+                {!task && defaultAffiliation && <p className="mt-1 text-xs text-slate-500">{text('เติมสังกัดจากข้อมูลสมาชิกแล้ว ปรับได้ตามงานนี้', 'Filled from your profile. You can adjust it for this task.')}</p>}
               </div>
               <div>
                 <label className="field-label" htmlFor="task-description">

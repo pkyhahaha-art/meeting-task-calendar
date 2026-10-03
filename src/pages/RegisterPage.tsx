@@ -6,6 +6,8 @@ import { Link } from 'react-router-dom'
 import { AuthLayout } from '../components/AuthLayout'
 import { Captcha } from '../components/Captcha'
 import { FormMessage } from '../components/FormMessage'
+import { OrganizationFields } from '../components/OrganizationFields'
+import type { OrganizationUnit } from '../lib/organization'
 import { useLanguage } from '../i18n/LanguageProvider'
 import { appUrl } from '../lib/appUrl'
 import { supabase } from '../lib/supabase'
@@ -16,7 +18,9 @@ export function RegisterPage() {
   const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null)
   const [showExistingAccount, setShowExistingAccount] = useState(false)
   const [captchaToken, setCaptchaToken] = useState<string | null>(null)
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<RegistrationValues>({ resolver: zodResolver(registrationSchema) })
+  const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<RegistrationValues>({ resolver: zodResolver(registrationSchema), defaultValues: { department: '' } })
+  const organizationUnit = watch('organizationUnit') || ''
+  const department = watch('department') || ''
 
   const submit = async (values: RegistrationValues) => {
     setMessage(null)
@@ -26,7 +30,7 @@ export function RegisterPage() {
       password: values.password,
       options: {
         emailRedirectTo: appUrl('/auth/callback'),
-        data: { full_name: fullName, employee_id: values.employeeId },
+        data: { full_name: fullName, employee_id: values.employeeId, organization_unit: values.organizationUnit, department: values.department || null },
         captchaToken: captchaToken ?? undefined,
       },
     })
@@ -53,6 +57,12 @@ export function RegisterPage() {
         </fieldset>
         <div><label className="field-label" htmlFor="employeeId">{t('employeeId')}</label><input id="employeeId" autoComplete="off" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} className="field-input" placeholder="ตัวเลข 6 หลัก" {...register('employeeId')} onInput={(event) => { event.currentTarget.value = event.currentTarget.value.replace(/\D/g, '').slice(0, 6) }} />{errors.employeeId && <p className="form-error">{errors.employeeId.message}</p>}</div>
         <div><label className="field-label" htmlFor="email">{t('email')}</label><input id="email" type="email" autoComplete="email" className="field-input" placeholder="name@gmail.com" {...register('email')} />{errors.email && <p className="form-error">{errors.email.message}</p>}</div>
+        <OrganizationFields idPrefix="register" unit={organizationUnit} department={department}
+          unitError={errors.organizationUnit?.message} departmentError={errors.department?.message}
+          onChange={(unit, selectedDepartment) => {
+            setValue('organizationUnit', unit as OrganizationUnit, { shouldDirty: true, shouldValidate: Boolean(errors.organizationUnit) })
+            setValue('department', selectedDepartment, { shouldDirty: true, shouldValidate: Boolean(errors.department) })
+          }} />
         <div><label className="field-label" htmlFor="password">{t('password')}</label><input id="password" type="password" autoComplete="new-password" className="field-input" {...register('password')} />{errors.password && <p className="form-error">{errors.password.message}</p>}</div>
         <div><label className="field-label" htmlFor="confirmPassword">{t('confirmPassword')}</label><input id="confirmPassword" type="password" autoComplete="new-password" className="field-input" {...register('confirmPassword')} />{errors.confirmPassword && <p className="form-error">{errors.confirmPassword.message}</p>}</div>
         <Captcha onToken={setCaptchaToken} />

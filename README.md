@@ -170,6 +170,12 @@ Opening a received Task/Meeting message loads its latest title, department, desc
 
 Apply `202610030008_mobile_notification_details.sql` and deploy `mobile-push` with `_shared/mobileNotificationDocuments.ts` before publishing the frontend. The private RPC is callable only by `service_role`; the Edge Function verifies the paired device and active account first. Access is limited to that device's own delivery and its current Task assignment or Meeting invitation (or the creator). Meeting files respect the selected occurrence. `supabase/tests/mobile_notification_details.sql` verifies cross-device denial, removed assignees, revoked invitations, re-pairing and occurrence document scope in a rollback transaction.
 
+## Member organization and departments
+
+Registration collects an organization and its matching department. Department selection is disabled before choosing an organization and for `ประจำฝ่าย (ฝลส.)` / `กกร.`; changing the organization clears the old department. Apply `202610030009_member_organization.sql` before publishing the frontend. It adds nullable `profiles.organization_unit` and `profiles.department`, validates the pair and copies valid signup metadata through a profile-insert trigger. Existing Auth lifecycle functions, login, member records and Task/Meeting affiliation text remain unchanged. Members with no saved organization can select it once in Profile & Settings using the existing own-profile policy.
+
+New Task/Meeting forms fill affiliation from the creator's profile, e.g. `ผคอ. กคน. ฝลส.`. A delayed profile load fills only the affiliation without resetting the draft or overwriting a manual edit. Existing items retain their saved text. `supabase/tests/member_organization.sql` checks signup/confirmation, department pairs, legacy members and column/RLS permissions in a rollback transaction.
+
 ## Google Sheets reporting
 
 The read-only Apps Script template is in [`integrations/google-sheets`](integrations/google-sheets). It syncs safe Users, Audit, Notification, and System reporting fields hourly; it excludes tokens, recipient addresses, attachment paths, and secrets.

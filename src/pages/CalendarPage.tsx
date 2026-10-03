@@ -10,6 +10,7 @@ import { CalendarCheck2, CalendarDays, CalendarPlus, CheckCircle2, Clock3, FileT
 import Swal from 'sweetalert2'
 import bannerHero from '../../ภาพประกอบUI/PEA Calendar Banner 2D.png'
 import { useAuth } from '../auth/AuthProvider'
+import { profileAffiliation } from '../lib/organization'
 import { useConfirm } from '../components/ConfirmDialogProvider'
 import { EventDialog, type EventDetails, type EventDraft } from '../components/EventDialog'
 import type { DeliveryStatusRow } from '../components/NotificationDeliveryStatus'
@@ -924,6 +925,7 @@ export function CalendarPage() {
       {taskSaveWarning && <div className="fixed bottom-4 right-4 max-w-md rounded-xl bg-amber-100 px-4 py-3 text-sm text-amber-950 shadow-lg" role="alert"><p>{taskSaveWarning}</p><button type="button" className="mt-2 font-semibold underline" onClick={() => setTaskSaveWarning('')}>{text('ปิด', 'Close')}</button></div>}
 
       <EventDialog
+        defaultAffiliation={profileAffiliation(profile)}
         open={eventDialog.open} event={selectedEvent} details={eventDetailsQuery.data} selectedDate={eventDialog.date} occurrenceStart={eventDialog.occurrenceStart}
         canEdit={canEditEvent} canViewDeliveryStatus={canViewEventDeliveryStatus} hasConnectedDevices={hasConnectedDevices && (!selectedEvent || selectedEvent.owner_user_id === user?.id)} checkMobileRecipients={checkMobileRecipients} busy={busy || eventDetailsQuery.isLoading || appointmentMutation.isPending}
         onClose={() => setEventDialog({ open: false, event: null })}
@@ -941,6 +943,7 @@ export function CalendarPage() {
         onRetryNotification={(deliveryId) => retryNotificationMutation.mutateAsync(deliveryId)}
       />
       <TaskDialog
+        defaultAffiliation={profileAffiliation(profile)}
         open={taskDialog.open} task={selectedTask} details={taskDetailsQuery.data} selectedDate={taskDialog.date}
         userId={user!.id} profiles={profilesQuery.data ?? []} events={eventsQuery.data ?? []}
         canEdit={canEditTask} canComplete={canCompleteTask} canAcknowledge={canAcknowledgeTask} canViewDeliveryStatus={canViewTaskDeliveryStatus}

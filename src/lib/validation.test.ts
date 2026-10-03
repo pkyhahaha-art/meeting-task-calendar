@@ -8,12 +8,22 @@ const validRegistration = {
   firstName: 'สมชาย',
   lastName: 'ใจดี',
   employeeId: '123456',
+  organizationUnit: 'กคน.' as const,
+  department: 'ผคอ.',
   email: 'employee@gmail.com',
   password: 'secure123',
   confirmPassword: 'secure123',
 }
 
 describe('registrationSchema', () => {
+  it('requires a known organization and matching department', () => {
+    assert.equal(registrationSchema.safeParse({ ...validRegistration, organizationUnit: '' }).success, false)
+    assert.equal(registrationSchema.safeParse({ ...validRegistration, department: '' }).success, false)
+    assert.equal(registrationSchema.safeParse({ ...validRegistration, department: 'ผสอ.' }).success, false)
+    assert.equal(registrationSchema.safeParse({ ...validRegistration, organizationUnit: 'กกร.', department: '' }).success, true)
+    assert.equal(registrationSchema.safeParse({ ...validRegistration, organizationUnit: 'ประจำฝ่าย (ฝลส.)', department: '' }).success, true)
+    assert.equal(registrationSchema.safeParse({ ...validRegistration, organizationUnit: 'กกร.', department: 'ผคอ.' }).success, false)
+  })
   it('accepts the required registration fields', () => {
     assert.equal(registrationSchema.safeParse(validRegistration).success, true)
   })

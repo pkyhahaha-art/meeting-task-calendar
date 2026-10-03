@@ -113,6 +113,7 @@ export function EventDialog({
   event,
   details,
   selectedDate,
+  defaultAffiliation = '',
   occurrenceStart,
   canEdit,
   canViewDeliveryStatus,
@@ -130,6 +131,7 @@ export function EventDialog({
   event: EventRow | null
   details?: EventDetails
   selectedDate?: string
+  defaultAffiliation?: string
   occurrenceStart?: string
   canEdit: boolean
   busy: boolean
@@ -153,6 +155,7 @@ export function EventDialog({
   const [moveDate, setMoveDate] = useState('')
   const fileInput = useRef<HTMLInputElement>(null)
   const initializedDraft = useRef<string | null>(null)
+  const affiliationEdited = useRef(false)
   const guestEmailsKey = parseGuestEmails(draft.guestEmails).sort().join(',')
   const mobileAvailable = hasConnectedDevices || guestHasMobile
   const mobileTooltip = text('สามารถเลือกได้เมื่อผู้สร้างประชุมหรือผู้เข้าร่วมเชื่อมต่อการแจ้งเตือนผ่านมือถือแล้ว', 'Available when the organizer or an attendee has paired a phone for notifications.')
@@ -178,6 +181,7 @@ export function EventDialog({
     const key = event ? `${event.id}:${occurrenceStart ?? ''}` : `new:${selectedDate ?? ''}`
     if (initializedDraft.current === key) return
     initializedDraft.current = key
+    affiliationEdited.current = false
     setError('')
     setMoveDate('')
     const useOccurrenceValues = Boolean(event && occurrenceStart && details?.hasOccurrenceChanges)
@@ -212,9 +216,15 @@ export function EventDialog({
             notifyLine: event.mobile_notifications_enabled,
             files: [],
           }
-        : blankDraft(selectedDate),
+        : { ...blankDraft(selectedDate), affiliation: defaultAffiliation },
     )
-  }, [event, details, selectedDate, occurrenceStart, open])
+  }, [event, details, selectedDate, occurrenceStart, open, defaultAffiliation])
+
+  useEffect(() => {
+    if (open && !event && !affiliationEdited.current && defaultAffiliation) {
+      setDraft((current) => current.affiliation === defaultAffiliation ? current : { ...current, affiliation: defaultAffiliation })
+    }
+  }, [open, event, defaultAffiliation])
 
   if (!open) return null
 
@@ -521,7 +531,8 @@ export function EventDialog({
               </div>
               <div>
                 <label className="field-label" htmlFor="event-affiliation">{text('หน่วยงาน / สังกัด', 'Department / affiliation')}</label>
-                <input id="event-affiliation" autoComplete="off" className="field-input" placeholder={text('กคน.ฝลส.', 'e.g. Department')} value={draft.affiliation} onChange={(e) => set('affiliation', e.target.value)} maxLength={250} disabled={isOccurrenceEdit} />
+                <input id="event-affiliation" autoComplete="off" className="field-input" placeholder={text('กคน.ฝลส.', 'e.g. Department')} value={draft.affiliation} onChange={(e) => { affiliationEdited.current = true; set('affiliation', e.target.value) }} maxLength={250} disabled={isOccurrenceEdit} />
+                {!event && defaultAffiliation && <p className="mt-1 text-xs text-slate-500">{text('เติมสังกัดจากข้อมูลสมาชิกแล้ว ปรับได้ตามประชุมนี้', 'Filled from your profile. You can adjust it for this meeting.')}</p>}
               </div>
               <div>
                 <span className="field-label">{text(isViewingLaterOccurrence ? 'วันเริ่มชุดนัดหมาย' : 'วันที่นัดหมาย', isViewingLaterOccurrence ? 'Series start date' : 'Meeting date')}</span>

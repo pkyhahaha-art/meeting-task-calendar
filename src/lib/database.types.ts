@@ -7,6 +7,8 @@ export interface Database {
         Row: {
           id: string
           employee_id: string | null
+          organization_unit: string | null
+          department: string | null
           full_name: string
           email: string
           email_verified_at: string | null
