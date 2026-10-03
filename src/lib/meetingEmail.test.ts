@@ -27,9 +27,13 @@ test('renders a complete Meeting HTML card with secure document links', () => {
       { name: '<agenda>.pdf', size: 1048576, url: 'https://files.example.com/download/agenda' },
       { name: 'Google Drive วาระประชุม', url: 'https://drive.google.com/drive/folders/example', kind: 'drive' },
     ],
-  })
+  }, 'https://example.github.io/meeting-task-calendar/?private=discard#/calendar')
 
   assert.match(card, /MEETING &amp; TASK CALENDAR/)
+  assert.match(card, /src="https:\/\/example.github.io\/meeting-task-calendar\/email-assets\/pea-mail-mascot-v1.png"/)
+  assert.match(card, /alt="มาสคอต PEA ถือซองจดหมาย"/)
+  assert.match(card, /src="https:\/\/example.github.io\/meeting-task-calendar\/email-assets\/pea-logo.png"/)
+  assert.doesNotMatch(card, /private=discard|data:image|display:flex/)
   assert.match(card, /&lt;Quarterly Planning&gt;/)
   assert.match(card, /Review roadmap &amp; risks/)
   assert.match(card, /สมชาย &lt;owner@gmail.com&gt;/)
@@ -46,4 +50,13 @@ test('renders a complete Meeting HTML card with secure document links', () => {
   assert.match(card, /href="https:\/\/drive\.google\.com\/drive\/folders\/example"/)
   assert.doesNotMatch(card, /เปิดรายละเอียด Meeting/)
   assert.doesNotMatch(card, /<Quarterly Planning>/)
+})
+
+test('email branding falls back to readable PEA text without a secure app URL', () => {
+  for (const base of ['', 'javascript:alert(1)', 'http://localhost:5173/']) {
+    const card = html('task_created', { entity: 'task', title: 'งานใหม่' }, base)
+    assert.match(card, />PEA<\/span>/)
+    assert.match(card, /งานใหม่/)
+    assert.doesNotMatch(card, /<img|javascript:|localhost/)
+  }
 })

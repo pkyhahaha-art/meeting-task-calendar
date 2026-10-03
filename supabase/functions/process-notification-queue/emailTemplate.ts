@@ -84,8 +84,21 @@ export function subject(template: string, payload: Record<string, unknown>) {
   return `${labels[template] ?? 'การแจ้งเตือน'}${title ? `: ${title}` : ''}`
 }
 
-export function html(template: string, payload: Record<string, unknown>) {
+function emailAssetUrl(appUrl: string, file: string) {
+  try {
+    const base = new URL(appUrl)
+    if (base.protocol !== 'https:') return ''
+    base.search = ''
+    base.hash = ''
+    base.pathname = `${base.pathname.replace(/\/$/, '')}/email-assets/${file}`
+    return base.toString()
+  } catch { return '' }
+}
+
+export function html(template: string, payload: Record<string, unknown>, appUrl = '') {
   const isMeeting = payload.entity === 'meeting'
+  const mascotUrl = emailAssetUrl(appUrl, 'pea-mail-mascot-v1.png')
+  const logoUrl = emailAssetUrl(appUrl, 'pea-logo.png')
   const description = text(payload.description)
   const allDay = payload.all_day === true
   const startsAt = allDay ? formatDate(payload.start_datetime) : formatDateTime(payload.start_datetime)
@@ -104,21 +117,27 @@ export function html(template: string, payload: Record<string, unknown>) {
     ['กำหนดส่ง', [dueDate, dueTime].filter(Boolean).join(' ')],
     ['สถานะ', statusLabel(payload.status)],
   ].filter(([, value]) => value)
-    .map(([label, value]) => `<tr><td style="width:150px;padding:9px 12px;color:#64748b;font-size:13px;border-bottom:1px solid #e2e8f0">${escapeHtml(label)}</td><td style="padding:9px 12px;color:#0f172a;font-size:14px;border-bottom:1px solid #e2e8f0">${escapeHtml(value)}</td></tr>`)
+    .map(([label, value]) => `<tr><td width="112" valign="top" style="width:112px;padding:12px;color:#766280;font-size:12px;line-height:1.7;border-bottom:1px solid #eee5f3;background:#fbf8fd">${escapeHtml(label)}</td><td valign="top" style="padding:12px;color:#35213f;font-size:14px;line-height:1.7;border-bottom:1px solid #eee5f3;word-break:break-word;overflow-wrap:anywhere">${escapeHtml(value)}</td></tr>`)
     .join('')
   const descriptionBlock = description
-    ? `<div style="margin-top:18px"><div style="margin-bottom:6px;color:#64748b;font-size:13px;font-weight:700">รายละเอียด / วาระการประชุม</div><div style="padding:14px;background:#f8fafc;border-radius:10px;color:#334155;font-size:14px;line-height:1.7">${escapeHtml(description)}</div></div>`
+    ? `<div style="margin-top:22px"><div style="margin-bottom:10px;color:#650773;font-size:14px;font-weight:700">${isMeeting ? 'รายละเอียด / วาระการประชุม' : 'รายละเอียดงาน'}</div><div style="padding:16px;background:#faf5fc;border-left:4px solid #e4b445;border-radius:0 12px 12px 0;color:#51425c;font-size:14px;line-height:1.8;word-break:break-word;overflow-wrap:anywhere">${escapeHtml(description)}</div></div>`
     : ''
   const acknowledgeAction = acknowledgeUrl
-    ? `<div style="margin-top:20px"><a target="_blank" rel="noopener noreferrer" style="display:inline-block;background:#15803d;color:#ffffff;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:700" href="${escapeHtml(acknowledgeUrl)}">รับทราบ</a><div style="margin-top:10px;color:#64748b;font-size:12px;line-height:1.6">หากปุ่มรับทราบใช้งานไม่ได้ <a target="_blank" rel="noopener noreferrer" href="${escapeHtml(acknowledgeUrl)}" style="color:#0f766e;word-break:break-all">คลิกลิงก์รับทราบสำรอง</a></div></div>`
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:24px"><tr><td bgcolor="#74067b" style="background:#74067b;border-radius:12px"><a target="_blank" rel="noopener noreferrer" style="display:inline-block;background:#74067b;color:#ffffff;padding:14px 28px;border-radius:12px;text-decoration:none;font-size:15px;font-weight:700" href="${escapeHtml(acknowledgeUrl)}">รับทราบ</a></td></tr></table><div style="margin-top:12px;color:#766280;font-size:12px;line-height:1.7">หากปุ่มรับทราบใช้งานไม่ได้ <a target="_blank" rel="noopener noreferrer" href="${escapeHtml(acknowledgeUrl)}" style="color:#74067b;text-decoration:underline;word-break:break-all">คลิกลิงก์รับทราบสำรอง</a></div>`
     : ''
   const documentList = documentItems.length
-    ? `<div style="margin-top:20px;padding:16px;background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px"><div style="margin-bottom:10px;color:#115e59;font-size:15px;font-weight:700">เอกสารและลิงก์ Google Drive (${documentItems.length})</div>${documentItems.map((document) => {
+    ? `<div style="margin-top:22px;padding:16px;background:#fffbef;border:1px solid #f0dcab;border-radius:14px"><div style="margin-bottom:12px;color:#650773;font-size:15px;font-weight:700">เอกสารและลิงก์ Google Drive (${documentItems.length})</div>${documentItems.map((document) => {
       const url = document.url
-      const name = url ? `<a target="_blank" rel="noopener noreferrer" href="${escapeHtml(url)}" style="color:#0f696c;text-decoration:underline;font-weight:600">${escapeHtml(document.name)}</a>` : escapeHtml(document.name)
+      const name = url ? `<a target="_blank" rel="noopener noreferrer" href="${escapeHtml(url)}" style="color:#74067b;text-decoration:underline;font-weight:600;word-break:break-word;overflow-wrap:anywhere">${escapeHtml(document.name)}</a>` : escapeHtml(document.name)
       const size = formatSize(document.size)
-      return `<div style="padding:8px 0;border-top:1px solid #ccfbf1">${document.kind === 'drive' ? '🔗 Google Drive: ' : '📎 '}${name}${size ? `<span style="color:#64748b;font-size:12px"> · ${size}</span>` : ''}</div>`
-    }).join('')}<div style="margin-top:8px;color:#64748b;font-size:12px">ลิงก์ไฟล์แนบภายในระบบใช้ได้ 7 วัน โปรดเก็บเป็นส่วนตัว หากหมดอายุให้เปิดรายการในระบบเพื่อโหลดลิงก์ใหม่</div></div>`
+      return `<div style="padding:10px 0;border-top:1px solid #f0e3c3;font-size:14px;line-height:1.7;word-break:break-word">${document.kind === 'drive' ? '🔗 Google Drive: ' : '📎 '}${name}${size ? `<span style="color:#766280;font-size:12px"> · ${size}</span>` : ''}</div>`
+    }).join('')}<div style="margin-top:10px;color:#877446;font-size:11px;line-height:1.7">ลิงก์ไฟล์แนบภายในระบบใช้ได้ 7 วัน โปรดเก็บเป็นส่วนตัว หากหมดอายุให้เปิดรายการในระบบเพื่อโหลดลิงก์ใหม่</div></div>`
     : ''
-  return `<div style="margin:0;padding:24px;background:#f1f5f9"><div style="max-width:640px;margin:auto;overflow:hidden;border:1px solid #cbd5e1;border-radius:16px;background:#ffffff;font-family:Arial,'Noto Sans Thai',sans-serif;color:#1e293b"><div style="padding:12px 24px;background:#0f696c;color:#ccfbf1;font-size:12px;font-weight:700;letter-spacing:.08em">MEETING &amp; TASK CALENDAR</div><div style="padding:24px"><div style="margin-bottom:6px;color:#0f766e;font-size:13px;font-weight:700">${escapeHtml(subject(template, {}))}</div><h1 style="margin:0 0 20px;color:#0f172a;font-size:24px;line-height:1.35">${escapeHtml(payload.title || subject(template, payload))}</h1>${rows ? `<table role="presentation" style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:10px">${rows}</table>` : ''}${descriptionBlock}${documentList}${acknowledgeAction}<div style="margin-top:24px;color:#94a3b8;font-size:11px">อีเมลนี้ส่งโดยระบบ Meeting &amp; Task Calendar</div></div></div></div>`
+  const brand = logoUrl
+    ? `<img src="${escapeHtml(logoUrl)}" width="164" alt="PEA การไฟฟ้าส่วนภูมิภาค" style="display:block;width:164px;max-width:100%;height:auto;border:0">`
+    : '<span style="color:#74067b;font-size:32px;font-weight:700">PEA</span>'
+  const mascot = mascotUrl
+    ? `<td width="104" valign="middle" style="width:104px;padding-left:14px"><img src="${escapeHtml(mascotUrl)}" width="104" alt="มาสคอต PEA ถือซองจดหมาย" style="display:block;width:104px;max-width:100%;height:auto;border:0"></td>`
+    : ''
+  return `<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(subject(template, payload))}</title></head><body style="margin:0;padding:0;background:#f6f1f9;font-family:Arial,'Noto Sans Thai',Tahoma,sans-serif;color:#35213f"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f6f1f9" style="width:100%;background:#f6f1f9"><tr><td align="center" style="padding:24px 12px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width:100%;max-width:640px;background:#ffffff;border:1px solid #e9dbee;border-radius:22px;overflow:hidden"><tr><td style="padding:22px 24px 18px">${brand}<div style="margin-top:10px;color:#766280;font-size:10px;font-weight:700;letter-spacing:1px">MEETING &amp; TASK CALENDAR</div></td></tr><tr><td bgcolor="#650773" style="padding:24px;background:#650773;border-bottom:4px solid #e4b445"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;table-layout:fixed"><tr><td valign="middle"><div style="margin-bottom:10px;color:#f7d879;font-size:13px;font-weight:700;line-height:1.7">${escapeHtml(subject(template, {}))}</div><h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;line-height:1.5;word-break:break-word;overflow-wrap:anywhere">${escapeHtml(payload.title || subject(template, payload))}</h1></td>${mascot}</tr></table></td></tr><tr><td style="padding:24px"><div style="margin-bottom:14px;color:#650773;font-size:15px;font-weight:700">${isMeeting ? 'รายละเอียดการประชุม' : 'รายละเอียดงาน'}</div>${rows ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;table-layout:fixed;border-collapse:collapse;border:1px solid #eee5f3">${rows}</table>` : ''}${descriptionBlock}${documentList}${acknowledgeAction}</td></tr><tr><td bgcolor="#faf7fc" style="padding:18px 24px;background:#faf7fc;border-top:1px solid #eee5f3"><div style="color:#650773;font-size:12px;font-weight:700;line-height:1.7">PEA · พลังงานเพื่อชีวิตที่ดีกว่า</div><div style="margin-top:5px;color:#8c7a97;font-size:11px;line-height:1.7">อีเมลนี้ส่งโดยระบบ Meeting &amp; Task Calendar</div></td></tr></table></td></tr></table></body></html>`
 }

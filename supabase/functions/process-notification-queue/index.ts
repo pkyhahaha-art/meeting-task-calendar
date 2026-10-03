@@ -252,7 +252,7 @@ async function send(delivery: Delivery, payload: Record<string, unknown>) {
   if (!apiKey || !senderEmail) return new Response('Email provider is not configured', { status: 503 })
   return fetch(brevoUrl, {
     method: 'POST', headers: { 'api-key': apiKey, 'content-type': 'application/json' },
-    body: JSON.stringify({ sender: { email: senderEmail, name: senderName }, to: [{ email: delivery.recipient_reference }], subject: subject(delivery.template_key, payload), htmlContent: html(delivery.template_key, payload) }),
+    body: JSON.stringify({ sender: { email: senderEmail, name: senderName }, to: [{ email: delivery.recipient_reference }], subject: subject(delivery.template_key, payload), htmlContent: html(delivery.template_key, payload, publicAppUrl) }),
   })
 }
 
