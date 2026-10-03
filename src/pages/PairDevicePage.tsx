@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import mascotHoldingPad from '../../ภาพประกอบUI/02_Hand I-Pad.jpg'
 import peaLogo from '../../ภาพประกอบUI/PEA Logo (1).png'
+import { AppFooter } from '../components/AppFooter'
 import { useLanguage } from '../i18n/LanguageProvider'
 import { currentPushSupport, tokenFromPairingLink } from '../lib/pushSupport'
 import { appUrl } from '../lib/appUrl'
@@ -313,6 +314,7 @@ export function PairDevicePage() {
             </div>
           )}
         </div>
+        <AppFooter className="rounded-2xl border border-purple-100" />
       </div>
     </main>
   )

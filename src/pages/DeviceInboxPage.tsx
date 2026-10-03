@@ -8,6 +8,8 @@ import { loadPairedDeviceNotification, restoreDevicePairing, sendPairedDeviceTes
 import { DeviceNotificationDetails } from '../components/DeviceNotificationDetails'
 import { useConfirm } from '../components/ConfirmDialogProvider'
 import { useAuth } from '../auth/AuthProvider'
+import { AppFooter } from '../components/AppFooter'
+import { AppLogo } from '../components/AppLogo'
 
 function dateLabel(value?: string) {
   if (!value) return ''
@@ -126,7 +128,7 @@ export function DeviceInboxPage() {
           <img src={peaLogo} alt="PEA" className="h-10 object-contain" />
           {!loading && <Link to={user ? '/calendar' : '/login'} aria-label="กลับหน้าหลัก" className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl border border-purple-200 bg-white px-3 text-sm font-semibold text-brand-700 shadow-sm hover:bg-purple-50"><Home size={18} />หน้าหลัก</Link>}
         </div>
-        <p className="text-sm font-bold text-brand-700">PEA Meeting &amp; Task Calendar</p>
+        <div className="flex items-center gap-2"><AppLogo className="h-9 w-9" /><p className="text-sm font-bold text-brand-700">PEA Meeting &amp; Task Calendar</p></div>
         <p className="text-xs text-slate-500">แจ้งเตือนงานและประชุม</p>
       </header>
       <section className="rounded-2xl border border-purple-100 bg-white p-4 shadow-sm">
@@ -161,9 +163,10 @@ export function DeviceInboxPage() {
             : (alerts.data ?? []).length === 0 ? <div className="space-y-2 p-8 text-center"><BellRing size={32} className="mx-auto text-purple-300" /><p className="font-semibold text-slate-700">ยังไม่มีข้อความแจ้งเตือน</p><p className="text-sm text-slate-500">ข้อความใหม่ที่ส่งมายังมือถือเครื่องนี้จะแสดงที่นี่ แตะข้อความเพื่อดูงานหรือประชุมได้ทันที</p></div>
               : <ul className="divide-y divide-purple-50">{alerts.data?.map((alert) => <li key={alert.id} className={`flex items-start ${alert.read ? '' : 'bg-purple-50/60'}`}><button type="button" onClick={() => setParams({ notification: alert.id })} className="min-w-0 flex-1 space-y-1 p-4 text-left transition hover:bg-purple-50"><span className="block break-words font-semibold text-slate-900">{!alert.read && <span className="mr-2 inline-block h-2 w-2 rounded-full bg-brand-700" />}{alert.title}</span><span className="block line-clamp-2 text-sm text-slate-600">{alert.body}</span><time className="block text-xs text-slate-400">{dateLabel(alert.receivedAt)}</time></button><button type="button" disabled={deleting} aria-label={`ลบข้อความ: ${alert.title}`} onClick={() => void removeMessages([alert.id])} className="mr-2 mt-2 flex min-h-11 min-w-11 items-center justify-center rounded-xl text-slate-400 hover:bg-red-50 hover:text-red-700 disabled:opacity-40"><Trash2 size={18} /></button></li>)}</ul>}
       </section>
-      <footer className="flex flex-wrap items-center justify-end gap-2 pb-4 text-xs">
+      <div className="flex flex-wrap items-center justify-end gap-2 text-xs">
         <Link to="/pair-device?reconnect=1" className="inline-flex min-h-11 items-center text-slate-500">เปลี่ยนบัญชีที่เชื่อมต่อ</Link>
-      </footer>
+      </div>
+      <AppFooter className="rounded-2xl border border-purple-100" />
     </div>
   </main>
 }

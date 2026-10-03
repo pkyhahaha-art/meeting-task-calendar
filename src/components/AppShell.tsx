@@ -10,6 +10,8 @@ import { eventCreationPeriods } from '../lib/eventStats'
 import { supabase } from '../lib/supabase'
 import { useConfirm } from './ConfirmDialogProvider'
 import { LanguageToggle } from './LanguageToggle'
+import { AppFooter } from './AppFooter'
+import { AppLogo } from './AppLogo'
 
 async function countCreatedItems(start: string, end: string) {
   const [meetings, tasks] = await Promise.all([
@@ -100,17 +102,18 @@ export function AppShell() {
           <button type="button" onClick={() => void logout()} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-red-50 hover:text-red-700" aria-label={t('signOut')}><LogOut size={17} />{t('signOut')}</button>
         </div>
       </aside>
-      <div className={location.pathname === '/calendar' ? 'calendar-page-content min-w-0' : 'min-w-0'}>
+      <div className={`flex min-h-screen min-w-0 flex-col ${location.pathname === '/calendar' ? 'calendar-page-content' : ''}`}>
         <header className="hidden min-h-16 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-b border-purple-100 bg-white/90 px-6 lg:grid">
           <div className="flex min-w-0 items-center gap-3">
             {location.pathname !== '/calendar' && <button type="button" onClick={() => navigate('/calendar')} className="btn-secondary min-h-9 px-3" aria-label={text('กลับไปหน้าปฏิทิน', 'Back to calendar')}><ArrowLeft size={16} />{text('กลับ', 'Back')}</button>}
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-600 to-purple-400 text-white shadow-md shadow-purple-200"><CalendarDays size={21} /></span>
+            <AppLogo />
             <span className="min-w-0 leading-tight"><span className="block text-sm font-extrabold leading-tight tracking-tight text-brand-900">PEA Meeting &amp; Task Calendar</span><span className="block truncate text-xs font-medium text-slate-500">{text('ระบบปฏิทินการประชุมและงาน', 'Meeting and task management')}</span></span>
           </div>
           {statsCard}
           <div className="flex min-w-0 items-center justify-end gap-2"><LanguageToggle /><span className="hidden max-w-32 truncate text-sm font-semibold text-slate-700 xl:block">{displayName}</span><NavLink to="/profile" className="rounded-full bg-purple-100 p-2 text-brand-700" aria-label={text('บัญชีและตั้งค่า', 'Account & settings')}><Settings size={18} /></NavLink></div>
         </header>
         <Outlet />
+        <AppFooter className="mt-auto xl:h-12 xl:shrink-0 xl:py-1" />
       </div>
     </div>
   )

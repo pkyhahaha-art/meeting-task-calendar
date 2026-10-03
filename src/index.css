@@ -107,7 +107,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 @media (min-width: 1280px) {
   .calendar-page-shell { height: 100vh; overflow: hidden; }
   .calendar-page-content { height: 100vh; overflow: hidden; }
-  .calendar-page-main { height: calc(100vh - 4rem); overflow: hidden; }
+  .calendar-page-main { height: calc(100vh - 7rem); overflow: hidden; }
   .calendar-fill { overflow: hidden; }
   .calendar-fill .fc { height: 100%; }
   .calendar-fill .fc-scroller { overflow: hidden !important; }
