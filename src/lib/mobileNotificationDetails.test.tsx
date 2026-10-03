@@ -3,6 +3,7 @@ import test from 'node:test'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { DeviceNotificationDetails } from '../components/DeviceNotificationDetails'
 import { mobileNotificationDocuments } from '../../supabase/functions/_shared/mobileNotificationDocuments'
+import { deviceDocumentRoute, deviceDocumentUrl } from './deviceDocument'
 
 test('Task and Meeting attachments get separate private preview and named download links', async () => {
   const calls: Array<[string, string, false | string]> = []
@@ -49,8 +50,20 @@ test('opening Task details shows department, due time and both document actions'
     details={{ entity: 'task', title: 'แผนปฏิบัติ', affiliation: 'กคน.ฝลส.', description: 'คำสั่งงานฉบับเต็ม', due_date: '2026-10-06', due_time: '09:00:00' }}
     documents={[{ id: 'file', name: 'รายงาน.pdf', kind: 'file', previewUrl: 'https://storage.example/view', downloadUrl: 'https://storage.example/download' }]} />)
   for (const text of ['ชื่องาน', 'แผนปฏิบัติ', 'หน่วยงาน / สังกัด', 'กคน.ฝลส.', 'ครบกำหนดงาน', '09:00', 'คำสั่งงานฉบับเต็ม', 'เปิดดูเอกสาร', 'ดาวน์โหลด']) assert.ok(html.includes(text), text)
-  assert.ok(html.includes('href="https://storage.example/view"'))
-  assert.ok(html.includes('href="https://storage.example/download"'))
+  assert.ok(html.includes('href="#/device-document?notification=task&amp;file=file&amp;mode=view"'))
+  assert.ok(html.includes('href="#/device-document?notification=task&amp;file=file&amp;mode=download"'))
+  assert.doesNotMatch(html, /target="_blank"/)
+})
+
+test('each document action resolves a freshly loaded URL and refuses a removed or unavailable file', () => {
+  const content = { details: { entity: 'task' }, documents: [{ id: 'file', name: 'PDF', kind: 'file' as const,
+    previewUrl: 'https://storage.example/new-token', downloadUrl: 'https://storage.example/new-download' }], linksExpireAt: '' }
+  assert.equal(deviceDocumentUrl(content, 'file'), 'https://storage.example/new-token')
+  assert.equal(deviceDocumentUrl(content, 'file', true), 'https://storage.example/new-download')
+  assert.match(deviceDocumentRoute('id&another=1', 'file#part'), /notification=id%26another%3D1&file=file%23part/)
+  assert.throws(() => deviceDocumentUrl(content, 'deleted'))
+  assert.throws(() => deviceDocumentUrl({ ...content, documents: [{ ...content.documents[0], error: 'Removed' }] }, 'file'), /Removed/)
+  assert.throws(() => deviceDocumentUrl({ ...content, documents: [{ ...content.documents[0], previewUrl: 'javascript:alert(1)' }] }, 'file'))
 })
 
 test('Meeting details show start/end, department and offline messages retain their snapshot', () => {

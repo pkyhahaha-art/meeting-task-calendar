@@ -115,10 +115,10 @@ export function html(template: string, payload: Record<string, unknown>) {
   const documentList = documentItems.length
     ? `<div style="margin-top:20px;padding:16px;background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px"><div style="margin-bottom:10px;color:#115e59;font-size:15px;font-weight:700">เอกสารและลิงก์ Google Drive (${documentItems.length})</div>${documentItems.map((document) => {
       const url = document.url
-      const name = url ? `<a href="${escapeHtml(url)}" style="color:#0f696c;text-decoration:none;font-weight:600">${escapeHtml(document.name)}</a>` : escapeHtml(document.name)
+      const name = url ? `<a target="_blank" rel="noopener noreferrer" href="${escapeHtml(url)}" style="color:#0f696c;text-decoration:underline;font-weight:600">${escapeHtml(document.name)}</a>` : escapeHtml(document.name)
       const size = formatSize(document.size)
       return `<div style="padding:8px 0;border-top:1px solid #ccfbf1">${document.kind === 'drive' ? '🔗 Google Drive: ' : '📎 '}${name}${size ? `<span style="color:#64748b;font-size:12px"> · ${size}</span>` : ''}</div>`
-    }).join('')}<div style="margin-top:8px;color:#64748b;font-size:12px">ลิงก์เอกสารภายในระบบมีอายุจำกัด โปรดเก็บเป็นส่วนตัว</div></div>`
+    }).join('')}<div style="margin-top:8px;color:#64748b;font-size:12px">ลิงก์ไฟล์แนบภายในระบบใช้ได้ 7 วัน โปรดเก็บเป็นส่วนตัว หากหมดอายุให้เปิดรายการในระบบเพื่อโหลดลิงก์ใหม่</div></div>`
     : ''
   return `<div style="margin:0;padding:24px;background:#f1f5f9"><div style="max-width:640px;margin:auto;overflow:hidden;border:1px solid #cbd5e1;border-radius:16px;background:#ffffff;font-family:Arial,'Noto Sans Thai',sans-serif;color:#1e293b"><div style="padding:12px 24px;background:#0f696c;color:#ccfbf1;font-size:12px;font-weight:700;letter-spacing:.08em">MEETING &amp; TASK CALENDAR</div><div style="padding:24px"><div style="margin-bottom:6px;color:#0f766e;font-size:13px;font-weight:700">${escapeHtml(subject(template, {}))}</div><h1 style="margin:0 0 20px;color:#0f172a;font-size:24px;line-height:1.35">${escapeHtml(payload.title || subject(template, payload))}</h1>${rows ? `<table role="presentation" style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:10px">${rows}</table>` : ''}${descriptionBlock}${documentList}${acknowledgeAction}<div style="margin-top:24px;color:#94a3b8;font-size:11px">อีเมลนี้ส่งโดยระบบ Meeting &amp; Task Calendar</div></div></div></div>`
 }

@@ -13,7 +13,7 @@ test('creates a hash-router link to the assigned task', () => {
 
 test('Task email opens Drive directly and keeps acknowledgement separate from the Task page', () => {
   const taskDocuments = taskDocumentItems(
-    [{ file_name: 'report.pdf' }],
+    [{ file_name: 'report.pdf', file_size: 1234, url: 'https://project.supabase.co/storage/v1/object/sign/task-documents/report.pdf?token=scoped' }],
     [{ display_name: 'Drive folder', url: 'https://drive.google.com/drive/folders/example' }],
   )
   const card = html('task_assigned', {
@@ -24,7 +24,9 @@ test('Task email opens Drive directly and keeps acknowledgement separate from th
   })
 
   assert.match(card, /href="https:\/\/drive\.google\.com\/drive\/folders\/example"/)
-  assert.match(card, /Google Drive: <a href="https:\/\/drive\.google\.com\/drive\/folders\/example"/)
+  assert.match(card, /Google Drive: <a [^>]*href="https:\/\/drive\.google\.com\/drive\/folders\/example"/)
+  assert.match(card, /href="https:\/\/project\.supabase\.co\/storage\/v1\/object\/sign\/task-documents\/report.pdf\?token=scoped"[^>]*>report.pdf<\/a>/)
+  assert.match(card, /7 วัน/)
   assert.doesNotMatch(card, /เปิด Task \/ ดาวน์โหลดเอกสาร/)
   assert.match(card, /href="https:\/\/project\.supabase\.co\/functions\/v1\/email-acknowledgement\?token=scoped"[^>]*>รับทราบ<\/a>/)
   assert.match(card, /หากปุ่มรับทราบใช้งานไม่ได้/)

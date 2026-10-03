@@ -19,6 +19,7 @@ const AdminPage = lazy(() => import('./pages/AdminPage').then((module) => ({ def
 const MobilePushPage = lazy(() => import('./pages/MobilePushPage').then((module) => ({ default: module.MobilePushPage })))
 const PairDevicePage = lazy(() => import('./pages/PairDevicePage').then((module) => ({ default: module.PairDevicePage })))
 const DeviceInboxPage = lazy(() => import('./pages/DeviceInboxPage').then((module) => ({ default: module.DeviceInboxPage })))
+const DeviceDocumentPage = lazy(() => import('./pages/DeviceDocumentPage').then((module) => ({ default: module.DeviceDocumentPage })))
 
 const pageFallback = <div className="p-8 text-center text-slate-500">กำลังโหลด…</div>
 
@@ -35,6 +36,7 @@ export default function App() {
     <Route path="/acknowledged" element={<AcknowledgementPage />} />
     <Route path="/pair-device" element={<Suspense fallback={pageFallback}><PairDevicePage /></Suspense>} />
     <Route path="/device-inbox" element={<Suspense fallback={pageFallback}><DeviceInboxPage /></Suspense>} />
+    <Route path="/device-document" element={<Suspense fallback={pageFallback}><DeviceDocumentPage /></Suspense>} />
     <Route element={<ProtectedRoute />}><Route element={<AppShell />}>
       <Route path="/calendar" element={<Suspense fallback={pageFallback}><CalendarPage /></Suspense>} />
       <Route path="/mobile-push" element={<Suspense fallback={pageFallback}><MobilePushPage /></Suspense>} />

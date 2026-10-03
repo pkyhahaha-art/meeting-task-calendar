@@ -205,7 +205,7 @@ async function payloadWithTaskDocuments(delivery: Delivery, payload: Record<stri
     : externalUrl
   if (!documentUrl.startsWith('http')) return payload
   const [attachments, documentLinks] = await Promise.all([
-    supabase.from('task_attachments').select('file_name').eq('task_id', taskId).order('uploaded_at'),
+    supabase.from('task_attachments').select('file_name,file_size,storage_path').eq('task_id', taskId).order('uploaded_at'),
     supabase.from('document_links').select('display_name, url').eq('task_id', taskId).order('created_at'),
   ])
   if (attachments.error || documentLinks.error) {
@@ -215,11 +215,16 @@ async function payloadWithTaskDocuments(delivery: Delivery, payload: Record<stri
       ...(delivery.recipient_type !== 'external_assignee' ? { internal_task_url: documentUrl } : {}),
     }
   }
+  const files = await Promise.all((attachments.data ?? []).map(async (file) => {
+    const { data, error } = await supabase.storage.from('task-documents').createSignedUrl(file.storage_path, 7 * 24 * 60 * 60)
+    if (error || !data) throw new Error(`Unable to create Task document link: ${errorMessage(error)}`)
+    return { ...file, url: data.signedUrl }
+  }))
   return {
     ...payload,
     ...(externalUrl ? { external_url: externalUrl } : {}),
     ...(delivery.recipient_type !== 'external_assignee' ? { internal_task_url: documentUrl } : {}),
-    task_documents: taskDocumentItems(attachments.data ?? [], documentLinks.data ?? []),
+    task_documents: taskDocumentItems(files, documentLinks.data ?? []),
   }
 }
 

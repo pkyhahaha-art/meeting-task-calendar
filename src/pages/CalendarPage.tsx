@@ -569,9 +569,14 @@ export function CalendarPage() {
           const { error } = await supabase.rpc('queue_task_creation_mobile_confirmation', { target_task_id: taskId })
           if (error) throw error
         }
-        if (notifyRecipients && hasInternal && (!task || task.status === 'pending')) {
-          const { error } = await supabase.from('tasks').update({ notification_requested_at: new Date().toISOString() }).eq('id', taskId)
+        if (notifyRecipients && (hasInternal || (task && draft.notifyLine)) && (!task || task.status === 'pending')) {
+          const requestedAt = new Date().toISOString()
+          const { error } = await supabase.from('tasks').update({ notification_requested_at: requestedAt }).eq('id', taskId)
           if (error) throw error
+          if (task && draft.notifyLine) {
+            const { error } = await supabase.rpc('queue_task_update_mobile_notifications', { target_task_id: taskId, target_requested_at: requestedAt })
+            if (error) throw error
+          }
         }
         let warning = ''
         if (shouldNotifyExternalRecipients) {

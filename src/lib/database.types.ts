@@ -289,6 +289,10 @@ export interface Database {
         Args: { target_task_id: string }
         Returns: number
       }
+      queue_task_update_mobile_notifications: {
+        Args: { target_task_id: string; target_requested_at: string }
+        Returns: number
+      }
       get_mobile_device_status: {
         Args: { target_endpoint: string; target_auth: string }
         Returns: Json

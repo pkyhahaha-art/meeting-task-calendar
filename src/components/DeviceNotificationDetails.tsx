@@ -1,5 +1,6 @@
 import { Download, ExternalLink, FileText, Loader2, RefreshCw } from 'lucide-react'
 import type { DeviceAlert, DeviceInboxDocument } from '../lib/deviceInbox'
+import { deviceDocumentRoute } from '../lib/deviceDocument'
 
 function dateLabel(value?: string, allDay = false) {
   if (!value) return ''
@@ -43,13 +44,13 @@ export function DeviceNotificationDetails({ alert, details = alert.details, docu
         <p className="break-words text-sm font-semibold text-slate-800">{file.name}</p>
         {typeof file.size === 'number' && file.size > 0 && <p className="text-xs text-slate-500">{file.size < 1024 * 1024 ? `${Math.ceil(file.size / 1024)} KB` : `${(file.size / (1024 * 1024)).toFixed(1)} MB`}</p>}
         <div className="flex flex-wrap gap-2">
-          {file.previewUrl && <a href={file.previewUrl} target="_blank" rel="noopener noreferrer" className="btn-secondary text-sm"><ExternalLink size={16} />เปิดดูเอกสาร</a>}
-          {file.downloadUrl && <a href={file.downloadUrl} target="_blank" rel="noopener noreferrer" className="btn-secondary text-sm"><Download size={16} />ดาวน์โหลด</a>}
+          {file.previewUrl && <a href={file.kind === 'file' ? `#${deviceDocumentRoute(alert.id, file.id)}` : file.previewUrl} rel="noreferrer" className="btn-secondary text-sm"><ExternalLink size={16} />เปิดดูเอกสาร</a>}
+          {file.downloadUrl && <a href={`#${deviceDocumentRoute(alert.id, file.id, true)}`} className="btn-secondary text-sm"><Download size={16} />ดาวน์โหลด</a>}
         </div>
         {file.kind === 'drive' && file.previewUrl && <p className="text-xs text-slate-500">ดูและดาวน์โหลดจาก Google Drive ตามสิทธิ์ที่ผู้สร้างแชร์ไว้</p>}
         {file.error && <p className="text-xs text-amber-800">{file.error}</p>}
       </div>)}
-      {documents.length > 0 && !error && <p className="text-xs text-slate-500">ลิงก์ไฟล์แนบใช้ได้ 15 นาที หากเปิดไม่ได้ให้กดโหลดเอกสารใหม่ ไฟล์ PDF/รูปภาพเปิดดูได้ในเบราว์เซอร์ ส่วนไฟล์ Office เปิดด้วยแอปที่รองรับหรือดาวน์โหลด</p>}
+      {documents.length > 0 && !error && <p className="text-xs text-slate-500">ปุ่มเอกสารโหลดลิงก์ใหม่ทุกครั้งที่กด ต้องเชื่อมต่ออินเทอร์เน็ต ไฟล์ PDF/รูปภาพเปิดดูได้ในเบราว์เซอร์ ส่วนไฟล์ Office เปิดด้วยแอปที่รองรับหรือดาวน์โหลด</p>}
     </section>}
     {!canLoad && details?.entity && <p className="text-xs text-amber-800">เชื่อมต่อมือถือและเปิดอินเทอร์เน็ตเพื่อโหลดรายละเอียดล่าสุดและเอกสารแนบ</p>}
     <p className="text-xs text-slate-500">{onlineDetails ? 'รายละเอียดล่าสุดจากระบบ เอกสารเปิดได้ตามสิทธิ์ของผู้รับข้อความ' : 'ข้อมูลที่บันทึกไว้ในข้อความ หากต้องการดูข้อมูลล่าสุดหรือเอกสาร ให้เชื่อมต่ออินเทอร์เน็ต'}</p>
