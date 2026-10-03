@@ -256,7 +256,7 @@ export async function getConnectedDevices(userId: string): Promise<ConnectedDevi
 
   if (error) {
     console.error('Failed to load connected devices:', error)
-    return []
+    throw new Error('โหลดอุปกรณ์ไม่ได้ กรุณาลองใหม่')
   }
 
   return (data || []) as ConnectedDevice[]
@@ -279,7 +279,7 @@ export async function deleteConnectedDevice(subscriptionId: string): Promise<boo
 
   if (error) {
     console.error('Failed to delete connected device:', error)
-    return false
+    throw new Error('ยกเลิกการเชื่อมต่อไม่ได้ กรุณาลองใหม่')
   }
 
   return true

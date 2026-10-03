@@ -46,6 +46,7 @@ export function AppShell() {
   const location = useLocation()
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [logoutError, setLogoutError] = useState<string | null>(null)
   const eventStatsQuery = useQuery({
     queryKey: ['event-creation-stats', user?.id],
     enabled: Boolean(user && profile?.status === 'active'),
@@ -63,8 +64,13 @@ export function AppShell() {
   const statsCard = <EventStatsCard stats={eventStatsQuery.data} loading={eventStatsQuery.isLoading} error={eventStatsQuery.isError} />
   const logout = async () => {
     if (!await confirm({ title: text('ออกจากระบบ?', 'Sign out?'), message: text('คุณจะต้องเข้าสู่ระบบใหม่ในครั้งถัดไป', 'You will need to sign in again next time.'), confirmLabel: t('signOut'), tone: 'danger' })) return
-    await signOut()
-    navigate('/login', { replace: true })
+    setLogoutError(null)
+    try {
+      await signOut()
+      navigate('/login', { replace: true })
+    } catch {
+      setLogoutError(text('ออกจากระบบไม่สำเร็จ กรุณาลองอีกครั้ง', 'Unable to sign out. Please try again.'))
+    }
   }
   const navClass = ({ isActive }: { isActive: boolean }) =>
     `flex min-h-11 items-center gap-2 rounded-xl px-3 text-xs font-semibold whitespace-nowrap transition ${isActive ? 'bg-amber-50 text-amber-700' : 'text-slate-600 hover:bg-purple-50 hover:text-brand-700'}`
@@ -98,6 +104,7 @@ export function AppShell() {
           </div>
         </div>
         <div className="border-t border-purple-100 px-4 py-3">
+          {logoutError && <p role="alert" className="mb-2 text-xs text-red-600">{logoutError}</p>}
           <div className="mb-2 flex min-w-0 items-center gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-purple-100 text-brand-700"><UserRound size={18} /></span><div className="min-w-0"><p className="truncate text-sm font-bold">{displayName}</p><p className="truncate text-xs text-slate-500">{profile?.employee_id || user?.email}</p></div></div>
           <button type="button" onClick={() => void logout()} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-red-50 hover:text-red-700" aria-label={t('signOut')}><LogOut size={17} />{t('signOut')}</button>
         </div>

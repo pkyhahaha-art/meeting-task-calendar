@@ -207,7 +207,7 @@ export interface Database {
         Relationships: []
       }
       task_attachments: {
-        Row: { id: string; task_id: string; file_name: string; mime_type: string; file_size: number; storage_path: string; uploaded_by: string; uploaded_at: string }
+        Row: { id: string; task_id: string; file_name: string; mime_type: string; file_size: number; storage_path: string; uploaded_by: string | null; uploaded_at: string }
         Insert: { id?: string; task_id: string; file_name: string; mime_type: string; file_size: number; storage_path: string; uploaded_by: string }
         Update: Partial<Database['public']['Tables']['task_attachments']['Insert']>
         Relationships: []

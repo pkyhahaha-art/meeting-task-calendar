@@ -1,4 +1,4 @@
-import { bangkokDate, isPastBangkokDate } from './eventForm'
+import { isPastBangkokDate } from './eventForm'
 
 export type TaskReminderKey = 'due' | '1_hour' | '1_day' | '3_days' | 'overdue' | 'continuous'
 export type TaskReminderMode = 'single' | 'continuous'
