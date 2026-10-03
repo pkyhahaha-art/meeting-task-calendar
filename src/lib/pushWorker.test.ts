@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { runInNewContext } from 'node:vm'
+import { indexedDB } from 'fake-indexeddb'
 
 function worker() {
   const handlers: Record<string, (event: unknown) => void> = {}
@@ -9,13 +10,15 @@ function worker() {
   const opened: string[] = []
   runInNewContext(readFileSync(new URL('../../public/sw.js', import.meta.url), 'utf8'), {
     URL,
+    crypto,
+    indexedDB,
     self: {
       addEventListener: (name: string, handler: (event: unknown) => void) => { handlers[name] = handler },
       registration: {
         scope: 'https://example.com/meeting-task-calendar/',
         showNotification: async (title: string, options: { body: string; icon: string }) => { notifications.push({ title, options }) },
       },
-      clients: { openWindow: async (url: string) => { opened.push(url) } },
+      clients: { matchAll: async () => [], openWindow: async (url: string) => { opened.push(url) } },
     },
   })
   return { handlers, notifications, opened }
@@ -42,7 +45,7 @@ test('notification clicks cannot open an external site or another Pages project'
       waitUntil: (promise: Promise<unknown>) => { pending = promise },
     })
     await pending
-    assert.deepEqual(state.opened, ['https://example.com/meeting-task-calendar/#/calendar'])
+    assert.deepEqual(state.opened, ['https://example.com/meeting-task-calendar/#/device-inbox'])
   }
 })
 

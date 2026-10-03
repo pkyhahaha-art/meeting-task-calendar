@@ -1,6 +1,8 @@
 import { supabase } from './supabase'
 import { currentPushSupport } from './pushSupport'
 import { activeNotificationWorker, showLocalTestNotification } from './notificationWorker'
+import { readDevicePairing, saveDevicePairing, type DevicePairing } from './deviceInbox'
+import { withNotificationTimeout } from './notificationWorker'
 
 export interface ConnectedDevice {
   id: string
@@ -186,10 +188,13 @@ export async function completeDevicePairing(token: string, customDeviceName?: st
       return { success: false, error: error.message || 'เกิดข้อผิดพลาดในการเชื่อมต่ออุปกรณ์' }
     }
 
-    const res = data as { success: boolean; error?: string; user_name?: string }
+    const res = data as { success: boolean; error?: string; user_name?: string; subscription_id: string }
     if (!res.success) {
       return { success: false, error: res.error || 'ไม่สามารถเชื่อมต่ออุปกรณ์ได้' }
     }
+
+    await saveDevicePairing({ subscriptionId: res.subscription_id, endpoint,
+      userName: res.user_name || '', pairedAt: new Date().toISOString() }, true)
 
     // Trigger local welcome notification
     if (Notification.permission === 'granted') {
@@ -211,6 +216,33 @@ export async function completeDevicePairing(token: string, customDeviceName?: st
     console.error('Pairing error:', err)
     const msg = err instanceof Error ? err.message : 'เกิดข้อผิดพลาดในการเชื่อมต่อ'
     return { success: false, error: msg }
+  }
+}
+
+/** Restore a paired device using its existing Push secret, never a consumed QR. */
+export async function restoreDevicePairing(): Promise<DevicePairing | null> {
+  if (currentPushSupport() !== 'ready' || Notification.permission !== 'granted') return null
+  const registration = await activeNotificationWorker()
+  const subscription = await registration.pushManager.getSubscription()
+  const authKey = subscription?.getKey('auth')
+  if (!subscription || !authKey) return null
+  const saved = await readDevicePairing()
+  try {
+    const { data, error } = await withNotificationTimeout(supabase.rpc('get_mobile_device_status', {
+      target_endpoint: subscription.endpoint,
+      target_auth: btoa(String.fromCharCode(...new Uint8Array(authKey))),
+    }), 'ตรวจการเชื่อมต่อไม่สำเร็จ กรุณาลองใหม่')
+    if (error) throw error
+    const result = data as { paired: boolean; subscription_id?: string; user_name?: string; user_id?: string }
+    if (!result.paired || !result.subscription_id) return null
+    const pairing = { subscriptionId: result.subscription_id, endpoint: subscription.endpoint,
+      userName: result.user_name || '', userId: result.user_id, pairedAt: saved?.pairedAt || new Date().toISOString() }
+    await saveDevicePairing(pairing, Boolean(saved && (saved.subscriptionId !== pairing.subscriptionId || (saved.userId && saved.userId !== pairing.userId))))
+    return pairing
+  } catch (error) {
+    // A network outage must not turn a remembered device into an unpaired one.
+    if (saved?.endpoint === subscription.endpoint) return saved
+    throw error
   }
 }
 

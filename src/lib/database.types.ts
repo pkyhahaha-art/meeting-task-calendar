@@ -59,6 +59,7 @@ export interface Database {
           notification_requested_at: string | null
           initial_notification_requested_at: string | null
           suppress_guest_notifications: boolean
+          mobile_notifications_enabled: boolean
           created_at: string
           updated_at: string
         }
@@ -81,6 +82,7 @@ export interface Database {
           notification_requested_at?: string | null
           initial_notification_requested_at?: string | null
           suppress_guest_notifications?: boolean
+          mobile_notifications_enabled?: boolean
         }
         Update: Partial<Database['public']['Tables']['events']['Insert']>
         Relationships: []
@@ -272,6 +274,14 @@ export interface Database {
       queue_creation_confirmation: {
         Args: { target_event_id?: string; target_task_id?: string }
         Returns: undefined
+      }
+      get_mobile_device_status: {
+        Args: { target_endpoint: string; target_auth: string }
+        Returns: Json
+      }
+      queue_meeting_mobile_notification: {
+        Args: { target_event_id: string; target_initial?: boolean }
+        Returns: number
       }
       queue_meeting_initial_notifications: {
         Args: { target_event_id: string }

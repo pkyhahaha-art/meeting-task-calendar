@@ -132,6 +132,14 @@ GitHub remains the source repository. Vercel builds and serves the web applicati
 
 6. Pushes to `main` automatically create a production deployment. Keep the existing GitHub Pages site available until email links sent before the migration are no longer needed.
 
+## Mobile notification inbox
+
+The Home Screen app opens `#/device-inbox`, which stores the last 100 received Push messages on that device. Tapping a notification opens its local message and Meeting/Task snapshot without signing in. Closing or force-quitting the app preserves pairing and messages. Removing the app or clearing its website data can remove this storage and require pairing again. Calendar changes and full current details still require the normal account login.
+
+Existing devices restore their connection using the Push subscription's existing secret; the one-use QR link is only for initial pairing or changing accounts. The status RPC returns connection metadata only and leaves anonymous subscription-table access disabled. When Mobile is selected for a Meeting, saving queues one creator confirmation per device, and explicitly saving with notifications queues an update. Scheduled reminders retain the previously agreed recipient rules. Recurring Meeting edits retain their reminder templates after the first occurrence has passed; expired reminder times are skipped.
+
+Apply `supabase/migrations/202610030002_persistent_mobile_inbox.sql`, deploy `process-notification-queue` and `mobile-push`, and publish the frontend. `supabase/tests/persistent_mobile_inbox.sql` verifies device proof, creator-only queues, deduplication and future reminders in a rollback transaction.
+
 ## Creation confirmation emails
 
 When Email is enabled, saving a new Task or Meeting queues one creator confirmation with the subject `คุณได้สร้าง Task แล้ว` or `คุณได้สร้าง Meeting แล้ว`. A creator who is also an assignee or Meeting guest receives the confirmation instead of a second initial invitation. Other recipients still receive their invitations. Creation confirmations use a stable entity/template/email key, so retries do not queue another confirmation. Future reminders and explicitly requested update emails remain separate notifications; expired Task reminder offsets are skipped instead of being sent immediately after creation.

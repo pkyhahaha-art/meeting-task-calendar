@@ -3,7 +3,7 @@
   "name": "PEA Meeting & Task Calendar",
   "short_name": "PEA Calendar",
   "lang": "th",
-  "start_url": "./#/pair-device",
+  "start_url": "./#/device-inbox",
   "scope": "./",
   "display": "standalone",
   "background_color": "#ffffff",

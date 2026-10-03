@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import webpush from 'npm:web-push@3.6.7'
+import { deviceNotification } from './deviceNotification.ts'
 import { deliverWebPush, type PushSubscriptionRecord } from '../_shared/webPushDelivery.ts'
 import { html, subject, text } from './emailTemplate.ts'
 import { internalMeetingUrl } from './meetingLink.ts'
@@ -231,9 +232,7 @@ async function send(delivery: Delivery, payload: Record<string, unknown>) {
     if (!device) return new Response('Push device is no longer connected', { status: 410 })
     // A device re-paired to another account must never receive an older owner's delivery.
     if (device.user_id !== text(payload.push_user_id)) return new Response('Push recipient changed', { status: 410 })
-    const url = new URL(publicAppUrl)
-    url.hash = '/calendar'
-    const result = await deliverWebPush(device as PushSubscriptionRecord, { title: subject(delivery.template_key, payload), body: text(payload.description).slice(0, 600) || 'ถึงเวลาแจ้งเตือนจากปฏิทิน PEA', tag: `delivery-${delivery.id}`, url: url.href }, config, webpush.generateRequestDetails)
+    const result = await deliverWebPush(device as PushSubscriptionRecord, deviceNotification(delivery.id, subject(delivery.template_key, payload), payload, publicAppUrl), config, webpush.generateRequestDetails)
     if (result.expired) await supabase.from('mobile_push_subscriptions').delete().eq('id', device.id).eq('user_id', device.user_id)
     return new Response(result.sent ? 'Push provider accepted the notification' : `Push provider status ${result.status}`, { status: result.sent ? 200 : result.status })
   }

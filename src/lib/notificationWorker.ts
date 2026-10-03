@@ -1,6 +1,6 @@
 import { appUrl } from './appUrl'
 
-export async function withNotificationTimeout<T>(operation: Promise<T>, message: string, timeoutMs = 15000): Promise<T> {
+export async function withNotificationTimeout<T>(operation: PromiseLike<T>, message: string, timeoutMs = 15000): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     return await Promise.race([

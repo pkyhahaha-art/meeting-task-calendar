@@ -38,7 +38,7 @@ Deno.serve(async (request) => {
     if (claimed.error) throw claimed.error
     if (!claimed.data) return reply({ error: 'กรุณารอ 10 วินาทีแล้วทดสอบอีกครั้ง' }, 429)
     const url = new URL(appUrl)
-    url.hash = '/mobile-push'
+    url.hash = '/device-inbox'
     const result = await deliverWebPush(data as PushSubscriptionRecord, { title: '⚡ ทดสอบแจ้งเตือน PEA Calendar', body: 'ข้อความทดสอบส่งจากเซิร์ฟเวอร์ไปยังมือถือที่เชื่อมต่อ', tag: `test-${crypto.randomUUID()}`, url: url.href }, config, webpush.generateRequestDetails)
     if (result.expired) await db.from('mobile_push_subscriptions').delete().eq('id', data.id)
     return result.sent ? reply({ accepted: true }) : reply({ error: result.expired ? 'การเชื่อมต่อหมดอายุ กรุณาสแกน QR ใหม่' : `ผู้ให้บริการ Push ปฏิเสธการส่ง (${result.status})` }, 502)

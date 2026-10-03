@@ -238,7 +238,8 @@ export function EventDialog({
   const creationDateInPast = !event && isPastBangkokDate(draft.date)
   const reminderStart = new Date(`${draft.date}T${draft.start || '00:00'}:00+07:00`)
   const expiredReminderKeys = Number.isNaN(reminderStart.getTime()) ? [] : pastMeetingReminderKeys(reminderStart, draft.reminderKeys)
-  const hasExpiredReminders = !isOccurrenceEdit && expiredReminderKeys.length > 0
+  const recurringReminders = draft.recurrence.frequency !== 'none'
+  const hasExpiredReminders = !isOccurrenceEdit && !recurringReminders && expiredReminderKeys.length > 0
   const attachmentCountForScope = details?.attachments.filter((file) => (isOccurrenceEdit ? file.scope === 'occurrence' : file.scope === 'series')).length ?? 0
   const reminderLabel = (key: ReminderKey) =>
     text(
@@ -862,7 +863,7 @@ export function EventDialog({
                           type="checkbox"
                           className="sr-only"
                           checked={isChecked}
-                          disabled={isPast && !isChecked}
+                          disabled={isPast && !isChecked && !recurringReminders}
                           onChange={() => toggleReminder(option.key)}
                         />
                         <span>
@@ -873,7 +874,7 @@ export function EventDialog({
                         </span>
                         {isPast && (
                           <span className={`ml-1 text-[11px] ${isChecked ? 'font-bold text-red-700' : 'text-slate-400'}`}>
-                            {text('(ผ่านมาแล้ว)', '(Passed)')}
+                            {recurringReminders ? text('(ครั้งแรกผ่านมาแล้ว)', '(First reminder passed)') : text('(ผ่านมาแล้ว)', '(Passed)')}
                           </span>
                         )}
                       </label>
@@ -897,6 +898,7 @@ export function EventDialog({
                     </div>
                   </div>
                 )}
+                {recurringReminders && expiredReminderKeys.length > 0 && <p role="status" className="rounded-xl bg-amber-50 p-3 text-xs text-amber-900">{text('เวลาเตือนของครั้งแรกผ่านไปแล้ว ระบบจะข้ามเวลาที่ผ่านไป และใช้ตัวเลือกนี้กับการประชุมครั้งถัดไปที่ยังไม่ถึงเวลาเตือน', 'The first reminder time has passed. Past times will be skipped; this timing will apply to upcoming occurrences.')}</p>}
                 <div className="flex flex-wrap gap-5 text-sm">
                   <label className="flex items-center gap-2 cursor-pointer select-none">
                     <input type="checkbox" checked={draft.notifyEmail} onChange={(e) => set('notifyEmail', e.target.checked)} className="h-4 w-4 rounded" />

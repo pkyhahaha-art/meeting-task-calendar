@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useSearchParams, Link } from 'react-router-dom'
+import { useSearchParams, Link, useNavigate } from 'react-router-dom'
 import {
   Smartphone,
   BellRing,
@@ -25,11 +25,14 @@ import {
   verifyPairingToken,
   completeDevicePairing,
   detectDeviceName,
+  restoreDevicePairing,
 } from '../lib/mobilePush'
 
 export function PairDevicePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const token = searchParams.get('token') || ''
+  const reconnect = searchParams.get('reconnect') === '1'
+  const navigate = useNavigate()
   const { text } = useLanguage()
 
   const [loading, setLoading] = useState(true)
@@ -53,7 +56,7 @@ export function PairDevicePage() {
       return
     }
     setLinkError(null)
-    setSearchParams({ token: nextToken })
+    setSearchParams({ token: nextToken, ...(reconnect ? { reconnect: '1' } : {}) })
   }
 
   const copyPairingLink = async () => {
@@ -73,6 +76,18 @@ export function PairDevicePage() {
     setErrorMessage(null)
 
     async function checkToken() {
+      if (!reconnect) {
+        try {
+          const paired = await restoreDevicePairing()
+          if (cancelled) return
+          if (paired) { navigate('/device-inbox', { replace: true }); return }
+        } catch {
+          if (cancelled) return
+          setErrorMessage(text('ตรวจสอบอุปกรณ์ไม่ได้ กรุณาตรวจอินเทอร์เน็ตแล้วเปิดแอปอีกครั้ง', 'Unable to check this device. Check your connection and reopen the app.'))
+          setLoading(false)
+          return
+        }
+      }
       if (!token) {
         setLoading(false)
         return
@@ -93,7 +108,7 @@ export function PairDevicePage() {
 
     checkToken()
     return () => { cancelled = true }
-  }, [token])
+  }, [token, reconnect, navigate, text])
 
   const handleEnablePush = async () => {
     if (!token || !tokenValid) return
@@ -105,6 +120,7 @@ export function PairDevicePage() {
       if (result.success) {
         setSuccess(true)
         setPairedUserName(result.userName || null)
+        navigate('/device-inbox', { replace: true })
       } else {
         setErrorMessage(result.error || 'เกิดข้อผิดพลาดในการเปิดการแจ้งเตือน')
       }
@@ -213,11 +229,11 @@ export function PairDevicePage() {
 
               <div className="pt-2">
                 <Link
-                  to="/calendar"
+                  to="/device-inbox"
                   className="w-full inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-700 via-fuchsia-600 to-amber-500 px-4 py-2.5 font-semibold text-white shadow-md shadow-purple-300/40 hover:from-brand-800 transition text-sm"
                 >
                   <CalendarDays size={17} />
-                  <span>{text('เข้าสู่หน้าปฏิทิน', 'Go to Calendar')}</span>
+                  <span>{text('เปิดกล่องแจ้งเตือน', 'Open notifications')}</span>
                   <ArrowRight size={16} />
                 </Link>
               </div>
@@ -240,7 +256,7 @@ export function PairDevicePage() {
                   : text('กรุณาสร้าง QR Code ใหม่บนคอมพิวเตอร์ แล้วคัดลอกลิงก์ใหม่', 'Generate a new QR code on your desktop and copy the new link.')}
               </p>
               {tokenValid && support === 'ready' && <button type="button" onClick={() => setErrorMessage(null)} className="min-h-11 rounded-xl bg-brand-700 px-4 py-2 font-bold text-white">{text('ลองใหม่', 'Try again')}</button>}
-              {!tokenValid && <button type="button" onClick={() => setSearchParams({})} className="min-h-11 rounded-xl bg-brand-700 px-4 py-2 font-bold text-white">{text('วางลิงก์ใหม่', 'Paste a new link')}</button>}
+              {!tokenValid && <button type="button" onClick={() => setSearchParams(reconnect ? { reconnect: '1' } : {})} className="min-h-11 rounded-xl bg-brand-700 px-4 py-2 font-bold text-white">{text('วางลิงก์ใหม่', 'Paste a new link')}</button>}
             </div>
           ) : (
             /* Ready to Pair View */
