@@ -9,6 +9,6 @@
   "background_color": "#ffffff",
   "theme_color": "#740878",
   "icons": [
-    { "src": "brand/pea-meeting-task-logo-v1.png", "sizes": "1254x1254", "type": "image/png", "purpose": "any" }
+    { "src": "brand/pea-meeting-task-logo-v2.png", "sizes": "1254x1254", "type": "image/png", "purpose": "any" }
   ]
 }

@@ -16,7 +16,7 @@ import {
   Share,
 } from 'lucide-react'
 import mascotHoldingPad from '../../ภาพประกอบUI/02_Hand I-Pad.jpg'
-import peaLogo from '../../ภาพประกอบUI/PEA Logo (1).png'
+import { AppLogo } from '../components/AppLogo'
 import { AppFooter } from '../components/AppFooter'
 import { useLanguage } from '../i18n/LanguageProvider'
 import { currentPushSupport, tokenFromPairingLink } from '../lib/pushSupport'
@@ -138,11 +138,7 @@ export function PairDevicePage() {
       <div className="w-full max-w-md space-y-6">
         {/* PEA Brand Header */}
         <div className="flex flex-col items-center text-center space-y-2">
-          <img
-            src={peaLogo}
-            alt="PEA การไฟฟ้าส่วนภูมิภาค"
-            className="h-12 object-contain drop-shadow-sm"
-          />
+          <AppLogo className="h-24 w-24" />
           <span className="inline-flex items-center gap-1.5 rounded-full bg-purple-100/80 px-3 py-0.5 text-xs font-bold text-brand-700">
             <Sparkles size={13} className="text-amber-500" />
             PEA Meeting &amp; Task Calendar

@@ -1,6 +1,12 @@
 # PEA Meeting & Task Calendar application logo
 
-`pea-meeting-task-logo-v1.png` is the generated 1254 × 1254 application logo. Used in application headers, browser favicon and Home Screen installation metadata. The existing official PEA organization logo remains separate.
+## Current logo
+
+`pea-meeting-task-logo-v2.png` is the user-supplied 1254 × 1254 PNG, copied unchanged from the attached image. Its original pixels and transparency are preserved. Used in application headers, navigation, browser favicon and Home Screen installation metadata.
+
+## Previous logo
+
+`pea-meeting-task-logo-v1.png` is the previously generated 1254 × 1254 logo, retained as a prior asset.
 
 Generated using the built-in imagegen tool. The tool does not expose a model selector; the requested Image 2.0 version could not be verified. The generated PNG is copied unchanged from the generated-images directory.
 

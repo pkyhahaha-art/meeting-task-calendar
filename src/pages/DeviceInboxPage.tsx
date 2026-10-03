@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import { BellRing, CalendarDays, CheckCircle2, ChevronLeft, Loader2, LogIn, RefreshCw, Smartphone, Send, Trash2 } from 'lucide-react'
-import peaLogo from '../../ภาพประกอบUI/PEA Logo (1).png'
 import { deleteDeviceAlerts, listDeviceAlerts, markDeviceAlertRead, requestDeviceInboxBadgeSync, updateDeviceAlertDetails, type DevicePairing } from '../lib/deviceInbox'
 import { loadPairedDeviceNotification, restoreDevicePairing, sendPairedDeviceTestNotification } from '../lib/mobilePush'
 import { DeviceNotificationDetails } from '../components/DeviceNotificationDetails'
@@ -125,10 +124,10 @@ export function DeviceInboxPage() {
     <div className="mx-auto max-w-lg space-y-4">
       <header className="space-y-2 pt-3">
         <div className="flex items-center justify-between gap-3">
-          <img src={peaLogo} alt="PEA" className="h-10 object-contain" />
+          <AppLogo className="h-20 w-20" />
           {!loading && <Link to={user ? '/calendar' : '/login'} className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl border border-purple-200 bg-white px-3 text-sm font-semibold text-brand-700 shadow-sm hover:bg-purple-50">{user ? <CalendarDays size={18} /> : <LogIn size={18} />}{user ? 'ดูปฏิทิน' : 'เข้าสู่ระบบ'}</Link>}
         </div>
-        <div className="flex items-center gap-2"><AppLogo className="h-9 w-9" /><p className="text-sm font-bold text-brand-700">PEA Meeting &amp; Task Calendar</p></div>
+        <p className="text-sm font-bold text-brand-700">PEA Meeting &amp; Task Calendar</p>
         <p className="text-xs text-slate-500">แจ้งเตือนงานและประชุม</p>
         <p className="rounded-xl border border-purple-100 bg-white/70 px-3 py-2 text-xs leading-relaxed text-slate-600"><span className="font-semibold text-brand-700">กลับหน้าจอโฮมมือถือ:</span> ปัดขึ้นจากขอบล่างของหน้าจอ หรือกดปุ่มโฮมของเครื่อง การเชื่อมต่อรับแจ้งเตือนยังอยู่เหมือนเดิม</p>
       </header>
