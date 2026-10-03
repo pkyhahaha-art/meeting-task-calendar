@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
-import { BellRing, CheckCircle2, ChevronLeft, Loader2, RefreshCw, Smartphone, Send } from 'lucide-react'
+import { BellRing, CheckCircle2, ChevronLeft, Loader2, RefreshCw, Smartphone, Send, Trash2 } from 'lucide-react'
 import peaLogo from '../../ภาพประกอบUI/PEA Logo (1).png'
-import { listDeviceAlerts, markDeviceAlertRead, type DevicePairing } from '../lib/deviceInbox'
+import { deleteDeviceAlerts, listDeviceAlerts, markDeviceAlertRead, type DevicePairing } from '../lib/deviceInbox'
 import { restoreDevicePairing, sendPairedDeviceTestNotification } from '../lib/mobilePush'
+import { useConfirm } from '../components/ConfirmDialogProvider'
 
 function dateLabel(value?: string) {
   if (!value) return ''
@@ -15,6 +16,7 @@ function dateLabel(value?: string) {
 }
 
 export function DeviceInboxPage() {
+  const confirm = useConfirm()
   const [params, setParams] = useSearchParams()
   const selectedId = params.get('notification')
   const [device, setDevice] = useState<DevicePairing | null>(null)
@@ -23,10 +25,33 @@ export function DeviceInboxPage() {
   const [testing, setTesting] = useState(false)
   const [testId, setTestId] = useState('')
   const [testStatus, setTestStatus] = useState('')
+  const [deleting, setDeleting] = useState(false)
+  const [deleteStatus, setDeleteStatus] = useState('')
   const alerts = useQuery({ queryKey: ['device-inbox'], queryFn: listDeviceAlerts })
   const refreshAlerts = alerts.refetch
   const selected = alerts.data?.find((alert) => alert.id === selectedId)
   const testReceived = Boolean(testId && alerts.data?.some((alert) => alert.id === testId))
+
+  const removeMessages = async (ids: string[], all = false) => {
+    if (deleting || !ids.length) return
+    setDeleting(true)
+    setDeleteStatus('')
+    try {
+      const accepted = await confirm({
+        title: all ? 'ล้างกล่องแจ้งเตือน?' : 'ลบข้อความนี้?',
+        message: `ลบ${all ? `ข้อความ ${ids.length} รายการ` : 'ข้อความนี้'}จากมือถือเครื่องนี้เท่านั้น ไม่ลบงานหรือประชุม และยังรับข้อความใหม่ได้ตามเดิม ข้อความที่ลบแล้วกู้คืนไม่ได้`,
+        confirmLabel: all ? 'ล้างข้อความทั้งหมด' : 'ลบข้อความ', tone: 'danger',
+      })
+      if (!accepted) return
+      await deleteDeviceAlerts(ids)
+      if (selectedId && ids.includes(selectedId)) setParams({})
+      if (ids.includes(testId)) { setTestId(''); setTestStatus('') }
+      await refreshAlerts()
+      setDeleteStatus(`ลบข้อความ ${ids.length} รายการแล้ว`)
+    } catch {
+      setConnectionError('ลบข้อความไม่ได้ กรุณาลองใหม่')
+    } finally { setDeleting(false) }
+  }
 
   const testNotification = async () => {
     if (testing) return
@@ -104,10 +129,14 @@ export function DeviceInboxPage() {
         {(testStatus || testReceived) && <p role="status" className={`mt-3 rounded-xl p-3 text-sm ${testReceived ? 'bg-green-50 text-green-800' : 'bg-amber-50 text-amber-900'}`}>{testReceived ? 'มือถือเครื่องนี้รับข้อความทดสอบแล้ว เปิดอ่านจากกล่องแจ้งเตือนได้เลย' : testStatus}</p>}
       </section>
       <section className="overflow-hidden rounded-2xl border border-purple-100 bg-white shadow-sm">
-        <div className="flex items-center justify-between gap-2 border-b border-purple-50 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-purple-50 p-4">
           <h1 className="flex items-center gap-2 text-lg font-bold text-slate-900"><BellRing size={20} className="text-brand-700" />{selected ? 'รายละเอียดแจ้งเตือน' : 'กล่องแจ้งเตือน'}{!selected && unread > 0 && <span className="rounded-full bg-brand-700 px-2 py-0.5 text-xs text-white">{unread}</span>}</h1>
+          <div className="flex items-center gap-1">
+            <button type="button" disabled={deleting || !alerts.data?.length} onClick={() => void removeMessages(selected ? [selected.id] : (alerts.data ?? []).map((alert) => alert.id), !selected)} className="inline-flex min-h-11 items-center gap-1 rounded-xl px-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-40"><Trash2 size={16} />{selected ? 'ลบข้อความนี้' : 'ล้างทั้งหมด'}</button>
           <button type="button" onClick={() => void alerts.refetch()} aria-label="โหลดข้อความใหม่" className="flex min-h-11 min-w-11 items-center justify-center rounded-xl text-brand-700"><RefreshCw size={18} className={alerts.isFetching ? 'animate-spin' : ''} /></button>
+          </div>
         </div>
+        {deleteStatus && <p role="status" className="border-b border-purple-50 bg-green-50 px-4 py-3 text-sm text-green-800">{deleteStatus}</p>}
         {selected ? <article className="space-y-4 p-5">
           <button type="button" onClick={() => setParams({})} className="inline-flex min-h-11 items-center gap-1 font-semibold text-brand-700"><ChevronLeft size={18} />กลับไปกล่องแจ้งเตือน</button>
           <h2 className="break-words text-xl font-bold text-slate-900">{details?.title || selected.title}</h2>
@@ -118,7 +147,7 @@ export function DeviceInboxPage() {
         </article> : alerts.isPending ? <p className="p-6 text-center text-slate-500">กำลังโหลดข้อความ…</p>
           : alerts.error ? <p role="alert" className="p-6 text-red-700">อ่านกล่องข้อความไม่ได้ กรุณาเปิดแอปอีกครั้ง</p>
             : (alerts.data ?? []).length === 0 ? <div className="space-y-2 p-8 text-center"><BellRing size={32} className="mx-auto text-purple-300" /><p className="font-semibold text-slate-700">ยังไม่มีข้อความแจ้งเตือน</p><p className="text-sm text-slate-500">ข้อความใหม่ที่ส่งมายังมือถือเครื่องนี้จะแสดงที่นี่ แตะข้อความเพื่อดูงานหรือประชุมได้ทันที</p></div>
-              : <ul className="divide-y divide-purple-50">{alerts.data?.map((alert) => <li key={alert.id}><button type="button" onClick={() => setParams({ notification: alert.id })} className={`w-full space-y-1 p-4 text-left transition hover:bg-purple-50 ${alert.read ? '' : 'bg-purple-50/60'}`}><span className="block break-words font-semibold text-slate-900">{!alert.read && <span className="mr-2 inline-block h-2 w-2 rounded-full bg-brand-700" />}{alert.title}</span><span className="block line-clamp-2 text-sm text-slate-600">{alert.body}</span><time className="block text-xs text-slate-400">{dateLabel(alert.receivedAt)}</time></button></li>)}</ul>}
+              : <ul className="divide-y divide-purple-50">{alerts.data?.map((alert) => <li key={alert.id} className={`flex items-start ${alert.read ? '' : 'bg-purple-50/60'}`}><button type="button" onClick={() => setParams({ notification: alert.id })} className="min-w-0 flex-1 space-y-1 p-4 text-left transition hover:bg-purple-50"><span className="block break-words font-semibold text-slate-900">{!alert.read && <span className="mr-2 inline-block h-2 w-2 rounded-full bg-brand-700" />}{alert.title}</span><span className="block line-clamp-2 text-sm text-slate-600">{alert.body}</span><time className="block text-xs text-slate-400">{dateLabel(alert.receivedAt)}</time></button><button type="button" disabled={deleting} aria-label={`ลบข้อความ: ${alert.title}`} onClick={() => void removeMessages([alert.id])} className="mr-2 mt-2 flex min-h-11 min-w-11 items-center justify-center rounded-xl text-slate-400 hover:bg-red-50 hover:text-red-700 disabled:opacity-40"><Trash2 size={18} /></button></li>)}</ul>}
       </section>
       <footer className="flex flex-wrap items-center justify-between gap-2 pb-4 text-xs">
         <Link to="/calendar" className="inline-flex min-h-11 items-center font-semibold text-brand-700">ดูปฏิทิน / จัดการงาน (เข้าสู่ระบบ)</Link>

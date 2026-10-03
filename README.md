@@ -138,6 +138,8 @@ The Home Screen app opens `#/device-inbox`, which stores the last 100 received P
 
 The inbox test sends a real server Push and distinguishes provider acceptance from receipt on the device by matching the returned test ID against locally received messages. An empty inbox means no messages have been stored on that installation yet. It does not import previously sent messages from another browser or installation. New pairing welcomes are also retained in the inbox.
 
+Messages can be deleted individually or cleared from the inbox after confirmation. This affects only the local inbox on that device, retains pairing, and never deletes Tasks or Meetings. Clearing uses the displayed message IDs so a new Push arriving during confirmation is retained.
+
 Existing devices restore their connection using the Push subscription's existing secret; the one-use QR link is only for initial pairing or changing accounts. The status RPC returns connection metadata only and leaves anonymous subscription-table access disabled. When Mobile is selected for a Meeting, saving queues one creator confirmation per device, and explicitly saving with notifications queues an update. Scheduled reminders retain the previously agreed recipient rules. Recurring Meeting edits retain their reminder templates after the first occurrence has passed; expired reminder times are skipped.
 
 Apply `supabase/migrations/202610030002_persistent_mobile_inbox.sql`, deploy `process-notification-queue` and `mobile-push`, and publish the frontend. `supabase/tests/persistent_mobile_inbox.sql` verifies device proof, creator-only queues, deduplication and future reminders in a rollback transaction.

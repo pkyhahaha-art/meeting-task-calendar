@@ -89,3 +89,18 @@ export async function markDeviceAlertRead(id: string) {
     })
   } finally { db.close() }
 }
+
+/** Remove only the messages the user selected; keep pairing and newly arrived alerts. */
+export async function deleteDeviceAlerts(ids: string[]) {
+  const db = await openDeviceInbox()
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction('alerts', 'readwrite')
+      const store = transaction.objectStore('alerts')
+      for (const id of ids) store.delete(id)
+      transaction.oncomplete = () => resolve()
+      transaction.onerror = () => reject(transaction.error)
+      transaction.onabort = () => reject(transaction.error)
+    })
+  } finally { db.close() }
+}

@@ -3,7 +3,7 @@ import test from 'node:test'
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import { indexedDB } from 'fake-indexeddb'
-import { listDeviceAlerts, markDeviceAlertRead, readDevicePairing, saveDevicePairing } from './deviceInbox'
+import { deleteDeviceAlerts, listDeviceAlerts, markDeviceAlertRead, readDevicePairing, saveDeviceAlert, saveDevicePairing } from './deviceInbox'
 import { deviceNotification } from '../../supabase/functions/process-notification-queue/deviceNotification'
 
 globalThis.indexedDB = indexedDB
@@ -66,6 +66,29 @@ test('an IndexedDB failure still displays the visible Push notification', async 
   await failing.push({ title: 'Message', body: 'Details', id: 'test' })
   assert.equal(failing.displayed.length, 1)
   assert.equal(failing.displayed[0].title, 'Message')
+})
+
+test('deleting a message preserves other messages and device pairing across reopening', async () => {
+  const pairing = { subscriptionId: 'cleanup-device', endpoint: 'https://web.push.apple.com/cleanup', userName: 'User', pairedAt: '2026-10-03T04:00:00Z' }
+  await saveDevicePairing(pairing, true)
+  for (const id of ['remove-one', 'keep-one']) await saveDeviceAlert({ id, title: id, body: 'Message', read: false, receivedAt: '2026-10-03T04:00:00Z' })
+  await deleteDeviceAlerts(['remove-one'])
+  assert.deepEqual((await listDeviceAlerts()).map((alert) => alert.id), ['keep-one'])
+  assert.deepEqual(await readDevicePairing(), pairing)
+})
+
+test('clearing the displayed messages preserves a Push arriving during confirmation', async () => {
+  await saveDevicePairing({ subscriptionId: 'cleanup-device', endpoint: 'https://web.push.apple.com/cleanup', userName: 'User', pairedAt: '2026-10-03T04:00:00Z' }, true)
+  await saveDeviceAlert({ id: 'shown-message', title: 'Shown', body: 'Message', read: false, receivedAt: '2026-10-03T04:00:00Z' })
+  const shown = (await listDeviceAlerts()).map((alert) => alert.id)
+  await worker().push({ id: 'arrived-later', title: 'New alert', body: 'Arrived while confirming' })
+  await deleteDeviceAlerts(shown)
+  assert.deepEqual((await listDeviceAlerts()).map((alert) => alert.id), ['arrived-later'])
+  await deleteDeviceAlerts(['arrived-later'])
+  assert.equal((await listDeviceAlerts()).length, 0)
+  assert.equal((await readDevicePairing())?.subscriptionId, 'cleanup-device')
+  await worker().push({ id: 'after-clear', title: 'Still connected', body: 'New messages still arrive' })
+  assert.equal((await listDeviceAlerts())[0].id, 'after-clear')
 })
 
 test('Thai notification snapshots fit Web Push payload limits and exclude credentials', () => {
