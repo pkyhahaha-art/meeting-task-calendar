@@ -265,7 +265,7 @@ export function CalendarPage() {
         ? { description: typeof overridePayload.description === 'string' ? overridePayload.description : undefined, location: typeof overridePayload.location === 'string' ? overridePayload.location : undefined }
         : null
       const hasOccurrenceChanges = Boolean(occurrenceOverride?.description !== undefined || occurrenceOverride?.location !== undefined || addedOccurrenceGuests.length || exclusions.length || occurrenceAttachments.some((file) => file.scope === 'occurrence'))
-      return { guestEmails: guests.data.map((guest) => guest.email), occurrenceGuestEmails: effectiveGuests.map((guest) => guest.email), guestAcknowledgements: Object.fromEntries(effectiveGuests.map((guest) => [guest.email.toLowerCase(), guest.acknowledged_at])), reminderKeys: keys, notifyEmail: reminders.data.some((item) => item.channel_email), notifyLine: selectedEvent!.mobile_notifications_enabled || reminders.data.some((item) => item.channel_line), attachments: attachmentViews, occurrenceId: occurrence?.id ?? null, occurrenceOverride, hasOccurrenceChanges, occurrenceReminders: selectedReminders, occurrenceNotificationDeliveries: notificationDeliveries.data.filter((delivery) => delivery.reminder_id && selectedReminderIds.has(delivery.reminder_id)), notificationDeliveries: notificationDeliveries.data.filter((delivery) => !delivery.reminder_id) }
+      return { guestEmails: guests.data.map((guest) => guest.email), occurrenceGuestEmails: effectiveGuests.map((guest) => guest.email), guestAcknowledgements: Object.fromEntries(effectiveGuests.map((guest) => [guest.email.toLowerCase(), guest.acknowledged_at])), reminderKeys: keys, attachments: attachmentViews, occurrenceId: occurrence?.id ?? null, occurrenceOverride, hasOccurrenceChanges, occurrenceReminders: selectedReminders, occurrenceNotificationDeliveries: notificationDeliveries.data.filter((delivery) => delivery.reminder_id && selectedReminderIds.has(delivery.reminder_id)), notificationDeliveries: notificationDeliveries.data.filter((delivery) => !delivery.reminder_id) }
     },
   })
 
@@ -415,7 +415,7 @@ export function CalendarPage() {
         if (error) { await supabase.storage.from('meeting-documents').remove([storagePath]); throw error }
       }
       if (!event) {
-        const { error } = await supabase.from('events').update({ suppress_guest_notifications: false, mobile_notifications_enabled: draft.notifyLine }).eq('id', eventId)
+        const { error } = await supabase.from('events').update({ suppress_guest_notifications: false, mobile_notifications_enabled: draft.notifyLine, email_notifications_enabled: draft.notifyEmail }).eq('id', eventId)
         if (error) throw error
         if (draft.notifyEmail) {
           const { error } = await supabase.rpc('queue_creation_confirmation', { target_event_id: eventId! })
@@ -433,6 +433,7 @@ export function CalendarPage() {
         const { error } = await supabase.from('events').update({
           suppress_guest_notifications: false,
           mobile_notifications_enabled: draft.notifyLine,
+          email_notifications_enabled: draft.notifyEmail,
           ...(notifyRecipients ? { notification_requested_at: new Date().toISOString() } : {}),
         }).eq('id', eventId)
         if (error) throw error

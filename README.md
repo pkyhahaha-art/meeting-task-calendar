@@ -140,6 +140,8 @@ Existing devices restore their connection using the Push subscription's existing
 
 Apply `supabase/migrations/202610030002_persistent_mobile_inbox.sql`, deploy `process-notification-queue` and `mobile-push`, and publish the frontend. `supabase/tests/persistent_mobile_inbox.sql` verifies device proof, creator-only queues, deduplication and future reminders in a rollback transaction.
 
+Meeting channel choices are saved on `events.email_notifications_enabled` and `events.mobile_notifications_enabled`. Reopening a Meeting reads these saved choices even after reminder delivery or while the device list is loading. Apply `supabase/migrations/202610030003_persist_meeting_notification_channels.sql` before publishing this frontend; its one-time Email backfill uses retained reminder templates or creator confirmations without sending messages. `supabase/tests/meeting_notification_channels.sql` checks persistence and explicit opt-out in a rollback transaction, and the dialog tests cover delayed device loading and reopening.
+
 ## Creation confirmation emails
 
 When Email is enabled, saving a new Task or Meeting queues one creator confirmation with the subject `คุณได้สร้าง Task แล้ว` or `คุณได้สร้าง Meeting แล้ว`. A creator who is also an assignee or Meeting guest receives the confirmation instead of a second initial invitation. Other recipients still receive their invitations. Creation confirmations use a stable entity/template/email key, so retries do not queue another confirmation. Future reminders and explicitly requested update emails remain separate notifications; expired Task reminder offsets are skipped instead of being sent immediately after creation.

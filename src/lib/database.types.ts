@@ -60,6 +60,7 @@ export interface Database {
           initial_notification_requested_at: string | null
           suppress_guest_notifications: boolean
           mobile_notifications_enabled: boolean
+          email_notifications_enabled: boolean
           created_at: string
           updated_at: string
         }
@@ -83,6 +84,7 @@ export interface Database {
           initial_notification_requested_at?: string | null
           suppress_guest_notifications?: boolean
           mobile_notifications_enabled?: boolean
+          email_notifications_enabled?: boolean
         }
         Update: Partial<Database['public']['Tables']['events']['Insert']>
         Relationships: []

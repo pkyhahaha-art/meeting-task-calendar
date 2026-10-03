@@ -40,8 +40,6 @@ export type EventDetails = {
   occurrenceGuestEmails: string[]
   guestAcknowledgements: Record<string, string | null>
   reminderKeys: ReminderKey[]
-  notifyEmail: boolean
-  notifyLine: boolean
   attachments: AttachmentView[]
   occurrenceId: string | null
   occurrenceOverride: { description?: string; location?: string } | null
@@ -185,8 +183,8 @@ export function EventDialog({
             guestEmails: useOccurrenceValues ? (details?.occurrenceGuestEmails.length ? details.occurrenceGuestEmails : ['']) : (details?.guestEmails.length ? details.guestEmails : ['']),
             reminderKeys: details?.reminderKeys ?? [],
             sendImmediate: false,
-            notifyEmail: details?.notifyEmail ?? true,
-            notifyLine: hasConnectedDevices ? (details?.notifyLine ?? false) : false,
+            notifyEmail: event.email_notifications_enabled,
+            notifyLine: event.mobile_notifications_enabled,
             files: [],
           }
         : blankDraft(selectedDate),
@@ -355,14 +353,13 @@ export function EventDialog({
       setError(attachmentError)
       return false
     }
-    const activeNotifyLine = hasConnectedDevices && draft.notifyLine
-    if (!isOccurrenceEdit && draft.reminderKeys.length && !draft.notifyEmail && !activeNotifyLine) {
+    if (!isOccurrenceEdit && draft.reminderKeys.length && !draft.notifyEmail && !draft.notifyLine) {
       setError(text('กรุณาเลือกช่องทางแจ้งเตือนอย่างน้อย 1 ช่องทาง', 'Choose at least one notification channel.'))
       return false
     }
     setError('')
     try {
-      await onSave({ ...draft, notifyLine: hasConnectedDevices ? draft.notifyLine : false }, isOccurrenceEdit ? false : notifyRecipients, isOccurrenceEdit ? 'occurrence' : 'series')
+      await onSave(draft, isOccurrenceEdit ? false : notifyRecipients, isOccurrenceEdit ? 'occurrence' : 'series')
       return true
     } catch (error) {
       setError(error instanceof Error && error.message.startsWith('เซสชันหมดอายุ') ? error.message : text('บันทึกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง', 'Could not save. Please try again.'))
@@ -915,7 +912,7 @@ export function EventDialog({
                   >
                     <input
                       type="checkbox"
-                      checked={Boolean(hasConnectedDevices && draft.notifyLine)}
+                      checked={draft.notifyLine}
                       disabled={!hasConnectedDevices}
                       onChange={(e) => set('notifyLine', e.target.checked)}
                       className="h-4 w-4 rounded"
