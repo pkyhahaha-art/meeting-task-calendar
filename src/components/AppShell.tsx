@@ -72,7 +72,7 @@ export function AppShell() {
     <div className={`min-h-screen bg-[#f8f6fb] text-slate-900 lg:grid lg:grid-cols-[254px_minmax(0,1fr)] ${location.pathname === '/calendar' ? 'calendar-page-shell' : ''}`}>
       <header className="sticky top-0 z-30 flex min-h-16 flex-wrap items-center justify-between gap-2 border-b border-purple-100 bg-white/95 px-4 py-2 backdrop-blur lg:hidden">
         <button type="button" onClick={() => setMenuOpen(true)} className="rounded-xl p-2 text-brand-700 hover:bg-purple-50" aria-label={text('เปิดเมนู', 'Open menu')}><Menu size={24} /></button>
-        <span className="truncate text-sm font-bold text-brand-700">{t('appName')}</span>
+        <span className="min-w-0 flex-1 text-xs font-bold leading-tight text-brand-700">{t('appName')}</span>
         <LanguageToggle />
         <div className="flex w-full justify-center">{statsCard}</div>
       </header>
@@ -105,7 +105,7 @@ export function AppShell() {
           <div className="flex min-w-0 items-center gap-3">
             {location.pathname !== '/calendar' && <button type="button" onClick={() => navigate('/calendar')} className="btn-secondary min-h-9 px-3" aria-label={text('กลับไปหน้าปฏิทิน', 'Back to calendar')}><ArrowLeft size={16} />{text('กลับ', 'Back')}</button>}
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-600 to-purple-400 text-white shadow-md shadow-purple-200"><CalendarDays size={21} /></span>
-            <span className="min-w-0 leading-tight"><span className="block truncate text-base font-extrabold tracking-tight text-brand-900">Meeting &amp; Task Calendar</span><span className="block truncate text-xs font-medium text-slate-500">{text('ระบบปฏิทินการประชุมและงาน', 'Meeting and task management')}</span></span>
+            <span className="min-w-0 leading-tight"><span className="block text-sm font-extrabold leading-tight tracking-tight text-brand-900">PEA Meeting &amp; Task Calendar</span><span className="block truncate text-xs font-medium text-slate-500">{text('ระบบปฏิทินการประชุมและงาน', 'Meeting and task management')}</span></span>
           </div>
           {statsCard}
           <div className="flex min-w-0 items-center justify-end gap-2"><LanguageToggle /><span className="hidden max-w-32 truncate text-sm font-semibold text-slate-700 xl:block">{displayName}</span><NavLink to="/profile" className="rounded-full bg-purple-100 p-2 text-brand-700" aria-label={text('บัญชีและตั้งค่า', 'Account & settings')}><Settings size={18} /></NavLink></div>

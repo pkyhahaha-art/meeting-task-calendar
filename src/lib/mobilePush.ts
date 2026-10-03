@@ -145,7 +145,7 @@ export async function completeDevicePairing(token: string, customDeviceName?: st
 }> {
   try {
     const support = currentPushSupport()
-    if (support === 'ios-install') return { success: false, error: 'บน iPhone / iPad กรุณาเพิ่มเว็บไปยังหน้าจอโฮม แล้วเปิดจากไอคอน PEA Calendar เพื่อเปิดการแจ้งเตือน (iOS 16.4 ขึ้นไป)' }
+    if (support === 'ios-install') return { success: false, error: 'บน iPhone / iPad กรุณาเพิ่มเว็บไปยังหน้าจอโฮม แล้วเปิดจากไอคอน PEA Meeting & Task Calendar เพื่อเปิดการแจ้งเตือน (iOS 16.4 ขึ้นไป)' }
     if (support === 'insecure') return { success: false, error: 'กรุณาเปิดเว็บไซต์ผ่าน HTTPS เพื่อเปิดการแจ้งเตือน' }
     if (support !== 'ready') return { success: false, error: 'กรุณาเปิดใน Chrome หรือแอปบนหน้าจอโฮมของ iPhone / iPad และตรวจสอบว่าอัปเดตระบบแล้ว' }
     if (!vapidPublicKey) return { success: false, error: 'ระบบยังไม่ได้ตั้งค่าการส่งแจ้งเตือนมือถือ กรุณาติดต่อผู้ดูแลระบบ' }

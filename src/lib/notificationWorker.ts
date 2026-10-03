@@ -39,7 +39,7 @@ export async function activeNotificationWorker(
       cleanup = () => worker.removeEventListener('statechange', check)
       worker.addEventListener('statechange', check)
       check()
-    }), 'ระบบแจ้งเตือนยังไม่พร้อม กรุณาปิดแอป PEA Calendar แล้วเปิดใหม่')
+    }), 'ระบบแจ้งเตือนยังไม่พร้อม กรุณาปิดแอป PEA Meeting & Task Calendar แล้วเปิดใหม่')
   } finally {
     cleanup?.()
   }

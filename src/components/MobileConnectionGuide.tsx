@@ -15,7 +15,7 @@ export function MobileConnectionGuide() {
         <ol className="list-decimal space-y-2 pl-5">
           <li>{text('สแกน QR เปิดลิงก์ใน Safari แล้วคัดลอกลิงก์เชื่อมต่อ', 'Scan the QR, open in Safari, and copy the pairing link.')}</li>
           <li>{text('กด Share → “เพิ่มลงในหน้าจอโฮม” แล้วเปิดแอปจากไอคอนที่เพิ่ม', 'Tap Share → Add to Home Screen, then open the new app icon.')}</li>
-          <li>{text('วางลิงก์เชื่อมต่อในแอป PEA Calendar กดตรวจสอบลิงก์ แล้วเปิดการแจ้งเตือนและเลือก “อนุญาต”', 'Paste the pairing link in PEA Calendar, verify it, enable notifications and choose Allow.')}</li>
+          <li>{text('วางลิงก์เชื่อมต่อในแอป PEA Meeting & Task Calendar กดตรวจสอบลิงก์ แล้วเปิดการแจ้งเตือนและเลือก “อนุญาต”', 'Paste the pairing link in PEA Meeting & Task Calendar, verify it, enable notifications and choose Allow.')}</li>
           <li>{text('เมื่อเชื่อมต่อแล้ว เปิดกล่องแจ้งเตือนจาก Home Screen ได้เลย ไม่ต้องใส่ลิงก์ซ้ำเมื่อปัดปิดแอป', 'After pairing, open the inbox from the Home Screen. Closing the app does not require pairing again.')}</li>
         </ol>
       </div> : <div className="space-y-3 rounded-2xl border border-green-200 bg-green-50 p-4 text-sm leading-relaxed text-green-900">

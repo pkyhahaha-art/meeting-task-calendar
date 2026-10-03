@@ -1,7 +1,7 @@
 {
   "id": "./",
   "name": "PEA Meeting & Task Calendar",
-  "short_name": "PEA Calendar",
+  "short_name": "PEA Meeting & Task Calendar",
   "lang": "th",
   "start_url": "./#/device-inbox",
   "scope": "./",

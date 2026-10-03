@@ -4,7 +4,7 @@ Deploy this function after applying every notification migration:
 
 ```sh
 supabase functions deploy process-notification-queue --no-verify-jwt
-supabase secrets set BREVO_API_KEY=... NOTIFICATION_SENDER_EMAIL=... NOTIFICATION_SENDER_NAME="Meeting & Task Calendar" NOTIFICATION_CRON_SECRET=... PUBLIC_APP_URL=https://your-app.example
+supabase secrets set BREVO_API_KEY=... NOTIFICATION_SENDER_EMAIL=... NOTIFICATION_SENDER_NAME="PEA Meeting & Task Calendar" NOTIFICATION_CRON_SECRET=... PUBLIC_APP_URL=https://your-app.example
 ```
 
 Invoke it from a Supabase scheduled job every minute (Dashboard > Edge Functions > Schedules). The function first queues due Email reminders for active Meetings and pending Tasks, then claims due deliveries, sends them through the Brevo Transactional Email API, and records `sent`, `retry`, `failed`, or `deferred_quota` in `notification_deliveries`.

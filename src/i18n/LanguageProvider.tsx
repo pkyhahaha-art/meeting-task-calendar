@@ -4,13 +4,13 @@ type Language = 'th' | 'en'
 
 const messages = {
   th: {
-    appName: 'ปฏิทินการประชุม', calendar: 'ปฏิทิน', signIn: 'เข้าสู่ระบบ', signOut: 'ออกจากระบบ',
+    appName: 'PEA Meeting & Task Calendar', calendar: 'ปฏิทิน', signIn: 'เข้าสู่ระบบ', signOut: 'ออกจากระบบ',
     register: 'สมัครสมาชิก', email: 'Gmail', password: 'รหัสผ่าน', forgotPassword: 'ลืมรหัสผ่าน?',
     noAccount: 'ยังไม่มีบัญชี?', haveAccount: 'มีบัญชีแล้ว?', fullName: 'ชื่อ-นามสกุล', employeeId: 'รหัสพนักงาน',
     confirmPassword: 'ยืนยันรหัสผ่าน', createAccount: 'สร้างบัญชี', loading: 'กำลังโหลด…',
   },
   en: {
-    appName: 'Meeting Calendar', calendar: 'Calendar', signIn: 'Sign in', signOut: 'Sign out',
+    appName: 'PEA Meeting & Task Calendar', calendar: 'Calendar', signIn: 'Sign in', signOut: 'Sign out',
     register: 'Register', email: 'Gmail', password: 'Password', forgotPassword: 'Forgot password?',
     noAccount: "Don't have an account?", haveAccount: 'Already have an account?', fullName: 'Full name', employeeId: 'Employee ID',
     confirmPassword: 'Confirm password', createAccount: 'Create account', loading: 'Loading…',

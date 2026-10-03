@@ -63,7 +63,7 @@ Deno.serve(async (request) => {
     const url = new URL(appUrl)
     url.hash = '/device-inbox'
     const notificationId = `test-${crypto.randomUUID()}`
-    const result = await deliverWebPush(data as PushSubscriptionRecord, { title: '⚡ ทดสอบแจ้งเตือน PEA Calendar', body: 'ข้อความทดสอบส่งจากเซิร์ฟเวอร์ไปยังมือถือที่เชื่อมต่อ', tag: notificationId, url: url.href }, config, webpush.generateRequestDetails)
+    const result = await deliverWebPush(data as PushSubscriptionRecord, { title: '⚡ ทดสอบแจ้งเตือน PEA Meeting & Task Calendar', body: 'ข้อความทดสอบส่งจากเซิร์ฟเวอร์ไปยังมือถือที่เชื่อมต่อ', tag: notificationId, url: url.href }, config, webpush.generateRequestDetails)
     if (result.expired) await db.from('mobile_push_subscriptions').delete().eq('id', data.id)
     return result.sent ? reply({ accepted: true, notificationId }) : reply({ error: result.expired ? 'การเชื่อมต่อหมดอายุ กรุณาสแกน QR ใหม่' : `ผู้ให้บริการ Push ปฏิเสธการส่ง (${result.status})` }, 502)
   } catch {

@@ -144,7 +144,7 @@ export function PairDevicePage() {
           />
           <span className="inline-flex items-center gap-1.5 rounded-full bg-purple-100/80 px-3 py-0.5 text-xs font-bold text-brand-700">
             <Sparkles size={13} className="text-amber-500" />
-            Meeting &amp; Task Calendar Mobile Alert
+            PEA Meeting &amp; Task Calendar
           </span>
         </div>
 
@@ -173,7 +173,7 @@ export function PairDevicePage() {
               <ol className="list-decimal pl-5 space-y-2">
                 <li>{text('คัดลอกลิงก์เชื่อมต่อด้วยปุ่มด้านล่าง', 'Copy the pairing link below.')}</li>
                 <li>{text('แตะปุ่มแชร์ใน Safari → เพิ่มไปยังหน้าจอโฮม → เพิ่ม', 'Tap Share in Safari → Add to Home Screen → Add.')}</li>
-                <li>{text('เปิดไอคอน PEA Calendar ที่เพิ่มใหม่ แล้ววางลิงก์ที่คัดลอกไว้', 'Open the new PEA Calendar icon and paste the copied link.')}</li>
+                <li>{text('เปิดไอคอน PEA Meeting & Task Calendar ที่เพิ่มใหม่ แล้ววางลิงก์ที่คัดลอกไว้', 'Open the new PEA Meeting & Task Calendar icon and paste the copied link.')}</li>
                 <li>{text('กดตรวจสอบลิงก์ แล้วเปิดการแจ้งเตือนและกดอนุญาต', 'Verify the link, enable notifications, and tap Allow.')}</li>
               </ol>
               {token && <button type="button" onClick={copyPairingLink} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-brand-700 px-4 py-2 font-bold text-white"><Copy size={16} />{copied ? text('คัดลอกแล้ว', 'Copied') : text('คัดลอกลิงก์เชื่อมต่อ', 'Copy pairing link')}</button>}
@@ -266,7 +266,7 @@ export function PairDevicePage() {
                   {text('เปิดรับการแจ้งเตือนบนมือถือ', 'Enable Mobile Notifications')}
                 </h1>
                 <p className="text-xs text-slate-500">
-                  {text('เชื่อมต่ออุปกรณ์นี้เข้ากับระบบปฏิทิน PEA', 'Pair this device with your PEA Calendar')}
+                  {text('เชื่อมต่ออุปกรณ์นี้เข้ากับระบบปฏิทิน PEA', 'Pair this device with your PEA Meeting & Task Calendar')}
                 </p>
               </div>
 
@@ -300,7 +300,7 @@ export function PairDevicePage() {
               </button>
 
               {support === 'insecure' && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{text('กรุณาเปิดเว็บไซต์ผ่าน HTTPS เพื่อเปิดการแจ้งเตือน', 'Open this site over HTTPS to enable notifications.')}</p>}
-              {support === 'unsupported' && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{text('กรุณาอัปเดต iOS เป็น 16.4 ขึ้นไป และเปิดจากไอคอน PEA Calendar บนหน้าจอโฮม สำหรับ Android ให้เปิดด้วย Chrome', 'Update to iOS 16.4 or later and open the Home Screen app. On Android, use Chrome.')}</p>}
+              {support === 'unsupported' && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{text('กรุณาอัปเดต iOS เป็น 16.4 ขึ้นไป และเปิดจากไอคอน PEA Meeting & Task Calendar บนหน้าจอโฮม สำหรับ Android ให้เปิดด้วย Chrome', 'Update to iOS 16.4 or later and open the Home Screen app. On Android, use Chrome.')}</p>}
               {!pushConfigured && support === 'ready' && <div role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900 space-y-2">
                 <p>{pushConfig.isFetching ? text('กำลังตรวจสอบระบบส่งแจ้งเตือน…', 'Checking the notification server…') : pushConfig.error?.message || text('ระบบส่งแจ้งเตือนมือถือยังไม่พร้อม กรุณาตรวจสอบอีกครั้งหลังผู้ดูแลตั้งค่าแล้ว', 'Mobile delivery is not ready. Check again after setup.')}</p>
                 <button type="button" disabled={pushConfig.isFetching} onClick={() => void pushConfig.refetch()} className="min-h-11 rounded-xl border border-amber-300 px-4 py-2 font-semibold disabled:opacity-60">{text('ตรวจสอบระบบอีกครั้ง', 'Check server again')}</button>

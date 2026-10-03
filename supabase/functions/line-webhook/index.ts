@@ -76,7 +76,7 @@ async function webhook(request: Request, rawBody: string) {
       continue
     }
     await admin.from('line_link_codes').update({ used_at: now }).eq('id', linkCode.id)
-    await reply(event.replyToken, 'เชื่อมต่อ LINE กับ Meeting & Task Calendar สำเร็จแล้ว')
+    await reply(event.replyToken, 'เชื่อมต่อ LINE กับ PEA Meeting & Task Calendar สำเร็จแล้ว')
   }
   return json({ ok: true })
 }

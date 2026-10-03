@@ -29,7 +29,7 @@ const supabase = createClient(
 
 const brevoUrl = 'https://api.brevo.com/v3/smtp/email'
 const senderEmail = Deno.env.get('NOTIFICATION_SENDER_EMAIL')
-const senderName = Deno.env.get('NOTIFICATION_SENDER_NAME') ?? 'Meeting & Task Calendar'
+const senderName = Deno.env.get('NOTIFICATION_SENDER_NAME') ?? 'PEA Meeting & Task Calendar'
 const apiKey = Deno.env.get('BREVO_API_KEY')
 const cronSecret = Deno.env.get('NOTIFICATION_CRON_SECRET')
 const lineAccessToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN')
