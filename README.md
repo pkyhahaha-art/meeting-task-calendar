@@ -164,6 +164,12 @@ Apply `supabase/migrations/202610030001_single_creation_confirmation.sql` and re
 
 When Mobile notifications is selected for a new Task, the creator also receives `คุณได้สร้าง Task แล้ว` on each paired device after saving, even when the assignee is someone else or an external email. This confirmation does not wait for the due date, does not notify other assignees, and is queued once per Task/device. Scheduled assignee and creator overdue reminders retain their existing rules. Apply `202610030007_task_creation_mobile_confirmation.sql` before publishing the frontend; `supabase/tests/task_creation_mobile_confirmation.sql` checks creator authorization, device isolation, retries and unchanged future reminders in a rollback transaction.
 
+## Mobile message details and documents
+
+Opening a received Task/Meeting message loads its latest title, department, description, due time or meeting start/end and location through the paired device's proof, without a calendar login. Uploaded files have separate **Open document** and **Download** links; Office files open through an app that supports that format. Google Drive links use the creator's existing sharing permissions. Signed file links expire after 15 minutes and can be refreshed in the message. Only metadata is cached for offline reading; private paths, credentials and document links are never added to the Push payload or persistent inbox.
+
+Apply `202610030008_mobile_notification_details.sql` and deploy `mobile-push` with `_shared/mobileNotificationDocuments.ts` before publishing the frontend. The private RPC is callable only by `service_role`; the Edge Function verifies the paired device and active account first. Access is limited to that device's own delivery and its current Task assignment or Meeting invitation (or the creator). Meeting files respect the selected occurrence. `supabase/tests/mobile_notification_details.sql` verifies cross-device denial, removed assignees, revoked invitations, re-pairing and occurrence document scope in a rollback transaction.
+
 ## Google Sheets reporting
 
 The read-only Apps Script template is in [`integrations/google-sheets`](integrations/google-sheets). It syncs safe Users, Audit, Notification, and System reporting fields hourly; it excludes tokens, recipient addresses, attachment paths, and secrets.

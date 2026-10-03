@@ -3,7 +3,7 @@ import test from 'node:test'
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import { indexedDB } from 'fake-indexeddb'
-import { deleteDeviceAlerts, listDeviceAlerts, markDeviceAlertRead, readDevicePairing, saveDeviceAlert, saveDevicePairing } from './deviceInbox'
+import { deleteDeviceAlerts, listDeviceAlerts, markDeviceAlertRead, readDevicePairing, saveDeviceAlert, saveDevicePairing, updateDeviceAlertDetails } from './deviceInbox'
 import { deviceNotification } from '../../supabase/functions/process-notification-queue/deviceNotification'
 
 globalThis.indexedDB = indexedDB
@@ -217,4 +217,17 @@ test('Thai notification snapshots fit Web Push payload limits and exclude creden
   assert.ok(new TextEncoder().encode(JSON.stringify(result)).length < 3500)
   assert.equal(result.details.due_date, '2026-10-06')
   assert.doesNotMatch(JSON.stringify(result), /SECRET|PRIVATE|ack_url|guest_token/)
+})
+
+test('caching full message details preserves read state and never restores a deleted alert', async () => {
+  await saveDevicePairing({ subscriptionId: 'metadata-device', endpoint: 'https://web.push.apple.com/metadata', userName: 'User', pairedAt: '2026-10-03T07:00:00Z' }, true)
+  await saveDeviceAlert({ id: 'metadata-message', title: 'Created', body: 'Summary', receivedAt: '2026-10-03T07:00:00Z', read: false })
+  await markDeviceAlertRead('metadata-message')
+  const details = { entity: 'task', title: 'Task', affiliation: 'Department', description: 'Full details', due_date: '2026-10-06' }
+  await updateDeviceAlertDetails('metadata-message', details)
+  assert.equal((await listDeviceAlerts())[0].read, true)
+  assert.deepEqual((await listDeviceAlerts())[0].details, details)
+  await deleteDeviceAlerts(['metadata-message'])
+  await updateDeviceAlertDetails('metadata-message', details)
+  assert.equal((await listDeviceAlerts()).length, 0)
 })

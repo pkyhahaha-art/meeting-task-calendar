@@ -1,0 +1,61 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { DeviceNotificationDetails } from '../components/DeviceNotificationDetails'
+import { mobileNotificationDocuments } from '../../supabase/functions/_shared/mobileNotificationDocuments'
+
+test('Task and Meeting attachments get separate private preview and named download links', async () => {
+  const calls: Array<[string, string, false | string]> = []
+  const documents = await mobileNotificationDocuments([
+    { id: 'task-file', name: 'คำสั่งงาน.pdf', size: 1000, bucket: 'task-documents', storage_path: 'creator/task/report.pdf' },
+    { id: 'meeting-file', name: 'วาระประชุม.docx', bucket: 'meeting-documents', storage_path: 'creator/meeting/agenda.docx' },
+  ], async (bucket, path, download) => {
+    calls.push([bucket, path, download])
+    return `https://storage.example/${bucket}/${path}?token=temporary${download ? `&download=${encodeURIComponent(download)}` : ''}`
+  })
+  assert.equal(calls.length, 4)
+  assert.ok(calls.some(([bucket, , download]) => bucket === 'task-documents' && download === false))
+  assert.ok(calls.some(([bucket, , download]) => bucket === 'meeting-documents' && download === 'วาระประชุม.docx'))
+  assert.ok(documents.every((doc) => doc.previewUrl && doc.downloadUrl && doc.previewUrl !== doc.downloadUrl))
+  assert.equal(new URL(documents[0].downloadUrl!).searchParams.get('download'), 'คำสั่งงาน.pdf')
+  assert.doesNotMatch(JSON.stringify(documents), /storage_path|"bucket"/)
+})
+
+test('a double-encoded Storage filename is normalized without changing the signature', async () => {
+  const [file] = await mobileNotificationDocuments([{ id: 'thai', name: 'วาระประชุม.pdf', bucket: 'meeting-documents', storage_path: 'meeting/file' }],
+    async (_bucket, _path, download) => `https://storage.example/signed?token=keep-signature${download ? `&download=${encodeURIComponent(encodeURIComponent(download))}` : ''}`)
+  const url = new URL(file.downloadUrl!)
+  assert.equal(url.searchParams.get('download'), 'วาระประชุม.pdf')
+  assert.equal(url.searchParams.get('token'), 'keep-signature')
+})
+
+test('invalid links or an unavailable attachment do not hide the other documents', async () => {
+  const documents = await mobileNotificationDocuments([
+    null, { id: 'bad', name: 'Missing', bucket: 'task-documents', storage_path: 'missing' },
+    { id: 'unknown', name: 'Unknown', bucket: 'private-secrets', storage_path: 'secret' },
+    { id: 'drive', name: 'Drive', kind: 'drive', url: 'https://docs.google.com/document/d/test' },
+    { id: 'unsafe', name: 'Unsafe', kind: 'drive', url: 'javascript:alert(1)' },
+    { id: 'other', name: 'Other host', kind: 'drive', url: 'https://evil.example/file' },
+  ], async (bucket) => { assert.equal(bucket, 'task-documents'); throw new Error('Missing object') })
+  assert.equal(documents.length, 5)
+  assert.equal(documents.find((doc) => doc.id === 'drive')?.previewUrl, 'https://docs.google.com/document/d/test')
+  assert.equal(documents.filter((doc) => doc.error).length, 4)
+  assert.ok(documents.filter((doc) => doc.error).every((doc) => !doc.previewUrl && !doc.downloadUrl))
+})
+
+test('opening Task details shows department, due time and both document actions', () => {
+  const html = renderToStaticMarkup(<DeviceNotificationDetails onlineDetails canLoad
+    alert={{ id: 'task', title: 'คุณได้สร้าง Task แล้ว', body: 'Summary', receivedAt: '2026-10-03T07:00:00Z', read: true }}
+    details={{ entity: 'task', title: 'แผนปฏิบัติ', affiliation: 'กคน.ฝลส.', description: 'คำสั่งงานฉบับเต็ม', due_date: '2026-10-06', due_time: '09:00:00' }}
+    documents={[{ id: 'file', name: 'รายงาน.pdf', kind: 'file', previewUrl: 'https://storage.example/view', downloadUrl: 'https://storage.example/download' }]} />)
+  for (const text of ['ชื่องาน', 'แผนปฏิบัติ', 'หน่วยงาน / สังกัด', 'กคน.ฝลส.', 'ครบกำหนดงาน', '09:00', 'คำสั่งงานฉบับเต็ม', 'เปิดดูเอกสาร', 'ดาวน์โหลด']) assert.ok(html.includes(text), text)
+  assert.ok(html.includes('href="https://storage.example/view"'))
+  assert.ok(html.includes('href="https://storage.example/download"'))
+})
+
+test('Meeting details show start/end, department and offline messages retain their snapshot', () => {
+  const alert = { id: 'meeting', title: 'คุณได้สร้าง Meeting แล้ว', body: 'Summary', receivedAt: '2026-10-03T07:00:00Z', read: true,
+    details: { entity: 'meeting', title: 'ประชุมแผนงาน', affiliation: 'ฝ่ายแผนงาน', description: 'วาระประชุม', start_datetime: '2026-10-06T02:00:00Z', end_datetime: '2026-10-06T03:00:00Z', location: 'ห้อง 7' } }
+  const html = renderToStaticMarkup(<DeviceNotificationDetails alert={alert} canLoad error="ไม่มีอินเทอร์เน็ต" />)
+  for (const text of ['ชื่อการประชุม', 'ประชุมแผนงาน', 'ฝ่ายแผนงาน', 'เริ่มประชุม', 'สิ้นสุดประชุม', '09:00', '10:00', 'ห้อง 7', 'ไม่มีอินเทอร์เน็ต', 'โหลดใหม่']) assert.ok(html.includes(text), text)
+})

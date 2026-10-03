@@ -3,8 +3,9 @@ import { useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import { BellRing, CheckCircle2, ChevronLeft, Loader2, RefreshCw, Smartphone, Send, Trash2 } from 'lucide-react'
 import peaLogo from '../../ภาพประกอบUI/PEA Logo (1).png'
-import { deleteDeviceAlerts, listDeviceAlerts, markDeviceAlertRead, requestDeviceInboxBadgeSync, type DevicePairing } from '../lib/deviceInbox'
-import { restoreDevicePairing, sendPairedDeviceTestNotification } from '../lib/mobilePush'
+import { deleteDeviceAlerts, listDeviceAlerts, markDeviceAlertRead, requestDeviceInboxBadgeSync, updateDeviceAlertDetails, type DevicePairing } from '../lib/deviceInbox'
+import { loadPairedDeviceNotification, restoreDevicePairing, sendPairedDeviceTestNotification } from '../lib/mobilePush'
+import { DeviceNotificationDetails } from '../components/DeviceNotificationDetails'
 import { useConfirm } from '../components/ConfirmDialogProvider'
 import { useAuth } from '../auth/AuthProvider'
 
@@ -32,6 +33,12 @@ export function DeviceInboxPage() {
   const alerts = useQuery({ queryKey: ['device-inbox'], queryFn: listDeviceAlerts })
   const refreshAlerts = alerts.refetch
   const selected = alerts.data?.find((alert) => alert.id === selectedId)
+  const canLoadDetails = Boolean(device && selected && /^[0-9a-f-]{36}$/i.test(selected.id))
+  const content = useQuery({
+    queryKey: ['device-notification-details', device?.subscriptionId, selectedId],
+    queryFn: () => loadPairedDeviceNotification(selectedId!), enabled: canLoadDetails,
+    retry: false, staleTime: 0, gcTime: 0,
+  })
   const testReceived = Boolean(testId && alerts.data?.some((alert) => alert.id === testId))
 
   const removeMessages = async (ids: string[], all = false) => {
@@ -96,6 +103,11 @@ export function DeviceInboxPage() {
   }, [selected, refreshAlerts])
 
   useEffect(() => {
+    if (selectedId && content.data) void updateDeviceAlertDetails(selectedId, content.data.details)
+      .then(() => refreshAlerts()).catch(() => {})
+  }, [selectedId, content.data, refreshAlerts])
+
+  useEffect(() => {
     if (!testId || testReceived) return
     const poll = setInterval(() => void refreshAlerts(), 2000)
     const timeout = setTimeout(() => {
@@ -106,13 +118,6 @@ export function DeviceInboxPage() {
   }, [testId, testReceived, refreshAlerts])
 
   const unread = (alerts.data ?? []).filter((alert) => !alert.read).length
-  const details = selected?.details
-  const detailRows = [
-    ['เริ่มประชุม', dateLabel(details?.start_datetime)],
-    ['สิ้นสุด', dateLabel(details?.end_datetime)],
-    ['กำหนดส่ง', [details?.due_date, details?.due_time].filter(Boolean).join(' ')],
-    ['สถานที่', details?.location],
-  ].filter(([, value]) => value)
 
   return <main className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-amber-50 p-4 sm:p-6">
     <div className="mx-auto max-w-lg space-y-4">
@@ -137,17 +142,16 @@ export function DeviceInboxPage() {
           <h1 className="flex items-center gap-2 text-lg font-bold text-slate-900"><BellRing size={20} className="text-brand-700" />{selected ? 'รายละเอียดแจ้งเตือน' : 'กล่องแจ้งเตือน'}{!selected && unread > 0 && <span className="rounded-full bg-brand-700 px-2 py-0.5 text-xs text-white">{unread}</span>}</h1>
           <div className="flex items-center gap-1">
             <button type="button" disabled={deleting || !alerts.data?.length} onClick={() => void removeMessages(selected ? [selected.id] : (alerts.data ?? []).map((alert) => alert.id), !selected)} className="inline-flex min-h-11 items-center gap-1 rounded-xl px-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-40"><Trash2 size={16} />{selected ? 'ลบข้อความนี้' : 'ล้างทั้งหมด'}</button>
-          <button type="button" onClick={() => void alerts.refetch()} aria-label="โหลดข้อความใหม่" className="flex min-h-11 min-w-11 items-center justify-center rounded-xl text-brand-700"><RefreshCw size={18} className={alerts.isFetching ? 'animate-spin' : ''} /></button>
+          <button type="button" onClick={() => { void alerts.refetch(); if (canLoadDetails) void content.refetch() }} aria-label="โหลดข้อความใหม่" className="flex min-h-11 min-w-11 items-center justify-center rounded-xl text-brand-700"><RefreshCw size={18} className={alerts.isFetching ? 'animate-spin' : ''} /></button>
           </div>
         </div>
         {deleteStatus && <p role="status" className="border-b border-purple-50 bg-green-50 px-4 py-3 text-sm text-green-800">{deleteStatus}</p>}
         {selected ? <article className="space-y-4 p-5">
           <button type="button" onClick={() => setParams({})} className="inline-flex min-h-11 items-center gap-1 font-semibold text-brand-700"><ChevronLeft size={18} />กลับไปกล่องแจ้งเตือน</button>
-          <h2 className="break-words text-xl font-bold text-slate-900">{details?.title || selected.title}</h2>
-          <p className="text-xs text-slate-500">{selected.title} · รับเมื่อ {dateLabel(selected.receivedAt)}</p>
-          {detailRows.length > 0 && <dl className="space-y-3 rounded-xl bg-purple-50 p-4 text-sm">{detailRows.map(([label, value]) => <div key={label}><dt className="font-semibold text-brand-700">{label}</dt><dd className="mt-1 break-words text-slate-800">{value}</dd></div>)}</dl>}
-          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700">{details?.description || selected.body}</p>
-          <p className="text-xs text-slate-500">ข้อมูลตามข้อความที่ได้รับ หากต้องการดูข้อมูลล่าสุดหรือแก้ไข ให้เข้าสู่ปฏิทิน</p>
+          <DeviceNotificationDetails alert={selected} details={content.data?.details ?? selected.details}
+            documents={content.data?.documents} fetching={content.isFetching} onlineDetails={Boolean(content.data)}
+            error={content.fetchStatus === 'paused' ? 'ไม่มีอินเทอร์เน็ต' : content.error instanceof Error ? content.error.message : undefined}
+            canLoad={canLoadDetails} onRefresh={() => void content.refetch()} />
         </article> : alerts.isPending ? <p className="p-6 text-center text-slate-500">กำลังโหลดข้อความ…</p>
           : alerts.error ? <p role="alert" className="p-6 text-red-700">อ่านกล่องข้อความไม่ได้ กรุณาเปิดแอปอีกครั้ง</p>
             : (alerts.data ?? []).length === 0 ? <div className="space-y-2 p-8 text-center"><BellRing size={32} className="mx-auto text-purple-300" /><p className="font-semibold text-slate-700">ยังไม่มีข้อความแจ้งเตือน</p><p className="text-sm text-slate-500">ข้อความใหม่ที่ส่งมายังมือถือเครื่องนี้จะแสดงที่นี่ แตะข้อความเพื่อดูงานหรือประชุมได้ทันที</p></div>

@@ -2,11 +2,12 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import webpush from 'npm:web-push@3.6.7'
 import { deliverWebPush, type PushSubscriptionRecord } from '../_shared/webPushDelivery.ts'
 import { mobileTestTarget } from '../_shared/mobileTestTarget.ts'
+import { mobileNotificationDocuments } from '../_shared/mobileNotificationDocuments.ts'
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS' }
 const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 const appUrl = Deno.env.get('PUBLIC_APP_URL') || 'https://pkyhahaha-art.github.io/meeting-task-calendar/'
-const reply = (data: unknown, status = 200) => Response.json(data, { status, headers: cors })
+const reply = (data: unknown, status = 200) => Response.json(data, { status, headers: { ...cors, 'Cache-Control': 'no-store' } })
 
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response(null, { headers: cors })
@@ -27,10 +28,10 @@ Deno.serve(async (request) => {
     if (authError || !auth.user) return reply({ error: 'Unauthorized' }, 401)
     userId = auth.user.id
   }
-  if (!ready) return reply({ error: 'ระบบส่งแจ้งเตือนมือถือยังไม่พร้อม' }, 503)
-
   try {
-    const data = await mobileTestTarget(await request.json(), userId, async (target) => {
+    const body = await request.json()
+    if (body?.action && !['inbox-details', 'test'].includes(body.action)) return reply({ error: 'Unknown action' }, 400)
+    const data = await mobileTestTarget(body, userId, async (target) => {
       let query = db.from('mobile_push_subscriptions').select('id,user_id,endpoint,p256dh,auth,last_used_at')
       query = 'id' in target ? query.eq('id', target.id) : query.eq('endpoint', target.endpoint).eq('auth', target.auth)
       const result = await query.maybeSingle()
@@ -40,6 +41,21 @@ Deno.serve(async (request) => {
     if (!data) return reply({ error: 'ไม่พบสิทธิ์เชื่อมต่ออุปกรณ์นี้ กรุณาเชื่อมต่อใหม่' }, 403)
     const { data: profile } = await db.from('profiles').select('status').eq('id', data.user_id).maybeSingle()
     if (profile?.status !== 'active') return reply({ error: 'Account is not active' }, 403)
+    if (body.action === 'inbox-details') {
+      if (typeof body.notificationId !== 'string' || !/^[0-9a-f-]{36}$/i.test(body.notificationId)) return reply({ error: 'Invalid notification' }, 400)
+      const { data: content, error } = await db.rpc('mobile_notification_details', {
+        target_device_id: data.id, target_delivery_id: body.notificationId,
+      })
+      if (error) throw error
+      if (!content) return reply({ error: 'ไม่มีสิทธิ์เปิดรายละเอียดนี้ หรือรายการถูกลบแล้ว' }, 403)
+      const documents = await mobileNotificationDocuments(content.documents, async (bucket, path, download) => {
+        const { data: signed, error } = await db.storage.from(bucket).createSignedUrl(path, 15 * 60, { download })
+        if (error || !signed) throw error || new Error('Unable to sign document')
+        return signed.signedUrl
+      })
+      return reply({ details: content.details, documents, linksExpireAt: new Date(Date.now() + 15 * 60_000).toISOString() })
+    }
+    if (!ready) return reply({ error: 'ระบบส่งแจ้งเตือนมือถือยังไม่พร้อม' }, 503)
     // Atomically rate-limit test sends per device without a separate public RPC.
     const claimed = await db.from('mobile_push_subscriptions').update({ last_used_at: new Date().toISOString() }).eq('id', data.id).lt('last_used_at', new Date(Date.now() - 10_000).toISOString()).select('id').maybeSingle()
     if (claimed.error) throw claimed.error

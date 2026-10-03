@@ -299,20 +299,34 @@ export async function sendDeviceTestNotification(subscriptionId: string): Promis
 }
 
 /** The paired device can test only its own subscription, without a calendar login. */
-export async function sendPairedDeviceTestNotification(): Promise<string> {
-  if (currentPushSupport() !== 'ready' || Notification.permission !== 'granted') {
-    throw new Error('กรุณาเปิดแอปจาก Home Screen และอนุญาตการแจ้งเตือนในการตั้งค่ามือถือ')
-  }
+async function pairedDeviceRequest(body: Record<string, unknown>) {
   const registration = await activeNotificationWorker()
   const subscription = await registration.pushManager.getSubscription()
   const authKey = subscription?.getKey('auth')
   if (!subscription || !authKey) throw new Error('ไม่พบการเชื่อมต่อของเครื่องนี้ กรุณาเชื่อมต่ออุปกรณ์อีกครั้ง')
   const response = await fetch(`${supabaseUrl}/functions/v1/mobile-push`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', apikey: supabasePublishableKey || '' },
-    body: JSON.stringify({ endpoint: subscription.endpoint, auth: btoa(String.fromCharCode(...new Uint8Array(authKey))) }),
+    body: JSON.stringify({ ...body, endpoint: subscription.endpoint, auth: btoa(String.fromCharCode(...new Uint8Array(authKey))) }),
     signal: AbortSignal.timeout(20000),
   })
   const result = await response.json()
-  if (!response.ok || !result.accepted || !result.notificationId) throw new Error(result.error || 'ส่งข้อความทดสอบไม่ได้ กรุณาลองใหม่')
+  if (!response.ok) throw new Error(result.error || 'ติดต่อระบบไม่ได้ กรุณาลองใหม่')
+  return result
+}
+
+/** Load this device's delivered item and short-lived document links, without a login. */
+export async function loadPairedDeviceNotification(notificationId: string): Promise<import('./deviceInbox').DeviceNotificationContent> {
+  const result = await pairedDeviceRequest({ action: 'inbox-details', notificationId })
+  if (!result.details || !Array.isArray(result.documents)) throw new Error('โหลดรายละเอียดไม่ได้ กรุณาลองใหม่')
+  return result
+}
+
+/** The paired device can test only its own subscription, without a calendar login. */
+export async function sendPairedDeviceTestNotification(): Promise<string> {
+  if (currentPushSupport() !== 'ready' || Notification.permission !== 'granted') {
+    throw new Error('กรุณาเปิดแอปจาก Home Screen และอนุญาตการแจ้งเตือนในการตั้งค่ามือถือ')
+  }
+  const result = await pairedDeviceRequest({ action: 'test' })
+  if (!result.accepted || !result.notificationId) throw new Error(result.error || 'ส่งข้อความทดสอบไม่ได้ กรุณาลองใหม่')
   return result.notificationId as string
 }
