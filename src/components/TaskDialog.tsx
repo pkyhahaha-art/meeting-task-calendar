@@ -97,7 +97,6 @@ export function TaskDialog({
   selectedDate,
   userId,
   profiles,
-  events,
   canEdit,
   canComplete,
   canAcknowledge,
@@ -181,7 +180,7 @@ export function TaskDialog({
         ? details.documentLinks.map((link) => ({ displayName: link.display_name, url: link.url }))
         : [{ displayName: '', url: '' }],
     })
-  }, [details, open, selectedDate, task, userId])
+  }, [details, open, selectedDate, task, userId, hasConnectedDevices])
 
   if (!open) return null
 
@@ -281,7 +280,7 @@ export function TaskDialog({
     }
     setError('')
     try {
-      await onSave({ ...draft, driveLinks: links, notifyLine: (hasConnectedDevices && draft.internalUserIds.length) ? draft.notifyLine : false }, notifyRecipients)
+      await onSave({ ...draft, driveLinks: links, notifyLine: hasConnectedDevices ? draft.notifyLine : false }, notifyRecipients)
       return true
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : text('บันทึก Task ไม่สำเร็จ กรุณาลองใหม่', 'Could not save the task. Please try again.'))
@@ -809,22 +808,20 @@ export function TaskDialog({
                   Gmail
                 </label>
                 <label
-                  className={`flex items-center gap-2 select-none ${hasConnectedDevices && draft.internalUserIds.length ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}
+                  className={`flex items-center gap-2 select-none ${hasConnectedDevices ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}
                   title={
                     !hasConnectedDevices
                       ? text('ยังไม่ได้เชื่อมต่อการแจ้งเตือนบนมือถือ กรุณาเชื่อมต่อในเมนู "เชื่อมต่อการแจ้งเตือนผ่านมือถือ"', 'Mobile notifications not connected. Please connect in Mobile Notifications menu.')
-                      : !draft.internalUserIds.length
-                      ? text('เลือกผู้รับที่เป็นผู้ใช้ในระบบเพื่อเปิดการแจ้งเตือนมือถือ', 'Select internal recipients to enable mobile notifications.')
                       : ''
                   }
                 >
                   <input
                     type="checkbox"
-                    checked={Boolean(hasConnectedDevices && draft.notifyLine && draft.internalUserIds.length)}
-                    disabled={!hasConnectedDevices || !draft.internalUserIds.length}
+                    checked={Boolean(hasConnectedDevices && draft.notifyLine)}
+                    disabled={!hasConnectedDevices}
                     onChange={(event) => set('notifyLine', event.target.checked)}
                   />
-                  <Smartphone size={16} className={hasConnectedDevices && draft.internalUserIds.length ? 'text-amber-700' : 'text-slate-400'} />
+                  <Smartphone size={16} className={hasConnectedDevices ? 'text-amber-700' : 'text-slate-400'} />
                   <span>{text('แจ้งเตือนผ่านมือถือ', 'Mobile notification')}</span>
                   {!hasConnectedDevices ? (
                     <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 border border-amber-200">
@@ -837,6 +834,11 @@ export function TaskDialog({
                   )}
                 </label>
               </div>
+              {!task && (
+                <p className="mt-2 text-xs text-slate-500">
+                  {text('เมื่อเลือกแจ้งเตือนผ่านมือถือ ผู้สร้างจะได้รับข้อความยืนยันหลังบันทึกงาน ส่วนการเตือนตามกำหนดส่งให้ผู้รับมอบหมายในระบบ', 'With mobile notifications selected, the creator receives a confirmation after saving. Scheduled reminders go to internal assignees.')}
+                </p>
+              )}
               {!hasConnectedDevices && (
                 <p className="mt-2 text-xs text-amber-700">
                   {text('💡 ยังไม่ได้เชื่อมต่อการแจ้งเตือนบนมือถือ ไปที่เมนู "เชื่อมต่อการแจ้งเตือนผ่านมือถือ" เพื่อสแกน QR Code เปิดใช้งาน', '💡 Mobile notification is not connected yet. Go to "Mobile Notifications" menu to pair your device.')}

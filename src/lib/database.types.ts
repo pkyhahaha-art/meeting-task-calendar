@@ -283,6 +283,10 @@ export interface Database {
         Args: { target_event_id?: string; target_task_id?: string }
         Returns: undefined
       }
+      queue_task_creation_mobile_confirmation: {
+        Args: { target_task_id: string }
+        Returns: number
+      }
       get_mobile_device_status: {
         Args: { target_endpoint: string; target_auth: string }
         Returns: Json

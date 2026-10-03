@@ -162,6 +162,8 @@ When Email is enabled, saving a new Task or Meeting queues one creator confirmat
 
 Apply `supabase/migrations/202610030001_single_creation_confirmation.sql` and redeploy `external-task` and `process-notification-queue` together with the frontend. The rollback-only SQL verification is `supabase/tests/single_creation_confirmation.sql`.
 
+When Mobile notifications is selected for a new Task, the creator also receives `คุณได้สร้าง Task แล้ว` on each paired device after saving, even when the assignee is someone else or an external email. This confirmation does not wait for the due date, does not notify other assignees, and is queued once per Task/device. Scheduled assignee and creator overdue reminders retain their existing rules. Apply `202610030007_task_creation_mobile_confirmation.sql` before publishing the frontend; `supabase/tests/task_creation_mobile_confirmation.sql` checks creator authorization, device isolation, retries and unchanged future reminders in a rollback transaction.
+
 ## Google Sheets reporting
 
 The read-only Apps Script template is in [`integrations/google-sheets`](integrations/google-sheets). It syncs safe Users, Audit, Notification, and System reporting fields hourly; it excludes tokens, recipient addresses, attachment paths, and secrets.
