@@ -13,7 +13,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { useConfirm } from '../components/ConfirmDialogProvider'
 import { EventDialog, type EventDetails, type EventDraft } from '../components/EventDialog'
 import type { DeliveryStatusRow } from '../components/NotificationDeliveryStatus'
-import { TaskDialog, type TaskDetails, type TaskDraft } from '../components/TaskDialog'
+import { TaskDialog, type TaskDetails, type TaskDraft, type TaskDeliveryStatusRow } from '../components/TaskDialog'
 import { useLanguage } from '../i18n/LanguageProvider'
 import { useLocation, useNavigate } from 'react-router-dom'
 import type { Database } from '../lib/database.types'
@@ -285,14 +285,14 @@ export function CalendarPage() {
     queryFn: async (): Promise<TaskDetails> => {
       const taskId = selectedTask!.id
       const [reminders, attachments, documentLinks, externalRecipients, internalRecipients, notificationDeliveries] = await Promise.all([
-        supabase.from('task_reminders').select('*').eq('task_id', taskId).eq('status', 'scheduled').returns<TaskReminderRow[]>(),
+        supabase.from('task_reminders').select('*').eq('task_id', taskId).order('scheduled_at').returns<TaskReminderRow[]>(),
         supabase.from('task_attachments').select('*').eq('task_id', taskId).order('uploaded_at').returns<TaskAttachmentRow[]>(),
         supabase.from('document_links').select('*').eq('task_id', taskId).order('created_at').returns<DocumentLinkRow[]>(),
         supabase.from('task_external_recipients').select('*').eq('task_id', taskId).order('email').returns<TaskExternalRecipientRow[]>(),
         supabase.from('task_internal_recipients').select('*').eq('task_id', taskId).returns<TaskInternalRecipientRow[]>(),
         canViewTaskDeliveryStatus
-          ? supabase.from('notification_deliveries').select('id,recipient_type,recipient_reference,channel,status,scheduled_at,sent_at,error_message,created_at').eq('task_id', taskId).order('created_at', { ascending: false }).returns<DeliveryStatusRow[]>()
-          : Promise.resolve({ data: [] as DeliveryStatusRow[], error: null }),
+          ? supabase.from('notification_deliveries').select('id,reminder_id,task_reminder_id,template_key,recipient_type,recipient_reference,channel,status,scheduled_at,sent_at,error_message,created_at').eq('task_id', taskId).order('created_at', { ascending: false }).returns<TaskDeliveryStatusRow[]>()
+          : Promise.resolve({ data: [] as TaskDeliveryStatusRow[], error: null }),
       ])
       if (reminders.error) throw reminders.error
       if (attachments.error) throw attachments.error
@@ -305,10 +305,11 @@ export function CalendarPage() {
         if (error || !data) throw error ?? new Error('ไม่สามารถเปิดเอกสารประกอบได้')
         return { ...file, signedUrl: data.signedUrl }
       }))
-      const isContinuous = reminders.data.some((item) => item.reminder_key === 'continuous')
+      const scheduledReminders = reminders.data.filter((item) => item.status === 'scheduled')
+      const isContinuous = scheduledReminders.some((item) => item.reminder_key === 'continuous')
       let continuousConfig: TaskContinuousConfig = { startDaysBefore: 3, frequency: 'daily' }
       if (isContinuous && selectedTask) {
-        const scheduledDates = reminders.data
+        const scheduledDates = scheduledReminders
           .filter((item) => item.reminder_key === 'continuous')
           .map((item) => new Date(item.scheduled_at))
         if (scheduledDates.length > 0) {
@@ -327,15 +328,17 @@ export function CalendarPage() {
       }
       return {
         reminderMode: isContinuous ? 'continuous' : 'single',
-        reminderKeys: [...new Set(reminders.data.map((item) => item.reminder_key))] as TaskReminderKey[],
+        reminderKeys: [...new Set(scheduledReminders.map((item) => item.reminder_key))] as TaskReminderKey[],
         continuousConfig,
-        notifyEmail: reminders.data.some((item) => item.channel_email),
-        notifyLine: reminders.data.some((item) => item.channel_line),
+        notifyEmail: scheduledReminders.some((item) => item.channel_email),
+        notifyLine: scheduledReminders.some((item) => item.channel_line),
         attachments: attachmentViews,
         documentLinks: documentLinks.data,
         externalRecipients: externalRecipients.data.map(({ email, acknowledged_at }) => ({ email, acknowledged_at })),
         internalRecipients: internalRecipients.data.map(({ user_id, acknowledged_at }) => ({ user_id, acknowledged_at })),
-        notificationDeliveries: notificationDeliveries.data,
+        reminders: reminders.data,
+        reminderNotificationDeliveries: notificationDeliveries.data.filter((delivery) => delivery.task_reminder_id || delivery.template_key === 'task_reminder'),
+        notificationDeliveries: notificationDeliveries.data.filter((delivery) => !delivery.task_reminder_id && delivery.template_key !== 'task_reminder'),
       }
     },
   })

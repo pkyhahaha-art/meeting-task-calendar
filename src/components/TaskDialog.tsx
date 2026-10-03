@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlertTriangle, Bell, CalendarDays, CheckCircle2, FileText, Link2, Loader2, Mail, Paperclip, Plus, Smartphone, Trash2, UserRound, X } from 'lucide-react'
+import { AlertTriangle, Bell, CalendarDays, CheckCircle2, ChevronDown, FileText, Link2, Loader2, Mail, Paperclip, Plus, Smartphone, Trash2, UserRound, X } from 'lucide-react'
 import Swal from 'sweetalert2'
 import { useLanguage } from '../i18n/LanguageProvider'
 import type { Database } from '../lib/database.types'
@@ -29,6 +29,8 @@ type DocumentLinkRow = Database['public']['Tables']['document_links']['Row']
 type RecipientTab = 'self' | 'internal' | 'external'
 
 export type DriveLinkDraft = { displayName: string; url: string }
+export type TaskReminderStatusRow = Pick<Database['public']['Tables']['task_reminders']['Row'], 'id' | 'reminder_key' | 'scheduled_at' | 'channel_email' | 'channel_line' | 'status'>
+export type TaskDeliveryStatusRow = DeliveryStatusRow & Pick<Database['public']['Tables']['notification_deliveries']['Row'], 'task_reminder_id' | 'template_key'>
 export type TaskDetails = {
   reminderMode?: TaskReminderMode
   reminderKeys: TaskReminderKey[]
@@ -40,6 +42,8 @@ export type TaskDetails = {
   internalRecipients: Array<{ user_id: string; acknowledged_at: string | null }>
   externalRecipients: Array<{ email: string; acknowledged_at: string | null }>
   notificationDeliveries: DeliveryStatusRow[]
+  reminders: TaskReminderStatusRow[]
+  reminderNotificationDeliveries: DeliveryStatusRow[]
 }
 export type TaskDraft = Pick<TaskRow, 'title' | 'description' | 'affiliation'> & {
   dueDate: string
@@ -369,6 +373,10 @@ export function TaskDialog({
     const email = profiles.find((profile) => profile.id === recipient.user_id)?.email
     if (email) notificationAcknowledgements[email.toLowerCase()] = recipient.acknowledged_at
   }
+  const reminderStatus = (status: TaskReminderStatusRow['status']) => text(
+    ({ scheduled: 'กำหนดส่ง', processing: 'กำลังจัดคิว', completed: 'จัดคิวส่งแล้ว', cancelled: 'ข้ามการส่ง', deferred_quota: 'รอโควตา' } as const)[status],
+    ({ scheduled: 'Scheduled', processing: 'Queueing', completed: 'Queued', cancelled: 'Skipped', deferred_quota: 'Waiting for quota' } as const)[status],
+  )
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/35 p-0 sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="task-title">
@@ -949,7 +957,93 @@ export function TaskDialog({
             </section>
           </fieldset>
 
-          {task && canViewDeliveryStatus && <NotificationDeliveryStatus deliveries={details?.notificationDeliveries ?? []} acknowledgements={notificationAcknowledgements} onRetry={onRetryNotification} />}
+          {task && canViewDeliveryStatus && (
+            <section className="rounded-xl border border-brand-200 bg-brand-50/40 p-4">
+              <div className="flex items-start gap-2">
+                <Bell size={18} className="mt-0.5 shrink-0 text-brand-600" />
+                <div>
+                  <h3 className="font-semibold text-brand-950">{text('การแจ้งเตือน', 'Notifications')}</h3>
+                  <p className="mt-1 text-xs text-brand-800">
+                    {text('กำหนดงาน:', 'Task due:')}{' '}
+                    {new Intl.DateTimeFormat(language === 'th' ? 'th-TH' : 'en-GB', {
+                      dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Bangkok',
+                    }).format(new Date(`${task.due_date}T${task.due_time || '09:00:00'}+07:00`))}
+                  </p>
+                </div>
+              </div>
+              <details className="group mt-3 border-t border-brand-200/80">
+                <summary className="flex cursor-pointer list-none items-center gap-2 py-3 [&::-webkit-details-marker]:hidden">
+                  <Bell size={17} className="shrink-0 text-brand-600" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold text-slate-800">{text('แจ้งเตือนตามกำหนดงาน', 'Scheduled task reminders')}</span>
+                    <span className="block text-xs text-slate-600">{text('การเตือนล่วงหน้า เมื่อครบกำหนด และเกินกำหนด', 'Before the due time, at the due time and overdue')}</span>
+                  </span>
+                  <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
+                    {details?.reminders.length
+                      ? text(`${details.reminders.length} รายการ`, `${details.reminders.length} item${details.reminders.length === 1 ? '' : 's'}`)
+                      : text('ยังไม่ได้ตั้ง', 'Not set')}
+                    <ChevronDown size={16} className="transition-transform group-open:rotate-180" />
+                  </span>
+                </summary>
+                <div className="space-y-3 pb-4">
+                  {!details?.reminders.length && (
+                    <p className="rounded-lg bg-white/70 px-3 py-3 text-sm text-slate-600">
+                      {text('ยังไม่ได้ตั้งการแจ้งเตือนสำหรับงานนี้', 'No reminder has been set for this task.')}
+                    </p>
+                  )}
+                  <div className="space-y-2">
+                    {details?.reminders.map((reminder) => (
+                      <div key={reminder.id} className="rounded-lg bg-white/80 px-3 py-3 text-sm">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-medium text-slate-800">
+                            {text('กำหนดส่ง', 'Scheduled')}{' '}
+                            {new Intl.DateTimeFormat(language === 'th' ? 'th-TH' : 'en-GB', {
+                              dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Bangkok',
+                            }).format(new Date(reminder.scheduled_at))}
+                          </span>
+                          <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
+                            {reminderStatus(reminder.status)}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs text-slate-600">
+                          {[reminder.channel_email && 'Email', reminder.channel_line && text('แจ้งเตือนมือถือ', 'Mobile Push')].filter(Boolean).join(' · ')}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                  <NotificationDeliveryStatus
+                    embedded deliveries={details?.reminderNotificationDeliveries ?? []}
+                    acknowledgements={notificationAcknowledgements} onRetry={onRetryNotification}
+                    title={{ thai: 'ผลการส่ง', english: 'Delivery status' }}
+                    description={{ thai: 'แสดงเฉพาะการส่งตามกำหนดงานนี้', english: 'Only deliveries for this task’s scheduled reminders.' }}
+                    emptyMessage={{ thai: 'ยังไม่ถึงเวลาส่ง หรือยังไม่มีผลการส่ง', english: 'This has not been sent yet or has no delivery result.' }}
+                  />
+                </div>
+              </details>
+              <details className="group border-t border-brand-200/80">
+                <summary className="flex cursor-pointer list-none items-center gap-2 py-3 [&::-webkit-details-marker]:hidden">
+                  <Mail size={17} className="shrink-0 text-brand-600" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold text-slate-800">{text('แจ้งเตือนเมื่อสร้างหรือแก้ไขงาน', 'Notifications when a task is created or updated')}</span>
+                    <span className="block text-xs text-slate-600">{text('ไม่ใช่การเตือนก่อนถึงกำหนดงาน', 'Not the before-due reminders above')}</span>
+                  </span>
+                  <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
+                    {details?.notificationDeliveries.length ? text('ดูสถานะ', 'View status') : text('ยังไม่มีรายการ', 'No messages')}
+                    <ChevronDown size={16} className="transition-transform group-open:rotate-180" />
+                  </span>
+                </summary>
+                <div className="pb-4">
+                  <NotificationDeliveryStatus
+                    embedded deliveries={details?.notificationDeliveries ?? []}
+                    acknowledgements={notificationAcknowledgements} onRetry={onRetryNotification}
+                    title={{ thai: 'ผลการส่ง', english: 'Delivery status' }}
+                    description={{ thai: 'แสดงข้อความที่ส่งเมื่อสร้างหรือแก้ไขงาน', english: 'Shows messages sent when this task was created or updated.' }}
+                    emptyMessage={{ thai: 'ยังไม่มีการส่งข้อความเมื่อสร้างหรือแก้ไขงานนี้', english: 'No messages have been sent for creating or updating this task.' }}
+                  />
+                </div>
+              </details>
+            </section>
+          )}
 
           {error && <p className="form-error" role="alert">{error}</p>}
           <div className="flex flex-wrap justify-between gap-2 border-t border-slate-100 pt-4">
