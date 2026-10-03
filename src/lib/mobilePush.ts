@@ -310,16 +310,3 @@ export async function sendPairedDeviceTestNotification(): Promise<string> {
   if (!response.ok || !result.accepted || !result.notificationId) throw new Error(result.error || 'ส่งข้อความทดสอบไม่ได้ กรุณาลองใหม่')
   return result.notificationId as string
 }
-
-/**
- * Show and verify a local notification on the device running this page.
- */
-export async function sendTestNotification(title: string, body: string): Promise<boolean> {
-  const support = currentPushSupport()
-  if (support === 'ios-install') throw new Error('กรุณาเปิด PEA Calendar จากไอคอนบนหน้าจอโฮมก่อนทดสอบการแจ้งเตือน')
-  if (support !== 'ready') throw new Error('อุปกรณ์นี้ยังไม่พร้อมเปิดการแจ้งเตือน กรุณาใช้เบราว์เซอร์ที่รองรับและ HTTPS')
-  const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission()
-  if (permission !== 'granted') throw new Error('ยังไม่ได้อนุญาตแจ้งเตือน กรุณาไปที่การตั้งค่า iPhone → การแจ้งเตือน → PEA Calendar → อนุญาตการแจ้งเตือน แล้วลองใหม่')
-  const reg = await activeNotificationWorker()
-  return showLocalTestNotification(reg, title, body)
-}

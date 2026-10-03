@@ -30,13 +30,12 @@ import {
   createPairingToken,
   getConnectedDevices,
   deleteConnectedDevice,
-  sendTestNotification,
   sendDeviceTestNotification,
   type ConnectedDevice,
 } from '../lib/mobilePush'
 
 export function MobilePushPage() {
-  const { user, profile } = useAuth()
+  const { user } = useAuth()
   const { text } = useLanguage()
   const confirm = useConfirm()
   const queryClient = useQueryClient()
@@ -46,8 +45,6 @@ export function MobilePushPage() {
   const [timeLeft, setTimeLeft] = useState<number>(0)
   const [isGenerating, setIsGenerating] = useState(false)
   const [copied, setCopied] = useState(false)
-  const [testSent, setTestSent] = useState(false)
-  const [isTesting, setIsTesting] = useState(false)
   const [testError, setTestError] = useState<string | null>(null)
   const initialGeneratedRef = useRef(false)
   const [testingDevice, setTestingDevice] = useState<string | null>(null)
@@ -180,26 +177,6 @@ export function MobilePushPage() {
     })
     if (ok) {
       await deleteMutation.mutateAsync(device.id)
-    }
-  }
-
-  const handleTestNotification = async () => {
-    if (isTesting) return
-    setIsTesting(true)
-    setTestError(null)
-    setTestSent(false)
-    try {
-      const confirmed = await sendTestNotification(
-        '⚡ ทดสอบการแจ้งเตือน PEA Meeting & Task',
-        `ข้อความทดสอบบนอุปกรณ์ที่เปิดหน้านี้ สำหรับ ${profile?.full_name || user?.email}`
-      )
-      if (confirmed) setTestSent(true)
-      else setTestError('เบราว์เซอร์ยังไม่ยืนยันว่ามีแจ้งเตือน กรุณาตรวจศูนย์การแจ้งเตือน และการตั้งค่า iPhone → การแจ้งเตือน → PEA Calendar รวมถึงโหมดโฟกัส')
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'ไม่สามารถส่งการแจ้งเตือนได้'
-      setTestError(msg)
-    } finally {
-      setIsTesting(false)
     }
   }
 
@@ -514,15 +491,6 @@ export function MobilePushPage() {
             </button>
             {!testDevice && <p className="text-xs text-slate-500">{text('เชื่อมต่อมือถือก่อนส่งข้อความทดสอบ', 'Pair a device before sending a test.')}</p>}
             {remoteTestStatus && <p role="status" className="rounded-xl bg-purple-50 p-3 text-sm text-brand-800">{remoteTestStatus}</p>}
-            <button type="button" onClick={handleTestNotification} disabled={isTesting} className="btn-secondary w-full text-sm">{isTesting ? text('กำลังทดสอบ…', 'Testing…') : text('ทดสอบเฉพาะเครื่องที่เปิดเว็บนี้', 'Local test on this browser only')}</button>
-
-            {testSent && (
-              <div role="status" className="rounded-xl bg-green-50 border border-green-200 p-3 text-xs font-semibold text-green-800 flex items-center gap-2">
-                <CheckCircle2 size={16} className="text-green-600 shrink-0" />
-                <span>{text('พบแจ้งเตือนทดสอบในระบบของอุปกรณ์นี้แล้ว หากไม่เห็นแบนเนอร์ ให้เปิดศูนย์การแจ้งเตือนและตรวจโหมดโฟกัส / ห้ามรบกวน', 'The device lists the test notification. If no banner appears, check Notification Center and Focus / Do Not Disturb.')}</span>
-              </div>
-            )}
-
             {testError && (
               <div role="alert" className="rounded-xl bg-red-50 border border-red-200 p-3 text-xs font-semibold text-red-800 flex items-center gap-2">
                 <AlertCircle size={16} className="text-red-600 shrink-0" />
