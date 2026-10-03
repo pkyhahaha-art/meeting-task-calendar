@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, CalendarDays, LogOut, Menu, Settings, ShieldCheck, Smartphone, UserRound, X } from 'lucide-react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import peaLogo from '../../ภาพประกอบUI/PEA Logo (1).png'
 import mascot from '../../ภาพประกอบUI/Thumb Up Mascot 3D.png'
 import { useAuth } from '../auth/AuthProvider'
 import { useLanguage } from '../i18n/LanguageProvider'
@@ -80,7 +81,7 @@ export function AppShell() {
       {menuOpen && <button type="button" className="fixed inset-0 z-40 bg-slate-950/40 lg:hidden" onClick={() => setMenuOpen(false)} aria-label={text('ปิดเมนู', 'Close menu')} />}
       <aside className={`fixed inset-y-0 left-0 z-50 flex w-[254px] flex-col border-r border-purple-100 bg-white shadow-xl transition-transform lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 lg:shadow-none ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex min-h-28 items-center justify-between border-b border-purple-100 px-5">
-          <AppLogo className="h-24 w-44" />
+          <img src={peaLogo} alt={text('PEA การไฟฟ้าส่วนภูมิภาค', 'PEA Provincial Electricity Authority')} className="w-44 object-contain" />
           <button type="button" onClick={() => setMenuOpen(false)} className="rounded-lg p-1 text-slate-500 lg:hidden" aria-label={text('ปิดเมนู', 'Close menu')}><X size={20} /></button>
         </div>
         <nav className="space-y-1 px-3 py-5" aria-label={text('เมนูหลัก', 'Main navigation')}>
