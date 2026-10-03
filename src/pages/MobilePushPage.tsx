@@ -286,18 +286,18 @@ export function MobilePushPage() {
               return (
                 <div
                   key={device.id}
-                  className="flex items-center justify-between gap-4 rounded-2xl border border-purple-100 bg-gradient-to-r from-purple-50/50 via-white to-amber-50/30 p-4 shadow-sm hover:border-purple-200 transition"
+                  className="flex flex-col gap-4 rounded-2xl border border-purple-100 bg-gradient-to-r from-purple-50/50 via-white to-amber-50/30 p-4 shadow-sm hover:border-purple-200 transition"
                 >
                   <div className="flex items-center gap-3.5 min-w-0">
                     <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-100 to-amber-100 text-brand-800 shadow-sm">
                       {isPhone ? <Smartphone size={24} /> : <Laptop size={24} />}
                     </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="truncate text-sm font-bold text-slate-900">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="break-words text-sm font-bold text-slate-900">
                           {device.device_name || text('อุปกรณ์มือถือ', 'Mobile Device')}
                         </p>
-                        <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[11px] font-semibold text-green-700">
+                        <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-green-50 px-2 py-0.5 text-[11px] font-semibold text-green-700">
                           <CheckCircle2 size={12} />
                           {text('เชื่อมต่อแล้ว', 'Active')}
                         </span>
@@ -315,7 +315,7 @@ export function MobilePushPage() {
                     </div>
                   </div>
 
-                  <div className="flex shrink-0 items-center gap-1">
+                  <div className="flex items-center justify-end gap-1">
                   <button type="button" onClick={() => void handleDeviceTest(device)} disabled={Boolean(testingDevice) || !pushConfig.data?.ready} className="min-h-11 rounded-xl px-3 text-xs font-semibold text-brand-700 hover:bg-purple-100 disabled:opacity-50">{testingDevice === device.id ? text('กำลังส่ง…', 'Sending…') : text('ส่งทดสอบไปเครื่องนี้', 'Send test to device')}</button>
                   <button
                     type="button"
