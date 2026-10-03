@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { indexedDB } from 'fake-indexeddb'
+import { listDeviceAlerts } from './deviceInbox'
 import { activeNotificationWorker, showLocalTestNotification, withNotificationTimeout } from './notificationWorker.js'
+globalThis.indexedDB = indexedDB
 
 test('uses the activated registration under the GitHub Pages project path', async () => {
   const registration = { active: { state: 'activated' } } as ServiceWorkerRegistration
@@ -43,11 +46,13 @@ test('failed installation and unbounded waits report errors', async () => {
 test('confirms only the newly created notification, not old notifications', async () => {
   let notificationTag = ''
   let icon = ''
+  let destination = ''
   const registration = {
     scope: 'https://example.com/meeting-task-calendar/',
     showNotification: async (_: string, options: NotificationOptions) => {
       notificationTag = options.tag || ''
       icon = options.icon || ''
+      destination = options.data.url
     },
     getNotifications: async (options: GetNotificationOptions) => {
       assert.equal(options.tag, notificationTag)
@@ -56,6 +61,8 @@ test('confirms only the newly created notification, not old notifications', asyn
   } as unknown as ServiceWorkerRegistration
   assert.equal(await showLocalTestNotification(registration, 'Test', 'Hello'), true)
   assert.equal(icon, 'https://example.com/meeting-task-calendar/icon-192.png')
+  assert.equal(destination, `https://example.com/meeting-task-calendar/#/device-inbox?notification=${notificationTag}`)
+  assert.equal((await listDeviceAlerts()).find((alert) => alert.id === notificationTag)?.body, 'Hello')
   const firstTag = notificationTag
   await showLocalTestNotification(registration, 'Test', 'Hello again')
   assert.notEqual(notificationTag, firstTag)

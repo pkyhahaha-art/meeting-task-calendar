@@ -1,4 +1,4 @@
-import { supabase } from './supabase'
+import { supabase, supabaseUrl, supabasePublishableKey } from './supabase'
 import { currentPushSupport } from './pushSupport'
 import { activeNotificationWorker, showLocalTestNotification } from './notificationWorker'
 import { readDevicePairing, saveDevicePairing, type DevicePairing } from './deviceInbox'
@@ -199,10 +199,7 @@ export async function completeDevicePairing(token: string, customDeviceName?: st
     // Trigger local welcome notification
     if (Notification.permission === 'granted') {
       try {
-        await reg.showNotification('⚡ PEA Meeting & Task', {
-          body: 'เชื่อมต่ออุปกรณ์นี้สำเร็จแล้ว',
-          icon: new URL('icon-192.png', reg.scope).href,
-        })
+        await showLocalTestNotification(reg, '⚡ PEA Meeting & Task', 'เชื่อมต่ออุปกรณ์นี้สำเร็จแล้ว')
       } catch {
         // Notification API fallback
       }
@@ -293,6 +290,25 @@ export async function sendDeviceTestNotification(subscriptionId: string): Promis
     }
     throw new Error(message)
   }
+}
+
+/** The paired device can test only its own subscription, without a calendar login. */
+export async function sendPairedDeviceTestNotification(): Promise<string> {
+  if (currentPushSupport() !== 'ready' || Notification.permission !== 'granted') {
+    throw new Error('กรุณาเปิดแอปจาก Home Screen และอนุญาตการแจ้งเตือนในการตั้งค่ามือถือ')
+  }
+  const registration = await activeNotificationWorker()
+  const subscription = await registration.pushManager.getSubscription()
+  const authKey = subscription?.getKey('auth')
+  if (!subscription || !authKey) throw new Error('ไม่พบการเชื่อมต่อของเครื่องนี้ กรุณาเชื่อมต่ออุปกรณ์อีกครั้ง')
+  const response = await fetch(`${supabaseUrl}/functions/v1/mobile-push`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', apikey: supabasePublishableKey || '' },
+    body: JSON.stringify({ endpoint: subscription.endpoint, auth: btoa(String.fromCharCode(...new Uint8Array(authKey))) }),
+    signal: AbortSignal.timeout(20000),
+  })
+  const result = await response.json()
+  if (!response.ok || !result.accepted || !result.notificationId) throw new Error(result.error || 'ส่งข้อความทดสอบไม่ได้ กรุณาลองใหม่')
+  return result.notificationId as string
 }
 
 /**

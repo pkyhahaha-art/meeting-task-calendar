@@ -52,6 +52,7 @@ export function MobilePushPage() {
   const initialGeneratedRef = useRef(false)
   const [testingDevice, setTestingDevice] = useState<string | null>(null)
   const [remoteTestStatus, setRemoteTestStatus] = useState<string | null>(null)
+  const [testDeviceId, setTestDeviceId] = useState('')
   const pushConfig = useQuery({ queryKey: ['mobile-push-config'], queryFn: () => loadMobilePushConfig(import.meta.env.VITE_SUPABASE_URL), retry: false })
 
   // Query connected devices
@@ -63,6 +64,7 @@ export function MobilePushPage() {
   })
 
   const devices = devicesQuery.data || []
+  const testDevice = devices.find((device) => device.id === testDeviceId) || devices[0]
 
   // Delete device mutation
   const deleteMutation = useMutation({
@@ -495,20 +497,24 @@ export function MobilePushPage() {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900">{text('ทดสอบการแจ้งเตือน', 'Test Notifications')}</h3>
-                  <p className="text-xs text-slate-500">{text('ทดสอบบนอุปกรณ์ที่เปิดหน้านี้ หากกดบนคอมพิวเตอร์ แจ้งเตือนจะแสดงบนคอมพิวเตอร์', 'Test on this device. Clicking on a computer displays the notification on that computer.')}</p>
+                  <p className="text-xs text-slate-500">{text('ส่งจากเซิร์ฟเวอร์ไปอุปกรณ์ที่เชื่อมต่อ ข้อความที่รับสำเร็จจะแสดงในกล่องแจ้งเตือนของเครื่องนั้น', 'Send from the server to a paired device. Received messages appear in its inbox.')}</p>
                 </div>
               </div>
             </div>
 
+            {devices.length > 1 && <label className="block text-sm font-semibold text-slate-700">{text('อุปกรณ์ที่จะรับข้อความทดสอบ', 'Device to test')}<select className="field-input mt-1" value={testDevice?.id || ''} onChange={(event) => setTestDeviceId(event.target.value)}>{devices.map((device) => <option key={device.id} value={device.id}>{device.device_name || text('อุปกรณ์มือถือ', 'Mobile device')} · {new Date(device.created_at).toLocaleString()}</option>)}</select></label>}
             <button
               type="button"
-              onClick={handleTestNotification}
-              disabled={isTesting}
+              onClick={() => { if (testDevice) void handleDeviceTest(testDevice) }}
+              disabled={Boolean(testingDevice) || !testDevice || !pushConfig.data?.ready}
               className="w-full inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-700 via-fuchsia-600 to-amber-500 px-4 py-2.5 font-semibold text-white shadow-md shadow-purple-300/40 hover:from-brand-800 hover:via-fuchsia-700 hover:to-amber-600 transition disabled:opacity-60"
             >
-              {isTesting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-              {isTesting ? text('กำลังทดสอบการแจ้งเตือน…', 'Testing notification…') : text('ทดสอบแจ้งเตือนบนอุปกรณ์นี้', 'Test notification on this device')}
+              {testingDevice ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+              {testingDevice ? text('กำลังส่งข้อความทดสอบ…', 'Sending test…') : text('ส่งทดสอบไปอุปกรณ์ที่เชื่อมต่อ', 'Send test to paired device')}
             </button>
+            {!testDevice && <p className="text-xs text-slate-500">{text('เชื่อมต่อมือถือก่อนส่งข้อความทดสอบ', 'Pair a device before sending a test.')}</p>}
+            {remoteTestStatus && <p role="status" className="rounded-xl bg-purple-50 p-3 text-sm text-brand-800">{remoteTestStatus}</p>}
+            <button type="button" onClick={handleTestNotification} disabled={isTesting} className="btn-secondary w-full text-sm">{isTesting ? text('กำลังทดสอบ…', 'Testing…') : text('ทดสอบเฉพาะเครื่องที่เปิดเว็บนี้', 'Local test on this browser only')}</button>
 
             {testSent && (
               <div role="status" className="rounded-xl bg-green-50 border border-green-200 p-3 text-xs font-semibold text-green-800 flex items-center gap-2">
@@ -610,7 +616,6 @@ export function MobilePushPage() {
             })}
           </div>
         )}
-      {remoteTestStatus && <p role="status" className="rounded-xl bg-purple-50 p-3 text-sm text-brand-800">{remoteTestStatus}</p>}
       </section>
     </main>
   )

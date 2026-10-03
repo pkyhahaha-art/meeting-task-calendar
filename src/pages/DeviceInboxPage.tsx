@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
-import { BellRing, CheckCircle2, ChevronLeft, Loader2, RefreshCw, Smartphone } from 'lucide-react'
+import { BellRing, CheckCircle2, ChevronLeft, Loader2, RefreshCw, Smartphone, Send } from 'lucide-react'
 import peaLogo from '../../ภาพประกอบUI/PEA Logo (1).png'
 import { listDeviceAlerts, markDeviceAlertRead, type DevicePairing } from '../lib/deviceInbox'
-import { restoreDevicePairing } from '../lib/mobilePush'
+import { restoreDevicePairing, sendPairedDeviceTestNotification } from '../lib/mobilePush'
 
 function dateLabel(value?: string) {
   if (!value) return ''
@@ -20,9 +20,26 @@ export function DeviceInboxPage() {
   const [device, setDevice] = useState<DevicePairing | null>(null)
   const [checking, setChecking] = useState(true)
   const [connectionError, setConnectionError] = useState('')
+  const [testing, setTesting] = useState(false)
+  const [testId, setTestId] = useState('')
+  const [testStatus, setTestStatus] = useState('')
   const alerts = useQuery({ queryKey: ['device-inbox'], queryFn: listDeviceAlerts })
   const refreshAlerts = alerts.refetch
   const selected = alerts.data?.find((alert) => alert.id === selectedId)
+  const testReceived = Boolean(testId && alerts.data?.some((alert) => alert.id === testId))
+
+  const testNotification = async () => {
+    if (testing) return
+    setTesting(true)
+    setTestId('')
+    setTestStatus('')
+    try {
+      setTestId(await sendPairedDeviceTestNotification())
+      setTestStatus('ผู้ให้บริการ Push รับข้อความทดสอบแล้ว กำลังรอข้อความเข้ามาในเครื่องนี้')
+    } catch (error) {
+      setTestStatus(error instanceof Error ? error.message : 'ส่งข้อความทดสอบไม่ได้ กรุณาลองใหม่')
+    } finally { setTesting(false) }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -50,6 +67,16 @@ export function DeviceInboxPage() {
       .catch(() => setConnectionError('บันทึกสถานะอ่านแล้วไม่ได้ กรุณาลองใหม่'))
   }, [selected, refreshAlerts])
 
+  useEffect(() => {
+    if (!testId || testReceived) return
+    const poll = setInterval(() => void refreshAlerts(), 2000)
+    const timeout = setTimeout(() => {
+      clearInterval(poll)
+      setTestStatus('ยังไม่พบข้อความทดสอบในเครื่องนี้ กรุณาตรวจอินเทอร์เน็ต และการตั้งค่าการแจ้งเตือนของ PEA Calendar แล้วลองใหม่')
+    }, 20000)
+    return () => { clearInterval(poll); clearTimeout(timeout) }
+  }, [testId, testReceived, refreshAlerts])
+
   const unread = (alerts.data ?? []).filter((alert) => !alert.read).length
   const details = selected?.details
   const detailRows = [
@@ -73,6 +100,8 @@ export function DeviceInboxPage() {
         <p className="mt-2 text-xs leading-relaxed text-slate-500">เมื่อเชื่อมต่อแล้ว ปัดปิดแอปได้ เปิดจาก Home Screen อีกครั้งเพื่ออ่านข้อความ ไม่ต้องใส่ลิงก์ซ้ำ</p>
         {connectionError && <p role="alert" className="mt-2 text-sm text-amber-800">{connectionError}</p>}
         {!checking && !device && !connectionError && <Link to="/pair-device?reconnect=1" className="mt-3 inline-flex min-h-11 items-center font-semibold text-brand-700">เชื่อมต่ออุปกรณ์</Link>}
+        {device && <button type="button" onClick={() => void testNotification()} disabled={testing} className="btn-primary mt-3 w-full text-sm">{testing ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}ทดสอบส่งจากเซิร์ฟเวอร์มามือถือเครื่องนี้</button>}
+        {(testStatus || testReceived) && <p role="status" className={`mt-3 rounded-xl p-3 text-sm ${testReceived ? 'bg-green-50 text-green-800' : 'bg-amber-50 text-amber-900'}`}>{testReceived ? 'มือถือเครื่องนี้รับข้อความทดสอบแล้ว เปิดอ่านจากกล่องแจ้งเตือนได้เลย' : testStatus}</p>}
       </section>
       <section className="overflow-hidden rounded-2xl border border-purple-100 bg-white shadow-sm">
         <div className="flex items-center justify-between gap-2 border-b border-purple-50 p-4">

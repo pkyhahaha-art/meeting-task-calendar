@@ -492,7 +492,7 @@ export function EventDialog({
               </div>
               <div>
                 <label className="field-label" htmlFor="event-affiliation">{text('หน่วยงาน / สังกัด', 'Department / affiliation')}</label>
-                <input id="event-affiliation" className="field-input" placeholder={text('กคน.ฝลส.', 'e.g. Department')} value={draft.affiliation} onChange={(e) => set('affiliation', e.target.value)} maxLength={250} disabled={isOccurrenceEdit} />
+                <input id="event-affiliation" autoComplete="off" className="field-input" placeholder={text('กคน.ฝลส.', 'e.g. Department')} value={draft.affiliation} onChange={(e) => set('affiliation', e.target.value)} maxLength={250} disabled={isOccurrenceEdit} />
               </div>
               <div>
                 <span className="field-label">{text(isViewingLaterOccurrence ? 'วันเริ่มชุดนัดหมาย' : 'วันที่นัดหมาย', isViewingLaterOccurrence ? 'Series start date' : 'Meeting date')}</span>
@@ -521,7 +521,7 @@ export function EventDialog({
               </div>
               <div>
                 <label className="field-label" htmlFor="description">{text('รายละเอียด / วาระการประชุม', 'Details / agenda')}</label>
-                <textarea id="description" className="field-input min-h-28 resize-y" value={draft.description} onChange={(e) => set('description', e.target.value)} maxLength={10000} />
+                <textarea id="description" autoComplete="off" className="field-input min-h-28 resize-y" value={draft.description} onChange={(e) => set('description', e.target.value)} maxLength={10000} />
               </div>
             </section>
 

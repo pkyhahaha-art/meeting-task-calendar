@@ -53,6 +53,29 @@ export async function listDeviceAlerts(): Promise<DeviceAlert[]> {
   return rows.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))
 }
 
+export async function saveDeviceAlert(alert: DeviceAlert) {
+  const db = await openDeviceInbox()
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction('alerts', 'readwrite')
+      const store = transaction.objectStore('alerts')
+      const previous = store.get(alert.id)
+      previous.onsuccess = () => {
+        store.put({ ...alert, receivedAt: previous.result?.receivedAt || alert.receivedAt,
+          read: previous.result?.read === true })
+        const all = store.getAll()
+        all.onsuccess = () => {
+          const rows = all.result.sort((a: DeviceAlert, b: DeviceAlert) => b.receivedAt.localeCompare(a.receivedAt))
+          for (const row of rows.slice(100)) store.delete(row.id)
+        }
+      }
+      transaction.oncomplete = () => resolve()
+      transaction.onerror = () => reject(transaction.error)
+      transaction.onabort = () => reject(transaction.error)
+    })
+  } finally { db.close() }
+}
+
 export async function markDeviceAlertRead(id: string) {
   const db = await openDeviceInbox()
   try {

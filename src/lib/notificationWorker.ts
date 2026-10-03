@@ -1,4 +1,5 @@
 import { appUrl } from './appUrl'
+import { saveDeviceAlert } from './deviceInbox'
 
 export async function withNotificationTimeout<T>(operation: PromiseLike<T>, message: string, timeoutMs = 15000): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -55,8 +56,9 @@ export async function showLocalTestNotification(
     body,
     tag,
     icon: new URL('icon-192.png', registration.scope).href,
-    data: { url: new URL('./#/mobile-push', registration.scope).href },
+    data: { url: new URL(`./#/device-inbox?notification=${encodeURIComponent(tag)}`, registration.scope).href },
   }), 'อุปกรณ์ยังไม่ยืนยันการสร้างแจ้งเตือน กรุณาตรวจสิทธิ์แจ้งเตือนในการตั้งค่า iPhone')
+  await saveDeviceAlert({ id: tag, title, body, receivedAt: new Date().toISOString(), read: false })
   // This checks the notification list, not whether iOS displayed a banner.
   const notifications = await withNotificationTimeout(registration.getNotifications({ tag }),
     'ตรวจสอบผลแจ้งเตือนนานเกินไป กรุณาเปิดศูนย์การแจ้งเตือนบน iPhone')

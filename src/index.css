@@ -63,6 +63,18 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 @layer components {
   .field-label { @apply mb-1.5 block text-sm font-semibold text-slate-700; }
   .field-input { @apply w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100; }
+  /* Keep the form's white surface when the browser fills saved text. */
+  .field-input:autofill {
+    background-color: #fff;
+    box-shadow: inset 0 0 0 1000px #fff;
+    color: #0f172a;
+    caret-color: #0f172a;
+  }
+  .field-input:-webkit-autofill {
+    -webkit-box-shadow: inset 0 0 0 1000px #fff;
+    -webkit-text-fill-color: #0f172a;
+    caret-color: #0f172a;
+  }
   .btn-primary { @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-55; }
   .btn-secondary { @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55; }
   .card { @apply rounded-2xl border border-slate-200 bg-white shadow-soft; }
