@@ -237,6 +237,12 @@ export interface Database {
     }
     Views: Record<string, never>
     Functions: {
+      meeting_mobile_recipients_available: { Args: { target_guest_emails: string[]; target_event_id?: string }; Returns: boolean }
+      cancel_meeting_occurrence: { Args: { target_event_id: string; target_occurrence_start: string }; Returns: string }
+      detach_meeting_occurrence: {
+        Args: { target_event_id: string; target_occurrence_start: string; target_new_start: string; target_description: string; target_location: string; target_guest_emails: string[] }
+        Returns: string
+      }
       admin_set_profile_status: {
         Args: { target_user_id: string; next_status: 'active' | 'disabled' }
         Returns: undefined

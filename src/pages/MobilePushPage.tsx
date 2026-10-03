@@ -424,6 +424,15 @@ export function MobilePushPage() {
               </div>
             </div>
 
+            <div className="rounded-2xl border border-green-200 bg-green-50 p-4 space-y-3">
+              <h3 className="text-sm font-bold text-green-900">{text('สำหรับผู้ใช้ Android • Chrome', 'Android • Chrome')}</h3>
+              <ol className="list-decimal space-y-1.5 pl-4 text-xs leading-relaxed text-green-900">
+                <li>{text('สแกน QR ของบัญชีคุณ แล้วเปิดลิงก์ใน Chrome หากสแกนแล้วเปิดใน LINE ให้เลือกเปิดด้วย Chrome', 'Scan your account QR and open the link in Chrome. If LINE opens it, choose Open in Chrome.')}</li>
+                <li>{text('กด “เปิดการแจ้งเตือนบนมือถือเครื่องนี้” แล้วเลือก “อนุญาต (Allow)”', 'Tap Enable notifications on this phone, then Allow.')}</li>
+                <li>{text('หลังเชื่อมต่อแล้ว เปิดกล่องข้อความ และกดเมนู Chrome ⋮ → “เพิ่มลงในหน้าจอหลัก” / “ติดตั้งแอป” เพื่อเปิดอ่านครั้งต่อไป', 'After pairing, open the inbox, then Chrome ⋮ → Add to Home screen / Install app for future access.')}</li>
+              </ol>
+              <p className="text-xs text-green-800">{text('ไม่ต้องล็อกอิน Gmail บนมือถือซ้ำ หากเคยกดบล็อก ให้เปิด Chrome → การตั้งค่า → การตั้งค่าเว็บไซต์ → การแจ้งเตือน และอนุญาตเว็บไซต์นี้ รวมถึงสิทธิ์แจ้งเตือน Chrome ในการตั้งค่า Android', 'No repeated Gmail sign-in is needed. If blocked, allow this site under Chrome → Settings → Site settings → Notifications, and allow Chrome notifications in Android settings.')}</p>
+            </div>
             {/* iOS-specific notice */}
             <div className="rounded-2xl border border-orange-200 bg-gradient-to-r from-orange-50 to-amber-50 p-4 space-y-3">
               <div className="flex items-center gap-2 font-bold text-orange-900 text-sm">

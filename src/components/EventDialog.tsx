@@ -17,6 +17,7 @@ import {
   meetingReminderOptionLabel,
   meetingWeekdayForDate,
   pastMeetingReminderKeys,
+  parseGuestEmails,
   reminderOptions,
   validateAttachments,
   weekdayEnglishFull,
@@ -116,10 +117,12 @@ export function EventDialog({
   canEdit,
   canViewDeliveryStatus,
   hasConnectedDevices = false,
+  checkMobileRecipients,
   busy,
   onClose,
   onSave,
   onDelete,
+  onMoveOccurrence,
   onDeleteAttachment,
   onRetryNotification,
 }: {
@@ -131,9 +134,11 @@ export function EventDialog({
   canEdit: boolean
   busy: boolean
   hasConnectedDevices?: boolean
+  checkMobileRecipients?: (emails: string[]) => Promise<boolean>
   onClose: () => void
   onSave: (draft: EventDraft, notifyRecipients: boolean, scope: 'series' | 'occurrence') => Promise<void>
-  onDelete: () => Promise<void>
+  onDelete: (scope?: 'series' | 'occurrence') => Promise<void>
+  onMoveOccurrence?: (draft: EventDraft, date: string) => Promise<void>
   onDeleteAttachment: (attachment: AttachmentRow) => Promise<void>
   canViewDeliveryStatus: boolean
   onRetryNotification: (deliveryId: string) => Promise<void>
@@ -144,8 +149,25 @@ export function EventDialog({
   const [endMode, setEndMode] = useState<'end_of_year' | 'until_date' | 'count'>('end_of_year')
   const [error, setError] = useState('')
   const [savingNew, setSavingNew] = useState(false)
+  const [guestHasMobile, setGuestHasMobile] = useState(false)
+  const [moveDate, setMoveDate] = useState('')
   const fileInput = useRef<HTMLInputElement>(null)
   const initializedDraft = useRef<string | null>(null)
+  const guestEmailsKey = parseGuestEmails(draft.guestEmails).sort().join(',')
+  const mobileAvailable = hasConnectedDevices || guestHasMobile
+  const mobileTooltip = text('สามารถเลือกได้เมื่อผู้สร้างประชุมหรือผู้เข้าร่วมเชื่อมต่อการแจ้งเตือนผ่านมือถือแล้ว', 'Available when the organizer or an attendee has paired a phone for notifications.')
+
+  useEffect(() => {
+    let cancelled = false
+    setGuestHasMobile(false)
+    if (!open || !checkMobileRecipients) return
+    const timer = setTimeout(() => {
+      void checkMobileRecipients(guestEmailsKey ? guestEmailsKey.split(',') : []).then((available) => {
+        if (!cancelled) setGuestHasMobile(available)
+      }).catch(() => { if (!cancelled) setGuestHasMobile(false) })
+    }, 300)
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [open, checkMobileRecipients, guestEmailsKey])
 
   useEffect(() => {
     if (!open) {
@@ -157,6 +179,7 @@ export function EventDialog({
     if (initializedDraft.current === key) return
     initializedDraft.current = key
     setError('')
+    setMoveDate('')
     const useOccurrenceValues = Boolean(event && occurrenceStart && details?.hasOccurrenceChanges)
     setEditScope(useOccurrenceValues ? 'occurrence' : 'series')
     const initialRecurrence = event
@@ -477,6 +500,12 @@ export function EventDialog({
                   {text('ระบบจะส่งการแจ้งเตือนตามกำหนดเดิมเพียงครั้งเดียว โดยใช้ข้อมูลของนัดนี้ที่บันทึกล่าสุด', 'The existing scheduled reminder is sent once, using the latest saved details for this occurrence.')}
                 </p>
               )}
+              {isOccurrenceEdit && onMoveOccurrence && <div className="mt-3 space-y-2 rounded-xl border border-brand-200 bg-white p-3">
+                <label htmlFor="move-occurrence-date" className="field-label">{text('ย้ายนัดนี้เป็นประชุมใหม่แบบไม่ทำซ้ำ', 'Move this appointment to a new non-recurring meeting')}</label>
+                <input id="move-occurrence-date" type="date" min={bangkokDate()} value={moveDate} onChange={(event) => setMoveDate(event.target.value)} className="field-input" />
+                <p className="text-xs text-slate-600">{text('ใช้เวลาเดิม ยกเลิกเฉพาะนัดเดิม และสร้าง Meeting แยกในวันที่เลือก', 'Keep the same time, cancel only the original appointment, and create a separate meeting on the chosen date.')}</p>
+                <button type="button" disabled={busy || !moveDate || moveDate === viewedOccurrenceDate} className="btn-secondary text-sm" onClick={() => void onMoveOccurrence(draft, moveDate).catch(() => setError(text('ย้ายนัดไม่ได้ กรุณาลองใหม่', 'Could not move the appointment. Please try again.')))}>{text('ย้ายนัดและสร้างประชุมใหม่', 'Move and create a new meeting')}</button>
+              </div>}
             </fieldset>
           )}
 
@@ -845,7 +874,7 @@ export function EventDialog({
                 {text('เพิ่มผู้เข้าร่วมอีกคน', 'Add another attendee')}
               </button>
               <p className="text-xs text-slate-500">
-                {text('ผู้เข้าร่วมกดรับทราบจากลิงก์ในอีเมลได้', 'Attendees can acknowledge from the link in their email.')}
+                {text('ผู้เข้าร่วมกดรับทราบจากลิงก์ในอีเมลได้ หาก Gmail ตรงกับบัญชีพนักงานที่ใช้งานอยู่และเชื่อมต่อมือถือ จะได้รับ Push เมื่อเลือกแจ้งเตือนผ่านมือถือ', 'Attendees can acknowledge from the email link. Active employees whose Gmail matches and whose phone is paired receive Push when mobile notifications are enabled.')}
               </p>
             </section>
 
@@ -918,37 +947,34 @@ export function EventDialog({
                     <Mail size={17} />
                     Gmail / Email
                   </label>
-                  <label
-                    className={`flex items-center gap-2 select-none ${hasConnectedDevices ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}
-                    title={
-                      !hasConnectedDevices
-                        ? text('ยังไม่ได้เชื่อมต่อการแจ้งเตือนบนมือถือ กรุณาเชื่อมต่อในเมนู "เชื่อมต่อการแจ้งเตือนผ่านมือถือ"', 'Mobile notifications not connected. Please connect in Mobile Notifications menu.')
-                        : ''
-                    }
+                  <div className="flex items-center gap-2"><label
+                    className={`flex items-center gap-2 select-none ${mobileAvailable ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}
+                    title={mobileTooltip}
                   >
                     <input
                       type="checkbox"
                       checked={draft.notifyLine}
-                      disabled={!hasConnectedDevices}
+                      disabled={!mobileAvailable}
                       onChange={(e) => set('notifyLine', e.target.checked)}
                       className="h-4 w-4 rounded"
                     />
                     <Smartphone size={17} className={hasConnectedDevices ? 'text-brand-600' : 'text-slate-400'} />
                     <span>{text('แจ้งเตือนผ่านมือถือ', 'Mobile notification')}</span>
-                    {!hasConnectedDevices ? (
+                    {!mobileAvailable ? (
                       <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 border border-amber-200">
-                        {text('ยังไม่เชื่อมต่อ', 'Not connected')}
+                        {text('ยังไม่มีผู้รับเชื่อมต่อ', 'No paired recipients')}
                       </span>
                     ) : (
                       <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 border border-emerald-200">
-                        {text('เชื่อมต่อแล้ว', 'Connected')}
+                        {text('มีผู้รับเชื่อมต่อแล้ว', 'Recipient paired')}
                       </span>
                     )}
                   </label>
+                  <span tabIndex={0} aria-label={mobileTooltip} className="group relative inline-flex h-6 w-6 cursor-help items-center justify-center rounded-full border border-slate-300 text-xs font-bold text-slate-500">i<span role="tooltip" className="absolute bottom-full right-0 z-20 mb-2 hidden w-64 rounded-lg bg-slate-800 p-2 text-xs font-normal text-white shadow-lg group-hover:block group-focus:block">{mobileTooltip}</span></span></div>
                 </div>
-                {!hasConnectedDevices ? (
+                {!mobileAvailable ? (
                   <p className="text-xs text-amber-700">
-                    {text('💡 ยังไม่ได้เชื่อมต่อการแจ้งเตือนบนมือถือ ไปที่เมนู "เชื่อมต่อการแจ้งเตือนผ่านมือถือ" เพื่อสแกน QR Code เปิดใช้งาน', '💡 Mobile notification is not connected yet. Go to "Mobile Notifications" menu to pair your device.')}
+                    {text('กรุณาให้ผู้สร้างหรือผู้เข้าร่วมเชื่อมต่อมือถือก่อนเลือกช่องนี้', 'Pair a phone for the organizer or an attendee to enable this option.')}
                   </p>
                 ) : (
                   <p className="text-xs text-slate-500">
@@ -1139,15 +1165,15 @@ export function EventDialog({
           {error && <p className="form-error" role="alert">{error}</p>}
 
           <div className="flex flex-wrap justify-between gap-2 border-t border-slate-100 pt-4">
-            {event && canEdit && !isOccurrenceEdit ? (
+            {event && canEdit ? (
               <button
                 type="button"
-                onClick={onDelete}
+                onClick={() => void onDelete(isOccurrenceEdit ? 'occurrence' : 'series').catch(() => setError(text('ลบนัดไม่ได้ กรุณาลองใหม่', 'Could not delete the appointment. Please try again.')))}
                 className="btn-secondary border-red-200 text-red-600 hover:bg-red-50"
                 disabled={busy}
               >
                 <Trash2 size={17} />
-                {text('ลบ', 'Delete')}
+                {isOccurrenceEdit ? text('ลบเฉพาะนัดนี้', 'Delete this appointment only') : text(event.recurrence_rule ? 'ลบทั้งชุด' : 'ลบ', event.recurrence_rule ? 'Delete the series' : 'Delete')}
               </button>
             ) : (
               <span />

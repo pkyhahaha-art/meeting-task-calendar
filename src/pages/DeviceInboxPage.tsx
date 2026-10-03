@@ -6,6 +6,7 @@ import peaLogo from '../../ภาพประกอบUI/PEA Logo (1).png'
 import { deleteDeviceAlerts, listDeviceAlerts, markDeviceAlertRead, type DevicePairing } from '../lib/deviceInbox'
 import { restoreDevicePairing, sendPairedDeviceTestNotification } from '../lib/mobilePush'
 import { useConfirm } from '../components/ConfirmDialogProvider'
+import { useAuth } from '../auth/AuthProvider'
 
 function dateLabel(value?: string) {
   if (!value) return ''
@@ -17,6 +18,7 @@ function dateLabel(value?: string) {
 
 export function DeviceInboxPage() {
   const confirm = useConfirm()
+  const { user, loading } = useAuth()
   const [params, setParams] = useSearchParams()
   const selectedId = params.get('notification')
   const [device, setDevice] = useState<DevicePairing | null>(null)
@@ -150,7 +152,7 @@ export function DeviceInboxPage() {
               : <ul className="divide-y divide-purple-50">{alerts.data?.map((alert) => <li key={alert.id} className={`flex items-start ${alert.read ? '' : 'bg-purple-50/60'}`}><button type="button" onClick={() => setParams({ notification: alert.id })} className="min-w-0 flex-1 space-y-1 p-4 text-left transition hover:bg-purple-50"><span className="block break-words font-semibold text-slate-900">{!alert.read && <span className="mr-2 inline-block h-2 w-2 rounded-full bg-brand-700" />}{alert.title}</span><span className="block line-clamp-2 text-sm text-slate-600">{alert.body}</span><time className="block text-xs text-slate-400">{dateLabel(alert.receivedAt)}</time></button><button type="button" disabled={deleting} aria-label={`ลบข้อความ: ${alert.title}`} onClick={() => void removeMessages([alert.id])} className="mr-2 mt-2 flex min-h-11 min-w-11 items-center justify-center rounded-xl text-slate-400 hover:bg-red-50 hover:text-red-700 disabled:opacity-40"><Trash2 size={18} /></button></li>)}</ul>}
       </section>
       <footer className="flex flex-wrap items-center justify-between gap-2 pb-4 text-xs">
-        <Link to="/calendar" className="inline-flex min-h-11 items-center font-semibold text-brand-700">ดูปฏิทิน / จัดการงาน (เข้าสู่ระบบ)</Link>
+        {!loading && <Link to={user ? '/calendar' : '/login'} className="inline-flex min-h-11 items-center font-semibold text-brand-700">{user ? 'เปิดปฏิทิน' : 'เข้าสู่ระบบ'}</Link>}
         <Link to="/pair-device?reconnect=1" className="inline-flex min-h-11 items-center text-slate-500">เปลี่ยนบัญชีที่เชื่อมต่อ</Link>
       </footer>
     </div>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import FullCalendar from '@fullcalendar/react'
 import type { EventHoveringArg } from '@fullcalendar/core'
 import dayGridPlugin from '@fullcalendar/daygrid'
@@ -17,7 +17,7 @@ import { TaskDialog, type TaskDetails, type TaskDraft } from '../components/Task
 import { useLanguage } from '../i18n/LanguageProvider'
 import { useLocation, useNavigate } from 'react-router-dom'
 import type { Database } from '../lib/database.types'
-import { bangkokDate, isPastBangkokDate, meetingRecurrenceRule, meetingReminderKeysFromTemplates, meetingReminderStatus, parseGuestEmails, recurrenceRule, reminderDate } from '../lib/eventForm'
+import { bangkokDate, isPastBangkokDate, meetingRecurrenceRule, meetingReminderKeysFromTemplates, meetingReminderStatus, parseGuestEmails, reminderDate } from '../lib/eventForm'
 import { appUrl } from '../lib/appUrl'
 import { canManageMeeting, meetingCreateArgs } from '../lib/meetingAccess'
 import { expandEvent } from '../lib/recurrence'
@@ -31,7 +31,7 @@ import {
   type TaskReminderKey,
 } from '../lib/taskForm'
 import { supabase } from '../lib/supabase'
-import { getConnectedDevices } from '../lib/mobilePush'
+import { checkMeetingMobileRecipients, getConnectedDevices } from '../lib/mobilePush'
 
 type EventRow = Database['public']['Tables']['events']['Row']
 type GuestRow = Database['public']['Tables']['event_guests']['Row']
@@ -132,6 +132,14 @@ export function CalendarPage() {
     queryFn: () => (user?.id ? getConnectedDevices(user.id) : Promise.resolve([])),
     enabled: Boolean(user?.id),
   })
+  const exceptionsQuery = useQuery({
+    queryKey: ['meeting-exceptions'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('event_occurrences').select('event_id,occurrence_key').neq('status', 'scheduled')
+      if (error) throw error
+      return data
+    },
+  })
   const hasConnectedDevices = (connectedDevicesQuery.data?.length ?? 0) > 0
   const linkedEventId = useMemo(() => new URLSearchParams(locationSearch).get('event'), [locationSearch])
   const linkedTaskId = useMemo(() => new URLSearchParams(locationSearch).get('task'), [locationSearch])
@@ -181,6 +189,7 @@ export function CalendarPage() {
   })
 
   const selectedEvent = eventDialog.event
+  const checkMobileRecipients = useCallback((emails: string[]) => checkMeetingMobileRecipients(emails, selectedEvent?.id), [selectedEvent?.id])
   const selectedEventOccurrenceStart = eventDialog.occurrenceStart
   const selectedTask = taskDialog.task
   const canViewEventDeliveryStatus = Boolean(selectedEvent && (selectedEvent.owner_user_id === user?.id || profile?.role === 'admin'))
@@ -444,7 +453,7 @@ export function CalendarPage() {
       }
     },
     onSuccess: async () => {
-      await Promise.all([queryClient.invalidateQueries({ queryKey: ['events'] }), queryClient.invalidateQueries({ queryKey: ['event-details'] }), queryClient.invalidateQueries({ queryKey: ['recent-documents'] }), queryClient.invalidateQueries({ queryKey: ['event-creation-stats'] })])
+      await Promise.all([queryClient.invalidateQueries({ queryKey: ['events'] }), queryClient.invalidateQueries({ queryKey: ['event-details'] }), queryClient.invalidateQueries({ queryKey: ['meeting-exceptions'] }), queryClient.invalidateQueries({ queryKey: ['recent-documents'] }), queryClient.invalidateQueries({ queryKey: ['event-creation-stats'] })])
     },
   })
 
@@ -591,6 +600,43 @@ export function CalendarPage() {
     mutationFn: async (event: EventRow) => { const { error } = await supabase.from('events').update({ deleted_at: new Date().toISOString() }).eq('id', event.id); if (error) throw error },
     onSuccess: async () => { await Promise.all([queryClient.invalidateQueries({ queryKey: ['events'] }), queryClient.invalidateQueries({ queryKey: ['event-creation-stats'] })]); setEventDialog({ open: false, event: null }) },
   })
+  const appointmentMutation = useMutation({
+    mutationFn: async ({ draft, date }: { draft?: EventDraft; date?: string }) => {
+      if (!selectedEvent || !selectedEventOccurrenceStart) throw new Error('ไม่พบนัดที่เลือก')
+      if (!draft || !date) {
+        const { error } = await supabase.rpc('cancel_meeting_occurrence', { target_event_id: selectedEvent.id, target_occurrence_start: selectedEventOccurrenceStart })
+        if (error) throw error
+        return
+      }
+      const files: File[] = [...draft.files]
+      for (const attachment of eventDetailsQuery.data?.attachments ?? []) {
+        const { data, error } = await supabase.storage.from('meeting-documents').download(attachment.storage_path)
+        if (error || !data) throw error ?? new Error('เปิดไฟล์แนบไม่ได้')
+        files.push(new File([data], attachment.file_name, { type: attachment.mime_type }))
+      }
+      const { data: newId, error } = await supabase.rpc('detach_meeting_occurrence', {
+        target_event_id: selectedEvent.id, target_occurrence_start: selectedEventOccurrenceStart,
+        target_new_start: toIso(date, draft.start, draft.all_day), target_description: draft.description,
+        target_location: draft.location, target_guest_emails: parseGuestEmails(draft.guestEmails),
+      })
+      if (error || !newId) throw error ?? new Error('ย้ายนัดไม่ได้')
+      try {
+        for (const file of files) {
+          const storagePath = `${user!.id}/${newId}/${crypto.randomUUID()}-${safeFileName(file.name)}`
+          const uploaded = await supabase.storage.from('meeting-documents').upload(storagePath, file, { contentType: file.type })
+          if (uploaded.error) throw uploaded.error
+          const saved = await supabase.from('attachments').insert({ event_id: newId, file_name: file.name, mime_type: file.type, file_size: file.size, storage_path: storagePath, uploaded_by: user!.id })
+          if (saved.error) { await supabase.storage.from('meeting-documents').remove([storagePath]); throw saved.error }
+        }
+      } catch {
+        await Swal.fire({ icon: 'warning', title: 'ย้ายนัดแล้ว แต่คัดลอกไฟล์แนบไม่ครบ', text: 'กรุณาเปิดประชุมใหม่แล้วเพิ่มไฟล์แนบที่ขาด' })
+      }
+    },
+    onSuccess: async () => {
+      await Promise.all(['events', 'event-details', 'meeting-exceptions', 'recent-documents', 'event-creation-stats'].map((key) => queryClient.invalidateQueries({ queryKey: [key] })))
+      setEventDialog({ open: false, event: null })
+    },
+  })
   const deleteEventAttachmentMutation = useMutation({
     mutationFn: async (attachment: AttachmentRow) => {
       const { error: storageError } = await supabase.storage.from('meeting-documents').remove([attachment.storage_path])
@@ -656,10 +702,11 @@ export function CalendarPage() {
   const normalizedSearch = search.trim().toLowerCase()
   const eventRows = useMemo(() => (eventsQuery.data ?? []).filter((event) => `${event.title} ${event.location} ${event.affiliation} ${event.description}`.toLowerCase().includes(normalizedSearch)), [eventsQuery.data, normalizedSearch])
   const taskRows = useMemo(() => (tasksQuery.data ?? []).filter((task) => (showCompletedTasks || task.status !== 'completed') && `${task.title} ${task.affiliation} ${task.description}`.toLowerCase().includes(normalizedSearch)), [normalizedSearch, showCompletedTasks, tasksQuery.data])
+  const cancelledAppointments = useMemo(() => new Set((exceptionsQuery.data ?? []).map((exception) => `${exception.event_id}:${new Date(exception.occurrence_key).getTime()}`)), [exceptionsQuery.data])
   const occurrenceStart = new Date(); occurrenceStart.setFullYear(occurrenceStart.getFullYear() - 1)
   const occurrenceEnd = new Date(); occurrenceEnd.setFullYear(occurrenceEnd.getFullYear() + 1)
   const calendarEntries = [
-    ...(showMeetings ? eventRows.flatMap((event) => expandEvent(event, occurrenceStart, occurrenceEnd).map((occurrence) => {
+    ...(showMeetings ? eventRows.flatMap((event) => expandEvent(event, occurrenceStart, occurrenceEnd).filter((occurrence) => !cancelledAppointments.has(`${event.id}:${new Date(occurrence.start).getTime()}`)).map((occurrence) => {
       const isOverdue = isPastBangkokDate(calendarDayKey(occurrence.start))
       return { id: `event-${occurrence.key}`, title: event.title, start: occurrence.start, end: occurrence.end || undefined, allDay: event.all_day, backgroundColor: isOverdue ? '#fee2e2' : event.owner_user_id === user?.id ? '#edddf6' : '#f1e7fa', borderColor: 'transparent', textColor: isOverdue ? '#991b1b' : '#6b2170', extendedProps: { kind: 'event', row: event, isOverdue, occurrenceStart: occurrence.start } }
     })) : []),
@@ -779,7 +826,7 @@ export function CalendarPage() {
                 <label className={`flex min-h-9 max-w-full cursor-pointer items-center gap-1.5 rounded-xl border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-red-300 lg:whitespace-nowrap xl:min-h-7 xl:gap-1 xl:px-1.5 xl:py-1 xl:text-[10px] ${showOverdue ? 'border-red-300 bg-red-100 text-red-900' : 'border-slate-200 bg-white text-slate-500'}`}><input type="checkbox" className="h-4 w-4 shrink-0 accent-red-600 xl:h-3 xl:w-3" checked={showOverdue} onChange={(event) => setShowOverdue(event.target.checked)} /><Clock3 size={15} className="shrink-0" aria-hidden="true" /><span>{text('แสดง Task / Meeting เกินวันครบกำหนด/นัดหมาย', 'Show overdue tasks and past meetings')}</span></label>
               </div>
             </div>
-            {(eventsQuery.isError || tasksQuery.isError || profilesQuery.isError) && <p className="mb-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{text('โหลดข้อมูลไม่สำเร็จ กรุณาตรวจสอบว่าได้รัน migration ล่าสุดแล้ว', 'Could not load data. Check that the latest migrations have been applied.')}</p>}
+            {(eventsQuery.isError || tasksQuery.isError || profilesQuery.isError || exceptionsQuery.isError) && <p className="mb-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{text('โหลดข้อมูลไม่สำเร็จ กรุณาตรวจสอบว่าได้รัน migration ล่าสุดแล้ว', 'Could not load data. Check that the latest migrations have been applied.')}</p>}
             <div className="calendar-fill relative xl:min-h-0 xl:flex-1">
               <FullCalendar
                 plugins={[dayGridPlugin, interactionPlugin]}
@@ -871,10 +918,18 @@ export function CalendarPage() {
 
       <EventDialog
         open={eventDialog.open} event={selectedEvent} details={eventDetailsQuery.data} selectedDate={eventDialog.date} occurrenceStart={eventDialog.occurrenceStart}
-        canEdit={canEditEvent} canViewDeliveryStatus={canViewEventDeliveryStatus} hasConnectedDevices={hasConnectedDevices} busy={busy || eventDetailsQuery.isLoading}
+        canEdit={canEditEvent} canViewDeliveryStatus={canViewEventDeliveryStatus} hasConnectedDevices={hasConnectedDevices && (!selectedEvent || selectedEvent.owner_user_id === user?.id)} checkMobileRecipients={checkMobileRecipients} busy={busy || eventDetailsQuery.isLoading || appointmentMutation.isPending}
         onClose={() => setEventDialog({ open: false, event: null })}
         onSave={(draft, notifyRecipients, scope) => eventMutation.mutateAsync({ draft, event: selectedEvent, notifyRecipients, scope, occurrenceStart: selectedEventOccurrenceStart })}
-        onDelete={async () => { if (selectedEvent && await confirmDeletion('ย้าย Meeting ไปถังขยะ?', `Meeting “${selectedEvent.title}” จะไม่แสดงในปฏิทิน`, 'ย้ายไปถังขยะ')) await deleteEventMutation.mutateAsync(selectedEvent) }}
+        onDelete={async (scope) => {
+          if (!selectedEvent) return
+          if (scope === 'occurrence') {
+            if (await confirmDeletion('ลบเฉพาะนัดนี้?', 'นัดในวันอื่นของชุดทำซ้ำยังคงอยู่', 'ลบเฉพาะนัดนี้')) await appointmentMutation.mutateAsync({})
+          } else if (await confirmDeletion('ย้าย Meeting ไปถังขยะ?', `Meeting “${selectedEvent.title}” จะไม่แสดงในปฏิทิน`, 'ย้ายไปถังขยะ')) await deleteEventMutation.mutateAsync(selectedEvent)
+        }}
+        onMoveOccurrence={async (draft, date) => {
+          if (await confirm({ title: 'ย้ายนัดนี้?', message: `ยกเลิกเฉพาะนัดเดิม แล้วสร้างประชุมวันที่ ${date} แบบไม่ทำซ้ำ`, confirmLabel: 'ย้ายนัด' })) await appointmentMutation.mutateAsync({ draft, date })
+        }}
         onDeleteAttachment={async (attachment) => { if (await confirmDeletion('ลบไฟล์แนบ?', `ลบ “${attachment.file_name}” ออกจาก Meeting นี้อย่างถาวร`, 'ลบไฟล์')) await deleteEventAttachmentMutation.mutateAsync(attachment) }}
         onRetryNotification={(deliveryId) => retryNotificationMutation.mutateAsync(deliveryId)}
       />

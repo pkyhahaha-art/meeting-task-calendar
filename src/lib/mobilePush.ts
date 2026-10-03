@@ -262,6 +262,12 @@ export async function getConnectedDevices(userId: string): Promise<ConnectedDevi
   return (data || []) as ConnectedDevice[]
 }
 
+export async function checkMeetingMobileRecipients(emails: string[], eventId?: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('meeting_mobile_recipients_available', { target_guest_emails: emails, ...(eventId ? { target_event_id: eventId } : {}) })
+  if (error) throw error
+  return data === true
+}
+
 /**
  * Remove a connected device subscription
  */
