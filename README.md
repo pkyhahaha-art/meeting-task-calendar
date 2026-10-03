@@ -12,6 +12,8 @@ For server delivery, apply `202610020005_web_push_delivery.sql` and deploy `mobi
 
 The pairing page obtains the public key and readiness from the sender's public GET endpoint. No frontend VAPID secret or rebuild is required when server configuration is completed. POST test requests verify the user JWT, active account, device ownership and a per-device cooldown. The queue sends encrypted Web Push per device alongside existing email/LINE delivery, removes expired subscriptions, and retries transient provider errors. The existing mobile checkbox is stored in the legacy `channel_line` column. Token verification remains separate from permission requests so iOS receives a direct button gesture.
 
+Reminder recipients are limited to the meeting owner and the task's internal assignees. Task creators also receive overdue reminders. Only enabled mobile reminders target subscribed devices belonging to those accounts; visibility of another employee's item in the shared calendar does not subscribe the viewer to its notifications.
+
 ## Current implementation
 
 - Gmail/Password registration with confirmation link
