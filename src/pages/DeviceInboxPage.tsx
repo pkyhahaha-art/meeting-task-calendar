@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
-import { BellRing, CheckCircle2, ChevronLeft, Loader2, RefreshCw, Smartphone, Send, Trash2 } from 'lucide-react'
+import { BellRing, CalendarDays, CheckCircle2, ChevronLeft, Loader2, LogIn, RefreshCw, Smartphone, Send, Trash2 } from 'lucide-react'
 import peaLogo from '../../ภาพประกอบUI/PEA Logo (1).png'
 import { deleteDeviceAlerts, listDeviceAlerts, markDeviceAlertRead, requestDeviceInboxBadgeSync, updateDeviceAlertDetails, type DevicePairing } from '../lib/deviceInbox'
 import { loadPairedDeviceNotification, restoreDevicePairing, sendPairedDeviceTestNotification } from '../lib/mobilePush'
@@ -9,6 +9,7 @@ import { DeviceNotificationDetails } from '../components/DeviceNotificationDetai
 import { useConfirm } from '../components/ConfirmDialogProvider'
 import { AppFooter } from '../components/AppFooter'
 import { AppLogo } from '../components/AppLogo'
+import { useAuth } from '../auth/AuthProvider'
 
 function dateLabel(value?: string) {
   if (!value) return ''
@@ -20,6 +21,7 @@ function dateLabel(value?: string) {
 
 export function DeviceInboxPage() {
   const confirm = useConfirm()
+  const { user, loading } = useAuth()
   const [params, setParams] = useSearchParams()
   const selectedId = params.get('notification')
   const [device, setDevice] = useState<DevicePairing | null>(null)
@@ -124,6 +126,7 @@ export function DeviceInboxPage() {
       <header className="space-y-2 pt-3">
         <div className="flex items-center justify-between gap-3">
           <img src={peaLogo} alt="PEA" className="h-10 object-contain" />
+          {!loading && <Link to={user ? '/calendar' : '/login'} className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl border border-purple-200 bg-white px-3 text-sm font-semibold text-brand-700 shadow-sm hover:bg-purple-50">{user ? <CalendarDays size={18} /> : <LogIn size={18} />}{user ? 'ดูปฏิทิน' : 'เข้าสู่ระบบ'}</Link>}
         </div>
         <div className="flex items-center gap-2"><AppLogo className="h-9 w-9" /><p className="text-sm font-bold text-brand-700">PEA Meeting &amp; Task Calendar</p></div>
         <p className="text-xs text-slate-500">แจ้งเตือนงานและประชุม</p>
