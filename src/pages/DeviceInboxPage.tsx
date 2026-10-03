@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import { BellRing, CheckCircle2, ChevronLeft, Loader2, RefreshCw, Smartphone, Send, Trash2 } from 'lucide-react'
 import peaLogo from '../../ภาพประกอบUI/PEA Logo (1).png'
-import { deleteDeviceAlerts, listDeviceAlerts, markDeviceAlertRead, type DevicePairing } from '../lib/deviceInbox'
+import { deleteDeviceAlerts, listDeviceAlerts, markDeviceAlertRead, requestDeviceInboxBadgeSync, type DevicePairing } from '../lib/deviceInbox'
 import { restoreDevicePairing, sendPairedDeviceTestNotification } from '../lib/mobilePush'
 import { useConfirm } from '../components/ConfirmDialogProvider'
 import { useAuth } from '../auth/AuthProvider'
@@ -77,11 +77,12 @@ export function DeviceInboxPage() {
   }, [])
 
   useEffect(() => {
-    const refresh = () => { void refreshAlerts() }
+    const refresh = () => { void refreshAlerts(); requestDeviceInboxBadgeSync() }
     const onMessage = (event: MessageEvent) => { if (event.data?.type === 'PEA_INBOX_UPDATED') refresh() }
     navigator.serviceWorker?.addEventListener('message', onMessage)
     window.addEventListener('focus', refresh)
     document.addEventListener('visibilitychange', refresh)
+    requestDeviceInboxBadgeSync()
     return () => {
       navigator.serviceWorker?.removeEventListener('message', onMessage)
       window.removeEventListener('focus', refresh)
@@ -125,6 +126,7 @@ export function DeviceInboxPage() {
           <span>{checking ? 'กำลังตรวจอุปกรณ์…' : device ? `เชื่อมต่อแล้ว${device.userName ? ` · ${device.userName}` : ''}` : 'ยังไม่ได้เชื่อมต่อรับข้อความใหม่'}</span>
         </div>
         <p className="mt-2 text-xs leading-relaxed text-slate-500">เมื่อเชื่อมต่อแล้ว ปัดปิดแอปได้ เปิดจาก Home Screen อีกครั้งเพื่ออ่านข้อความ ไม่ต้องใส่ลิงก์ซ้ำ</p>
+        <p className="mt-2 text-xs leading-relaxed text-slate-500">ตัวเลขบนไอคอนนับข้อความที่ยังไม่ได้อ่าน และลดลงเมื่อเปิดอ่านหรือลบข้อความ บน Android อาจแสดงเป็นจุดตามระบบของเครื่อง</p>
         {connectionError && <p role="alert" className="mt-2 text-sm text-amber-800">{connectionError}</p>}
         {!checking && !device && !connectionError && <Link to="/pair-device?reconnect=1" className="mt-3 inline-flex min-h-11 items-center font-semibold text-brand-700">เชื่อมต่ออุปกรณ์</Link>}
         {device && <button type="button" onClick={() => void testNotification()} disabled={testing} className="btn-primary mt-3 w-full text-sm">{testing ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}ทดสอบส่งจากเซิร์ฟเวอร์มามือถือเครื่องนี้</button>}

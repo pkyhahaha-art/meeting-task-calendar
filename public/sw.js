@@ -1,7 +1,69 @@
 /* global self */
 // Notifications only: store received messages, never authenticated calendar responses.
 self.addEventListener('install', (event) => event.waitUntil(self.skipWaiting()))
-self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()))
+self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim().then(syncInboxBadge)))
+
+function readInboxMessages() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('pea-device-inbox', 1)
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore('alerts', { keyPath: 'id' })
+      request.result.createObjectStore('settings')
+    }
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => {
+      const db = request.result
+      const transaction = db.transaction('alerts', 'readonly')
+      const rows = transaction.objectStore('alerts').getAll()
+      transaction.oncomplete = () => { db.close(); resolve(rows.result) }
+      transaction.onerror = () => { db.close(); reject(transaction.error) }
+      transaction.onabort = () => { db.close(); reject(transaction.error) }
+    }
+  })
+}
+
+// Serialize updates and read the persisted inbox each time. A foreground request
+// never supplies a stale count that can overwrite a newly arrived Push.
+let badgeUpdates = Promise.resolve()
+function syncInboxBadge(removedIds = []) {
+  badgeUpdates = badgeUpdates.then(async () => {
+    const rows = await readInboxMessages()
+    const unread = rows.filter((row) => !row.read).length
+    try {
+      if (typeof self.navigator?.setAppBadge === 'function') {
+        if (unread === 0 && typeof self.navigator.clearAppBadge === 'function') await self.navigator.clearAppBadge()
+        else await self.navigator.setAppBadge(unread)
+      }
+    } catch { /* Badging permission must not interrupt message delivery or reading. */ }
+    // Android derives its icon dot from active notifications. Close only this
+    // inbox's read/deleted notifications, including those from the previous worker.
+    if (typeof self.registration.getNotifications === 'function') {
+      const notices = await self.registration.getNotifications()
+      const dismissedIds = new Set([...removedIds, ...rows.filter((row) => row.read).map((row) => row.id)])
+      for (const notice of notices) {
+        let id = notice.data?.notificationId
+        if (!id && notice.data?.url) {
+          try {
+            const url = new URL(notice.data.url)
+            const base = new URL(self.registration.scope)
+            if (url.origin === base.origin && url.pathname.startsWith(base.pathname) && url.hash.startsWith('#/device-inbox?')) {
+              id = new URLSearchParams(url.hash.split('?')[1]).get('notification')
+            }
+          } catch { /* Leave unrelated notifications intact. */ }
+        }
+        if (id && dismissedIds.has(id)) notice.close()
+      }
+    }
+  }).catch(() => undefined)
+  return badgeUpdates
+}
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'PEA_SYNC_INBOX_BADGE') {
+    const removedIds = Array.isArray(event.data.removedIds) ? event.data.removedIds.filter((id) => typeof id === 'string').slice(0, 100) : []
+    event.waitUntil(syncInboxBadge(removedIds))
+  }
+})
 
 function saveReceivedMessage(message) {
   return new Promise((resolve, reject) => {
@@ -50,9 +112,10 @@ self.addEventListener('push', (event) => {
     body: message.body || 'คุณมีการแจ้งเตือนใหม่ กรุณาเปิดปฏิทิน',
     tag: typeof message.tag === 'string' ? message.tag : undefined,
     icon: new URL('icon-192.png', self.registration.scope).href,
-    data: { url: inboxUrl },
+    data: { url: inboxUrl, notificationId: id },
   })
   event.waitUntil(Promise.all([storing, showing]).then(async () => {
+    await syncInboxBadge()
     const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
     for (const client of windows) client.postMessage({ type: 'PEA_INBOX_UPDATED' })
   }))

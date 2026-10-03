@@ -5,6 +5,17 @@ export type DeviceAlert = {
     end_datetime?: string; due_date?: string; due_time?: string; location?: string }
 }
 
+/** The worker reads the latest stored unread count; no login or server call needed. */
+export function requestDeviceInboxBadgeSync(removedIds: string[] = []) {
+  if (typeof navigator === 'undefined' || !navigator.serviceWorker) return
+  const workers = navigator.serviceWorker
+  const message = { type: 'PEA_SYNC_INBOX_BADGE', removedIds }
+  try {
+    if (workers.controller) workers.controller.postMessage(message)
+    else void workers.getRegistration().then((registration) => registration?.active?.postMessage(message)).catch(() => {})
+  } catch { /* A stopped worker must not turn a saved inbox change into an error. */ }
+}
+
 // The service worker uses the same database, so messages survive closing the app.
 export function openDeviceInbox(factory: IDBFactory = indexedDB): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -36,16 +47,22 @@ export async function readDevicePairing(): Promise<DevicePairing | null> {
 
 export async function saveDevicePairing(pairing: DevicePairing, clearMessages = false) {
   const db = await openDeviceInbox()
+  let removedIds: string[] = []
   try {
     await new Promise<void>((resolve, reject) => {
       const transaction = db.transaction(['settings', 'alerts'], 'readwrite')
-      if (clearMessages) transaction.objectStore('alerts').clear()
+      if (clearMessages) {
+        const store = transaction.objectStore('alerts')
+        const previous = store.getAllKeys()
+        previous.onsuccess = () => { removedIds = previous.result.map(String); store.clear() }
+      }
       transaction.objectStore('settings').put(pairing, 'pairing')
       transaction.oncomplete = () => resolve()
       transaction.onerror = () => reject(transaction.error)
       transaction.onabort = () => reject(transaction.error)
     })
   } finally { db.close() }
+  if (clearMessages) requestDeviceInboxBadgeSync(removedIds)
 }
 
 export async function listDeviceAlerts(): Promise<DeviceAlert[]> {
@@ -74,6 +91,7 @@ export async function saveDeviceAlert(alert: DeviceAlert) {
       transaction.onabort = () => reject(transaction.error)
     })
   } finally { db.close() }
+  requestDeviceInboxBadgeSync()
 }
 
 export async function markDeviceAlertRead(id: string) {
@@ -88,6 +106,7 @@ export async function markDeviceAlertRead(id: string) {
       transaction.onerror = () => reject(transaction.error)
     })
   } finally { db.close() }
+  requestDeviceInboxBadgeSync()
 }
 
 /** Remove only the messages the user selected; keep pairing and newly arrived alerts. */
@@ -103,4 +122,5 @@ export async function deleteDeviceAlerts(ids: string[]) {
       transaction.onabort = () => reject(transaction.error)
     })
   } finally { db.close() }
+  requestDeviceInboxBadgeSync(ids)
 }
