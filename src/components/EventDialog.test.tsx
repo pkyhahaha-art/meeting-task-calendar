@@ -70,3 +70,12 @@ test('explicitly disabled channels stay disabled when the meeting is reopened', 
   assert.equal(checkbox(renderer, 'Mobile notification').props.checked, false)
   act(() => renderer.unmount())
 })
+
+test('the recurrence preview includes the off-pattern start in the total of four appointments', () => {
+  let renderer!: ReactTestRenderer
+  const recurring = { ...event, start_datetime: '2026-10-03T02:00:00.000Z', recurrence_rule: 'FREQ=WEEKLY;BYDAY=TU,WE', recurrence_count: 4 }
+  act(() => { renderer = create(dialog(true, noop, true, recurring)) })
+  const preview = renderer.root.findByProps({ 'aria-label': 'Appointment date preview' })
+  assert.deepEqual(preview.findAllByType('li').map((row) => row.children.join('')), ['1. 03/10/2026', '2. 06/10/2026', '3. 07/10/2026', '4. 13/10/2026'])
+  act(() => renderer.unmount())
+})

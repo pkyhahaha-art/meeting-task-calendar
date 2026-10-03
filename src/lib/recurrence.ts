@@ -67,6 +67,10 @@ function matches(current: Date, first: Date, parts: Map<string, string>) {
 }
 
 export function expandEvent<T extends RecurringEvent>(event: T, rangeStart: Date, rangeEnd: Date): EventOccurrence<T>[] {
+  return expandOccurrences(event, rangeStart, rangeEnd, true)
+}
+
+function expandOccurrences<T extends RecurringEvent>(event: T, rangeStart: Date, rangeEnd: Date, includeFirst: boolean): EventOccurrence<T>[] {
   const first = new Date(event.start_datetime)
   if (Number.isNaN(first.getTime())) return []
   const duration = event.end_datetime ? new Date(event.end_datetime).getTime() - first.getTime() : null
@@ -82,7 +86,7 @@ export function expandEvent<T extends RecurringEvent>(event: T, rangeStart: Date
   let occurrenceCount = 0
   for (let current = new Date(first); current <= rangeEnd && occurrenceCount < (event.recurrence_count ?? Infinity); current.setUTCDate(current.getUTCDate() + 1)) {
     if (recurrenceUntil && current > recurrenceUntil) break
-    if (!matches(current, first, parts)) continue
+    if (!(includeFirst && current.getTime() === first.getTime()) && !matches(current, first, parts)) continue
     occurrenceCount += 1
     if (current >= rangeStart) occurrences.push({
       key: `${event.id}-${current.toISOString()}`,
@@ -121,7 +125,7 @@ export function expandTask<T extends RecurringTask>(task: T, rangeStart: Date, r
     recurrence_until: task.recurrence_end_at ?? null,
   }
 
-  return expandEvent(adapted, rangeStart, adjustedEnd).map((occurrence) => ({
+  return expandOccurrences(adapted, rangeStart, adjustedEnd, false).map((occurrence) => ({
     key: occurrence.key,
     task,
     dueDate: localDate(new Date(occurrence.start)),

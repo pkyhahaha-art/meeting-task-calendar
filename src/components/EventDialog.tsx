@@ -12,6 +12,7 @@ import {
   isMeetingReminderKeyPast,
   isPastBangkokDate,
   meetingRecurrenceFromRule,
+  meetingRecurrenceRule,
   meetingRecurrenceSummary,
   meetingReminderOptionLabel,
   meetingWeekdayForDate,
@@ -30,6 +31,7 @@ import {
 import { TimeSelect } from './TimeSelect'
 import { SaveActionMenu } from './SaveActionMenu'
 import { NotificationDeliveryStatus, type DeliveryStatusRow } from './NotificationDeliveryStatus'
+import { expandEvent } from '../lib/recurrence'
 
 type EventRow = Database['public']['Tables']['events']['Row']
 type AttachmentRow = Database['public']['Tables']['attachments']['Row']
@@ -235,6 +237,14 @@ export function EventDialog({
 
   const creationDateInPast = !event && isPastBangkokDate(draft.date)
   const reminderStart = new Date(`${draft.date}T${draft.start || '00:00'}:00+07:00`)
+  const previewEnd = new Date(reminderStart)
+  previewEnd.setUTCFullYear(previewEnd.getUTCFullYear() + 1)
+  const recurrencePreview = draft.recurrence.frequency !== 'none' && !Number.isNaN(reminderStart.getTime())
+    ? expandEvent({ id: 'preview', start_datetime: reminderStart.toISOString(), end_datetime: null,
+      recurrence_rule: meetingRecurrenceRule(draft.recurrence), recurrence_count: draft.recurrence.count,
+      recurrence_until: draft.recurrence.until ? `${draft.recurrence.until}T23:59:59.999+07:00` : null,
+    }, reminderStart, previewEnd).slice(0, 4)
+    : []
   const expiredReminderKeys = Number.isNaN(reminderStart.getTime()) ? [] : pastMeetingReminderKeys(reminderStart, draft.reminderKeys)
   const recurringReminders = draft.recurrence.frequency !== 'none'
   const hasExpiredReminders = !isOccurrenceEdit && !recurringReminders && expiredReminderKeys.length > 0
@@ -780,6 +790,12 @@ export function EventDialog({
                           language,
                         )}
                       </p>
+                      <p className="mt-2 text-brand-800">{text('นับวันเริ่มต้นเป็นครั้งที่ 1 และจำนวนครั้งรวมวันเริ่มต้นแล้ว', 'The start date is occurrence 1 and is included in the total count.')}</p>
+                      <ol aria-label={text('ตัวอย่างวันนัด', 'Appointment date preview')} className="mt-2 flex flex-wrap gap-2">
+                        {recurrencePreview.map((occurrence, index) => <li key={occurrence.key} className="rounded-lg border border-brand-100 bg-brand-50 px-2 py-1">
+                          {index + 1}. {formatDisplayDate(bangkokDate(new Date(occurrence.start)))}
+                        </li>)}
+                      </ol>
                     </div>
                   </div>
                 </div>
