@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "node ./node_modules/vite/bin/vite.js",
-    "build": "node ./node_modules/typescript/bin/tsc -b && node ./node_modules/vite/bin/vite.js build",
+    "build": "node ./node_modules/typescript/bin/tsc -b && node ./node_modules/vite/bin/vite.js build && node scripts/copy-pdf-assets.mjs",
     "preview": "node ./node_modules/vite/bin/vite.js preview",
-    "test": "node ./node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.app.json --test src/lib/validation.test.ts src/lib/eventForm.test.ts src/lib/eventStats.test.ts src/lib/meetingAccess.test.ts src/lib/meetingEmail.test.ts src/lib/taskForm.test.ts src/lib/authRouting.test.ts src/lib/authError.test.ts src/lib/notificationRetry.test.ts src/lib/recurrence.test.ts src/lib/taskEmailLink.test.ts src/lib/appUrl.test.ts src/lib/pushSupport.test.ts src/lib/pushWorker.test.ts src/lib/notificationWorker.test.ts src/lib/mobilePushConfig.test.ts src/lib/webPushDelivery.test.ts src/lib/creationEmail.test.ts src/lib/deviceInbox.test.ts src/lib/mobileTestTarget.test.ts src/lib/mobileNotificationDetails.test.tsx src/lib/mobileNotificationService.test.ts src/components/EventDialog.test.tsx src/components/OrganizationFields.test.tsx src/lib/taskEmailDocuments.test.ts",
+    "test": "node ./node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.app.json --test src/lib/validation.test.ts src/lib/eventForm.test.ts src/lib/eventStats.test.ts src/lib/meetingAccess.test.ts src/lib/meetingEmail.test.ts src/lib/taskForm.test.ts src/lib/authRouting.test.ts src/lib/authError.test.ts src/lib/notificationRetry.test.ts src/lib/recurrence.test.ts src/lib/taskEmailLink.test.ts src/lib/appUrl.test.ts src/lib/pushSupport.test.ts src/lib/pushWorker.test.ts src/lib/notificationWorker.test.ts src/lib/mobilePushConfig.test.ts src/lib/webPushDelivery.test.ts src/lib/creationEmail.test.ts src/lib/deviceInbox.test.ts src/lib/mobileTestTarget.test.ts src/lib/mobileNotificationDetails.test.tsx src/lib/mobileNotificationService.test.ts src/components/EventDialog.test.tsx src/components/OrganizationFields.test.tsx src/lib/taskEmailDocuments.test.ts src/components/DeviceDocumentViewer.test.tsx",
     "test:watch": "node ./node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.app.json --test --watch src/lib/validation.test.ts src/lib/eventForm.test.ts src/lib/eventStats.test.ts src/lib/meetingAccess.test.ts src/lib/meetingEmail.test.ts src/lib/taskForm.test.ts src/lib/authRouting.test.ts src/lib/authError.test.ts src/lib/notificationRetry.test.ts src/lib/recurrence.test.ts src/lib/taskEmailLink.test.ts src/lib/appUrl.test.ts src/lib/pushSupport.test.ts src/lib/pushWorker.test.ts src/lib/notificationWorker.test.ts src/lib/mobilePushConfig.test.ts src/lib/webPushDelivery.test.ts src/components/EventDialog.test.tsx",
     "lint": "node ./node_modules/eslint/bin/eslint.js . --max-warnings 0",
     "typecheck": "node ./node_modules/typescript/bin/tsc -b --pretty false"
@@ -22,6 +22,7 @@
     "@tanstack/react-query": "5.87.4",
     "date-fns": "4.1.0",
     "lucide-react": "0.544.0",
+    "pdfjs-dist": "6.3.289",
     "qrcode.react": "^4.2.0",
     "react": "18.3.1",
     "react-dom": "18.3.1",

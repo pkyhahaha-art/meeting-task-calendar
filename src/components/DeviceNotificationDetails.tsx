@@ -44,7 +44,7 @@ export function DeviceNotificationDetails({ alert, details = alert.details, docu
         <p className="break-words text-sm font-semibold text-slate-800">{file.name}</p>
         {typeof file.size === 'number' && file.size > 0 && <p className="text-xs text-slate-500">{file.size < 1024 * 1024 ? `${Math.ceil(file.size / 1024)} KB` : `${(file.size / (1024 * 1024)).toFixed(1)} MB`}</p>}
         <div className="flex flex-wrap gap-2">
-          {file.previewUrl && <a href={file.kind === 'file' ? `#${deviceDocumentRoute(alert.id, file.id)}` : file.previewUrl} rel="noreferrer" className="btn-secondary text-sm"><ExternalLink size={16} />เปิดดูเอกสาร</a>}
+          {file.previewUrl && <a href={file.kind === 'file' ? `#${deviceDocumentRoute(alert.id, file.id)}` : file.previewUrl} target={file.kind === 'drive' ? '_blank' : undefined} rel="noopener noreferrer" className="btn-secondary text-sm"><ExternalLink size={16} />เปิดดูเอกสาร</a>}
           {file.downloadUrl && <a href={`#${deviceDocumentRoute(alert.id, file.id, true)}`} className="btn-secondary text-sm"><Download size={16} />ดาวน์โหลด</a>}
         </div>
         {file.kind === 'drive' && file.previewUrl && <p className="text-xs text-slate-500">ดูและดาวน์โหลดจาก Google Drive ตามสิทธิ์ที่ผู้สร้างแชร์ไว้</p>}
