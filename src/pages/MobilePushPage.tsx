@@ -6,10 +6,8 @@ import {
   CheckCircle2,
   Copy,
   RefreshCw,
-  Bell,
   BellRing,
   Trash2,
-  Send,
   Sparkles,
   ShieldCheck,
   Clock,
@@ -34,6 +32,8 @@ import {
   type ConnectedDevice,
 } from '../lib/mobilePush'
 
+import { MobileConnectionGuide } from '../components/MobileConnectionGuide'
+
 export function MobilePushPage() {
   const { user } = useAuth()
   const { text } = useLanguage()
@@ -49,7 +49,8 @@ export function MobilePushPage() {
   const initialGeneratedRef = useRef(false)
   const [testingDevice, setTestingDevice] = useState<string | null>(null)
   const [remoteTestStatus, setRemoteTestStatus] = useState<string | null>(null)
-  const [testDeviceId, setTestDeviceId] = useState('')
+  const [showPairing, setShowPairing] = useState(false)
+  const previousDeviceCount = useRef<number | null>(null)
   const pushConfig = useQuery({ queryKey: ['mobile-push-config'], queryFn: () => loadMobilePushConfig(import.meta.env.VITE_SUPABASE_URL), retry: false })
 
   // Query connected devices
@@ -61,7 +62,7 @@ export function MobilePushPage() {
   })
 
   const devices = devicesQuery.data || []
-  const testDevice = devices.find((device) => device.id === testDeviceId) || devices[0]
+  const showPairingPanel = devicesQuery.isFetchedAfterMount && devicesQuery.isSuccess && (!devices.length || showPairing)
 
   // Delete device mutation
   const deleteMutation = useMutation({
@@ -98,11 +99,18 @@ export function MobilePushPage() {
 
   // Initialize pairing token on mount or when user loads
   useEffect(() => {
+    if (!showPairingPanel) { initialGeneratedRef.current = false; return }
     if (user?.id && !initialGeneratedRef.current) {
       initialGeneratedRef.current = true
       void generateNewToken()
     }
-  }, [user?.id, generateNewToken])
+  }, [user?.id, generateNewToken, showPairingPanel])
+
+  useEffect(() => {
+    if (!devicesQuery.isSuccess) return
+    if (previousDeviceCount.current !== null && devices.length > previousDeviceCount.current) setShowPairing(false)
+    previousDeviceCount.current = devices.length
+  }, [devicesQuery.isSuccess, devices.length])
 
   // Countdown timer effect
   useEffect(() => {
@@ -239,10 +247,98 @@ export function MobilePushPage() {
         </div>
       </section>
 
-      {/* Main Grid: QR Pairing Card + Instructions */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      {/* Connected Devices List */}
+      <section className="bg-white rounded-3xl border border-purple-100 p-6 sm:p-8 shadow-sm space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-purple-100 pb-4">
+          <div className="space-y-1">
+            <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+              <Smartphone className="text-brand-600" size={22} />
+              {text('อุปกรณ์ที่เชื่อมต่อแล้ว', 'Connected Devices')}
+              <span className="ml-2 rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-bold text-brand-700">
+                {devices.length} {text('เครื่อง', 'devices')}
+              </span>
+            </h2>
+            {testError && <p role="alert" className="text-sm text-red-700">{testError}</p>}
+            <p className="text-xs text-slate-500">
+              {text('อุปกรณ์ทั้งหมดที่จะได้รับการแจ้งเตือน Meeting และ Task ของคุณ', 'All devices configured to receive your meeting and task notifications.')}
+            </p>
+          </div>
+          {devicesQuery.isSuccess && devices.length > 0 && <button type="button" className="btn-secondary" onClick={() => setShowPairing((value) => !value)}>{showPairing ? text('ปิด QR Code', 'Close QR code') : text('เชื่อมต่ออุปกรณ์เพิ่ม', 'Connect another device')}</button>}
+        </div>
+
+        {devicesQuery.isPending ? <p role="status" className="text-slate-500">{text('กำลังตรวจอุปกรณ์…', 'Checking devices…')}</p> : devicesQuery.isError ? <div role="alert" className="space-y-2 text-red-700"><p>{text('โหลดอุปกรณ์ไม่ได้ กรุณาลองใหม่', 'Could not load devices. Please retry.')}</p><button type="button" className="btn-secondary" onClick={() => void devicesQuery.refetch()}>{text('ลองใหม่', 'Retry')}</button></div> : devices.length === 0 ? (
+          <div className="rounded-2xl border-2 border-dashed border-purple-200/80 bg-purple-50/40 p-8 text-center space-y-3">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-purple-100 text-brand-600 shadow-sm">
+              <Smartphone size={28} />
+            </div>
+            <h3 className="text-base font-bold text-slate-800">{text('ยังไม่มีอุปกรณ์ที่เชื่อมต่อ', 'No connected devices yet')}</h3>
+            <p className="max-w-md mx-auto text-xs text-slate-500">
+              {text(
+                'ใช้โทรศัพท์มือถือสแกน QR Code ด้านล่างเพื่อเริ่มรับการแจ้งเตือนบนมือถือของคุณได้ทันที',
+                'Scan the QR code below with your mobile phone to begin receiving notifications.'
+              )}
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {devices.map((device) => {
+              const isPhone = !device.user_agent || /iPhone|Android|Mobile/i.test(device.user_agent)
+              return (
+                <div
+                  key={device.id}
+                  className="flex items-center justify-between gap-4 rounded-2xl border border-purple-100 bg-gradient-to-r from-purple-50/50 via-white to-amber-50/30 p-4 shadow-sm hover:border-purple-200 transition"
+                >
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-100 to-amber-100 text-brand-800 shadow-sm">
+                      {isPhone ? <Smartphone size={24} /> : <Laptop size={24} />}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate text-sm font-bold text-slate-900">
+                          {device.device_name || text('อุปกรณ์มือถือ', 'Mobile Device')}
+                        </p>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[11px] font-semibold text-green-700">
+                          <CheckCircle2 size={12} />
+                          {text('เชื่อมต่อแล้ว', 'Active')}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 truncate text-xs text-slate-500">
+                        {text('เชื่อมเมื่อ: ', 'Paired: ')}
+                        {new Date(device.created_at).toLocaleDateString('th-TH', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex shrink-0 items-center gap-1">
+                  <button type="button" onClick={() => void handleDeviceTest(device)} disabled={Boolean(testingDevice) || !pushConfig.data?.ready} className="min-h-11 rounded-xl px-3 text-xs font-semibold text-brand-700 hover:bg-purple-100 disabled:opacity-50">{testingDevice === device.id ? text('กำลังส่ง…', 'Sending…') : text('ส่งทดสอบไปเครื่องนี้', 'Send test to device')}</button>
+                  <button
+                    type="button"
+                    disabled={deleteMutation.isPending} onClick={() => void handleDeleteDevice(device).catch(() => {})}
+                    className="shrink-0 rounded-xl p-2.5 text-slate-400 hover:bg-red-50 hover:text-red-600 transition"
+                    title={text('ยกเลิกการเชื่อมต่อ', 'Disconnect')}
+                    aria-label={text('ยกเลิกการเชื่อมต่อ', 'Disconnect')}
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+        {remoteTestStatus && <p role="status" className="rounded-xl bg-purple-50 p-3 text-sm text-brand-800">{remoteTestStatus}</p>}
+        {deleteMutation.isError && <p role="alert" className="text-sm text-red-700">{text('ยกเลิกการเชื่อมต่อไม่ได้ กรุณาลองใหม่', 'Could not disconnect. Please retry.')}</p>}
+      </section>
+      {/* Pairing QR is opened only for a first or additional device. */}
+      {showPairingPanel && <div className="mx-auto max-w-xl">
         {/* Left Column: QR Code Box */}
-        <section className="lg:col-span-6 bg-white rounded-3xl border border-purple-100 p-6 sm:p-8 shadow-sm flex flex-col items-center text-center space-y-6">
+        <section className="bg-white rounded-3xl border border-purple-100 p-6 sm:p-8 shadow-sm flex flex-col items-center text-center space-y-6">
           <div className="space-y-1">
             <h2 className="text-xl font-bold text-slate-900 flex items-center justify-center gap-2">
               <Smartphone className="text-brand-600" size={24} />
@@ -376,224 +472,8 @@ export function MobilePushPage() {
             <span>{text('ปลอดภัย: โทเค็นเข้ารหัสใช้ได้ครั้งเดียว ไม่เปิดเผยข้อมูลส่วนตัว', 'Secure: One-time encrypted token without credential exposure')}</span>
           </div>
         </section>
-
-        {/* Right Column: Step-by-Step Guide + Quick Status */}
-        <section className="lg:col-span-6 space-y-6">
-          {/* 3 Step Guide Card */}
-          <div className="bg-white rounded-3xl border border-purple-100 p-6 sm:p-8 shadow-sm space-y-6">
-            <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-              <Sparkles className="text-amber-500" size={22} />
-              {text('ขั้นตอนง่ายๆ ในการเชื่อมต่อ', 'Simple Setup Steps')}
-            </h2>
-
-            <div className="space-y-4">
-              <div className="flex items-start gap-4 p-3.5 rounded-2xl bg-gradient-to-r from-purple-50/70 to-transparent border border-purple-100/80">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-brand-700 font-bold text-white shadow-sm">
-                  1
-                </span>
-                <div className="space-y-0.5">
-                  <h3 className="text-sm font-bold text-slate-900">{text('สแกน QR Code', 'Scan QR Code')}</h3>
-                  <p className="text-xs text-slate-600 leading-relaxed">
-                    {text('เปิดแอปกล้องถ่ายรูปบนมือถือ แล้วสแกนภาพ QR Code ด้านซ้ายมือ', 'Open the camera on your mobile phone and scan the QR code on the left.')}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-4 p-3.5 rounded-2xl bg-gradient-to-r from-purple-50/70 to-transparent border border-purple-100/80">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-brand-700 font-bold text-white shadow-sm">
-                  2
-                </span>
-                <div className="space-y-0.5">
-                  <h3 className="text-sm font-bold text-slate-900">{text('กดยืนยันเปิดการแจ้งเตือน', 'Confirm Notification Permission')}</h3>
-                  <p className="text-xs text-slate-600 leading-relaxed">
-                    {text('กดปุ่ม "เปิดการแจ้งเตือนบนมือถือ" และกด "อนุญาต (Allow)" บนมือถือ', 'Tap "Enable Notifications" and allow notification permissions on your phone.')}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-4 p-3.5 rounded-2xl bg-gradient-to-r from-purple-50/70 to-transparent border border-purple-100/80">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-brand-700 font-bold text-white shadow-sm">
-                  3
-                </span>
-                <div className="space-y-0.5">
-                  <h3 className="text-sm font-bold text-slate-900">{text('ตรวจสอบสถานะการเชื่อมต่อ', 'Check Connection Status')}</h3>
-                  <p className="text-xs text-slate-600 leading-relaxed">
-                    {text('เมื่อสมัครการแจ้งเตือนสำเร็จ อุปกรณ์จะปรากฏในรายการด้านล่าง การส่งแจ้งเตือนต้องเปิดใช้งานจากระบบก่อน', 'After subscribing, your device appears below. Notification delivery must also be enabled on the server.')}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-green-200 bg-green-50 p-4 space-y-3">
-              <h3 className="text-sm font-bold text-green-900">{text('สำหรับผู้ใช้ Android • Chrome', 'Android • Chrome')}</h3>
-              <ol className="list-decimal space-y-1.5 pl-4 text-xs leading-relaxed text-green-900">
-                <li>{text('สแกน QR ของบัญชีคุณ แล้วเปิดลิงก์ใน Chrome หากสแกนแล้วเปิดใน LINE ให้เลือกเปิดด้วย Chrome', 'Scan your account QR and open the link in Chrome. If LINE opens it, choose Open in Chrome.')}</li>
-                <li>{text('กด “เปิดการแจ้งเตือนบนมือถือเครื่องนี้” แล้วเลือก “อนุญาต (Allow)”', 'Tap Enable notifications on this phone, then Allow.')}</li>
-                <li>{text('หลังเชื่อมต่อแล้ว เปิดกล่องข้อความ และกดเมนู Chrome ⋮ → “เพิ่มลงในหน้าจอหลัก” / “ติดตั้งแอป” เพื่อเปิดอ่านครั้งต่อไป', 'After pairing, open the inbox, then Chrome ⋮ → Add to Home screen / Install app for future access.')}</li>
-              </ol>
-              <p className="text-xs text-green-800">{text('ไม่ต้องล็อกอิน Gmail บนมือถือซ้ำ หากเคยกดบล็อก ให้เปิด Chrome → การตั้งค่า → การตั้งค่าเว็บไซต์ → การแจ้งเตือน และอนุญาตเว็บไซต์นี้ รวมถึงสิทธิ์แจ้งเตือน Chrome ในการตั้งค่า Android', 'No repeated Gmail sign-in is needed. If blocked, allow this site under Chrome → Settings → Site settings → Notifications, and allow Chrome notifications in Android settings.')}</p>
-            </div>
-            {/* iOS-specific notice */}
-            <div className="rounded-2xl border border-orange-200 bg-gradient-to-r from-orange-50 to-amber-50 p-4 space-y-3">
-              <div className="flex items-center gap-2 font-bold text-orange-900 text-sm">
-                <span className="text-lg">🍎</span>
-                <span>{text('สำหรับผู้ใช้ iPhone / iPad', 'iPhone / iPad Users')}</span>
-              </div>
-              <p className="text-xs text-orange-800 leading-relaxed">
-                {text(
-                  'Safari บน iOS ต้องเพิ่มเว็บไซต์ไปที่หน้าจอหลัก (Add to Home Screen) ก่อน จึงจะขอสิทธิ์การแจ้งเตือนได้',
-                  'iOS Safari requires you to add this website to your Home Screen before notification permissions can be granted.',
-                )}
-              </p>
-              <ol className="space-y-1.5 text-xs text-orange-900">
-                <li className="flex items-start gap-2">
-                  <span className="font-bold shrink-0">1.</span>
-                  <span>{text('สแกน QR ด้วย iPhone เปิดลิงก์ใน Safari แล้วกดคัดลอกลิงก์เชื่อมต่อ', 'Scan the QR, open the link in Safari, and copy the pairing link')}</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="font-bold shrink-0">2.</span>
-                  <span>
-                    {text(
-                      'แตะปุ่ม Share (กล่องมีลูกศรขึ้น) ที่แถบล่าง → เลือก "เพิ่มลงในหน้าจอโฮม" (Add to Home Screen)',
-                      'Tap the Share button (box with arrow) at the bottom bar → select "Add to Home Screen"',
-                    )}
-                  </span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="font-bold shrink-0">3.</span>
-                  <span>{text('กด "เพิ่ม" แล้วเปิดแอปจากไอคอนบนหน้าจอหลัก', 'Tap "Add", then open the app from the Home Screen icon')}</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="font-bold shrink-0">4.</span>
-                  <span>{text('วางลิงก์ที่คัดลอกในแอป PEA Calendar กดตรวจสอบลิงก์ แล้วเปิดการแจ้งเตือน', 'Paste the copied link in the PEA Calendar app, verify it, and enable notifications')}</span>
-                </li>
-              </ol>
-              <p className="text-[11px] text-orange-700">
-                {text('⚠️ ต้องใช้ iOS 16.4 ขึ้นไป และต้องเปิดแอปจากไอคอน Home Screen เท่านั้น (ไม่ใช่ Safari โดยตรง)', '⚠️ Requires iOS 16.4+ and must be opened from the Home Screen icon, not directly from Safari.')}
-              </p>
-            </div>
-          </div>
-
-          {/* Test Notification Action Card */}
-          <div className="rounded-3xl border border-amber-200/80 bg-gradient-to-br from-amber-50 via-purple-50 to-white p-6 shadow-sm space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500 to-brand-600 text-white shadow-md">
-                  <Bell size={20} />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">{text('ทดสอบการแจ้งเตือน', 'Test Notifications')}</h3>
-                  <p className="text-xs text-slate-500">{text('ส่งจากเซิร์ฟเวอร์ไปอุปกรณ์ที่เชื่อมต่อ ข้อความที่รับสำเร็จจะแสดงในกล่องแจ้งเตือนของเครื่องนั้น', 'Send from the server to a paired device. Received messages appear in its inbox.')}</p>
-                </div>
-              </div>
-            </div>
-
-            {devices.length > 1 && <label className="block text-sm font-semibold text-slate-700">{text('อุปกรณ์ที่จะรับข้อความทดสอบ', 'Device to test')}<select className="field-input mt-1" value={testDevice?.id || ''} onChange={(event) => setTestDeviceId(event.target.value)}>{devices.map((device) => <option key={device.id} value={device.id}>{device.device_name || text('อุปกรณ์มือถือ', 'Mobile device')} · {new Date(device.created_at).toLocaleString()}</option>)}</select></label>}
-            <button
-              type="button"
-              onClick={() => { if (testDevice) void handleDeviceTest(testDevice) }}
-              disabled={Boolean(testingDevice) || !testDevice || !pushConfig.data?.ready}
-              className="w-full inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-700 via-fuchsia-600 to-amber-500 px-4 py-2.5 font-semibold text-white shadow-md shadow-purple-300/40 hover:from-brand-800 hover:via-fuchsia-700 hover:to-amber-600 transition disabled:opacity-60"
-            >
-              {testingDevice ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-              {testingDevice ? text('กำลังส่งข้อความทดสอบ…', 'Sending test…') : text('ส่งทดสอบไปอุปกรณ์ที่เชื่อมต่อ', 'Send test to paired device')}
-            </button>
-            {!testDevice && <p className="text-xs text-slate-500">{text('เชื่อมต่อมือถือก่อนส่งข้อความทดสอบ', 'Pair a device before sending a test.')}</p>}
-            {remoteTestStatus && <p role="status" className="rounded-xl bg-purple-50 p-3 text-sm text-brand-800">{remoteTestStatus}</p>}
-            {testError && (
-              <div role="alert" className="rounded-xl bg-red-50 border border-red-200 p-3 text-xs font-semibold text-red-800 flex items-center gap-2">
-                <AlertCircle size={16} className="text-red-600 shrink-0" />
-                <span>{testError}</span>
-              </div>
-            )}
-          </div>
-        </section>
-      </div>
-
-      {/* Connected Devices List */}
-      <section className="bg-white rounded-3xl border border-purple-100 p-6 sm:p-8 shadow-sm space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-purple-100 pb-4">
-          <div className="space-y-1">
-            <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-              <Smartphone className="text-brand-600" size={22} />
-              {text('อุปกรณ์ที่เชื่อมต่อแล้ว', 'Connected Devices')}
-              <span className="ml-2 rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-bold text-brand-700">
-                {devices.length} {text('เครื่อง', 'devices')}
-              </span>
-            </h2>
-            <p className="text-xs text-slate-500">
-              {text('อุปกรณ์ทั้งหมดที่จะได้รับการแจ้งเตือน Meeting และ Task ของคุณ', 'All devices configured to receive your meeting and task notifications.')}
-            </p>
-          </div>
-        </div>
-
-        {devices.length === 0 ? (
-          <div className="rounded-2xl border-2 border-dashed border-purple-200/80 bg-purple-50/40 p-8 text-center space-y-3">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-purple-100 text-brand-600 shadow-sm">
-              <Smartphone size={28} />
-            </div>
-            <h3 className="text-base font-bold text-slate-800">{text('ยังไม่มีอุปกรณ์ที่เชื่อมต่อ', 'No connected devices yet')}</h3>
-            <p className="max-w-md mx-auto text-xs text-slate-500">
-              {text(
-                'ใช้โทรศัพท์มือถือสแกน QR Code ด้านบนเพื่อเริ่มรับการแจ้งเตือนบนมือถือของคุณได้ทันที',
-                'Scan the QR code above with your mobile phone to begin receiving notifications.'
-              )}
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {devices.map((device) => {
-              const isPhone = !device.user_agent || /iPhone|Android|Mobile/i.test(device.user_agent)
-              return (
-                <div
-                  key={device.id}
-                  className="flex items-center justify-between gap-4 rounded-2xl border border-purple-100 bg-gradient-to-r from-purple-50/50 via-white to-amber-50/30 p-4 shadow-sm hover:border-purple-200 transition"
-                >
-                  <div className="flex items-center gap-3.5 min-w-0">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-100 to-amber-100 text-brand-800 shadow-sm">
-                      {isPhone ? <Smartphone size={24} /> : <Laptop size={24} />}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="truncate text-sm font-bold text-slate-900">
-                          {device.device_name || text('อุปกรณ์มือถือ', 'Mobile Device')}
-                        </p>
-                        <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[11px] font-semibold text-green-700">
-                          <CheckCircle2 size={12} />
-                          {text('เชื่อมต่อแล้ว', 'Active')}
-                        </span>
-                      </div>
-                      <p className="mt-0.5 truncate text-xs text-slate-500">
-                        {text('เชื่อมเมื่อ: ', 'Paired: ')}
-                        {new Date(device.created_at).toLocaleDateString('th-TH', {
-                          day: 'numeric',
-                          month: 'short',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex shrink-0 items-center gap-1">
-                  <button type="button" onClick={() => void handleDeviceTest(device)} disabled={Boolean(testingDevice) || !pushConfig.data?.ready} className="min-h-11 rounded-xl px-3 text-xs font-semibold text-brand-700 hover:bg-purple-100 disabled:opacity-50">{testingDevice === device.id ? text('กำลังส่ง…', 'Sending…') : text('ส่งทดสอบไปเครื่องนี้', 'Send test to device')}</button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteDevice(device)}
-                    className="shrink-0 rounded-xl p-2.5 text-slate-400 hover:bg-red-50 hover:text-red-600 transition"
-                    title={text('ยกเลิกการเชื่อมต่อ', 'Disconnect')}
-                    aria-label={text('ยกเลิกการเชื่อมต่อ', 'Disconnect')}
-                  >
-                    <Trash2 size={18} />
-                  </button>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </section>
+      </div>}
+      <MobileConnectionGuide />
     </main>
   )
 }

@@ -84,8 +84,8 @@ export function AppShell() {
         </div>
         <nav className="space-y-1 px-3 py-5" aria-label={text('เมนูหลัก', 'Main navigation')}>
           <NavLink to="/calendar" onClick={() => setMenuOpen(false)} className={navClass}><CalendarDays size={19} />{t('calendar')}</NavLink>
-          <NavLink to="/mobile-push" onClick={() => setMenuOpen(false)} className={navClass}><Smartphone size={19} className="shrink-0" /><span>{text('เชื่อมต่อการแจ้งเตือนผ่านมือถือ', 'Mobile notifications')}</span></NavLink>
-          <NavLink to="/profile" onClick={() => setMenuOpen(false)} className={navClass}><UserRound size={19} />{text('โปรไฟล์และตั้งค่า', 'Profile & settings')}</NavLink>
+          <NavLink to="/mobile-push" onClick={() => setMenuOpen(false)} className={navClass}><Smartphone size={19} className="shrink-0" /><span>{text('แจ้งเตือนมือถือ', 'Mobile notifications')}</span></NavLink>
+          <NavLink to="/profile" onClick={() => setMenuOpen(false)} className={navClass}><UserRound size={19} />{text('บัญชีและตั้งค่า', 'Account & settings')}</NavLink>
           {profile?.role === 'admin' && <NavLink to="/admin" onClick={() => setMenuOpen(false)} className={navClass}><ShieldCheck size={19} />Admin</NavLink>}
         </nav>
         <div className="relative mx-4 mt-auto mb-4 min-h-36 overflow-visible rounded-2xl bg-gradient-to-br from-purple-50 via-pink-50 to-amber-50 p-3">
@@ -108,7 +108,7 @@ export function AppShell() {
             <span className="min-w-0 leading-tight"><span className="block truncate text-base font-extrabold tracking-tight text-brand-900">Meeting &amp; Task Calendar</span><span className="block truncate text-xs font-medium text-slate-500">{text('ระบบปฏิทินการประชุมและงาน', 'Meeting and task management')}</span></span>
           </div>
           {statsCard}
-          <div className="flex min-w-0 items-center justify-end gap-2"><LanguageToggle /><span className="hidden max-w-32 truncate text-sm font-semibold text-slate-700 xl:block">{displayName}</span><NavLink to="/profile" className="rounded-full bg-purple-100 p-2 text-brand-700" aria-label={text('โปรไฟล์และตั้งค่า', 'Profile & settings')}><Settings size={18} /></NavLink></div>
+          <div className="flex min-w-0 items-center justify-end gap-2"><LanguageToggle /><span className="hidden max-w-32 truncate text-sm font-semibold text-slate-700 xl:block">{displayName}</span><NavLink to="/profile" className="rounded-full bg-purple-100 p-2 text-brand-700" aria-label={text('บัญชีและตั้งค่า', 'Account & settings')}><Settings size={18} /></NavLink></div>
         </header>
         <Outlet />
       </div>
