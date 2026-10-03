@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
-import { BellRing, CheckCircle2, ChevronLeft, Home, Loader2, RefreshCw, Smartphone, Send, Trash2 } from 'lucide-react'
+import { BellRing, CheckCircle2, ChevronLeft, Loader2, RefreshCw, Smartphone, Send, Trash2 } from 'lucide-react'
 import peaLogo from '../../ภาพประกอบUI/PEA Logo (1).png'
 import { deleteDeviceAlerts, listDeviceAlerts, markDeviceAlertRead, requestDeviceInboxBadgeSync, updateDeviceAlertDetails, type DevicePairing } from '../lib/deviceInbox'
 import { loadPairedDeviceNotification, restoreDevicePairing, sendPairedDeviceTestNotification } from '../lib/mobilePush'
 import { DeviceNotificationDetails } from '../components/DeviceNotificationDetails'
 import { useConfirm } from '../components/ConfirmDialogProvider'
-import { useAuth } from '../auth/AuthProvider'
 import { AppFooter } from '../components/AppFooter'
 import { AppLogo } from '../components/AppLogo'
 
@@ -21,7 +20,6 @@ function dateLabel(value?: string) {
 
 export function DeviceInboxPage() {
   const confirm = useConfirm()
-  const { user, loading } = useAuth()
   const [params, setParams] = useSearchParams()
   const selectedId = params.get('notification')
   const [device, setDevice] = useState<DevicePairing | null>(null)
@@ -126,17 +124,17 @@ export function DeviceInboxPage() {
       <header className="space-y-2 pt-3">
         <div className="flex items-center justify-between gap-3">
           <img src={peaLogo} alt="PEA" className="h-10 object-contain" />
-          {!loading && <Link to={user ? '/calendar' : '/login'} aria-label="กลับหน้าหลัก" className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl border border-purple-200 bg-white px-3 text-sm font-semibold text-brand-700 shadow-sm hover:bg-purple-50"><Home size={18} />หน้าหลัก</Link>}
         </div>
         <div className="flex items-center gap-2"><AppLogo className="h-9 w-9" /><p className="text-sm font-bold text-brand-700">PEA Meeting &amp; Task Calendar</p></div>
         <p className="text-xs text-slate-500">แจ้งเตือนงานและประชุม</p>
+        <p className="rounded-xl border border-purple-100 bg-white/70 px-3 py-2 text-xs leading-relaxed text-slate-600"><span className="font-semibold text-brand-700">กลับหน้าจอโฮมมือถือ:</span> ปัดขึ้นจากขอบล่างของหน้าจอ หรือกดปุ่มโฮมของเครื่อง การเชื่อมต่อรับแจ้งเตือนยังอยู่เหมือนเดิม</p>
       </header>
       <section className="rounded-2xl border border-purple-100 bg-white p-4 shadow-sm">
         <div className="flex items-center gap-2 font-semibold text-slate-800">
           {checking ? <Loader2 size={18} className="animate-spin" /> : device ? <CheckCircle2 size={18} className="text-green-600" /> : <Smartphone size={18} />}
           <span>{checking ? 'กำลังตรวจอุปกรณ์…' : device ? `เชื่อมต่อแล้ว${device.userName ? ` · ${device.userName}` : ''}` : 'ยังไม่ได้เชื่อมต่อรับข้อความใหม่'}</span>
         </div>
-        <p className="mt-2 text-xs leading-relaxed text-slate-500">เมื่อเชื่อมต่อแล้ว ปัดปิดแอปได้ เปิดจาก Home Screen อีกครั้งเพื่ออ่านข้อความ ไม่ต้องใส่ลิงก์ซ้ำ</p>
+        <p className="mt-2 text-xs leading-relaxed text-slate-500">เมื่อเชื่อมต่อแล้ว รับแจ้งเตือนได้แม้ออกจากแอป เปิดจาก Home Screen อีกครั้งเพื่ออ่านข้อความ ไม่ต้องใส่ลิงก์ซ้ำ</p>
         <p className="mt-2 text-xs leading-relaxed text-slate-500">ตัวเลขบนไอคอนนับข้อความที่ยังไม่ได้อ่าน และลดลงเมื่อเปิดอ่านหรือลบข้อความ บน Android อาจแสดงเป็นจุดตามระบบของเครื่อง</p>
         {connectionError && <p role="alert" className="mt-2 text-sm text-amber-800">{connectionError}</p>}
         {!checking && !device && !connectionError && <Link to="/pair-device?reconnect=1" className="mt-3 inline-flex min-h-11 items-center font-semibold text-brand-700">เชื่อมต่ออุปกรณ์</Link>}
