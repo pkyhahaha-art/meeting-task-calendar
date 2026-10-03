@@ -414,6 +414,10 @@ export function CalendarPage() {
       if (!event) {
         const { error } = await supabase.from('events').update({ suppress_guest_notifications: false }).eq('id', eventId)
         if (error) throw error
+        if (draft.notifyEmail) {
+          const { error } = await supabase.rpc('queue_creation_confirmation', { target_event_id: eventId! })
+          if (error) throw error
+        }
         if (draft.sendImmediate) {
           const { error: notificationError } = await supabase.rpc('queue_meeting_initial_notifications', { target_event_id: eventId! })
           if (notificationError) throw notificationError
@@ -497,7 +501,7 @@ export function CalendarPage() {
               scheduled_at: date.toISOString(),
               channel_email: draft.notifyEmail,
               channel_line: hasInternal && draft.notifyLine,
-              status: task && !notifyRecipients && date.getTime() <= Date.now() ? ('cancelled' as const) : ('scheduled' as const),
+              status: meetingReminderStatus(date),
             }))
             const { error } = await supabase.from('task_reminders').insert(reminders)
             if (error) throw error
@@ -512,7 +516,7 @@ export function CalendarPage() {
               scheduled_at: scheduledAt.toISOString(),
               channel_email: draft.notifyEmail,
               channel_line: hasInternal && draft.notifyLine,
-              status: task && !notifyRecipients && scheduledAt.getTime() <= Date.now() ? ('cancelled' as const) : ('scheduled' as const),
+              status: meetingReminderStatus(scheduledAt),
             }
           })
           const { error } = await supabase.from('task_reminders').insert(reminders)
@@ -530,6 +534,10 @@ export function CalendarPage() {
           if (uploaded.error) throw uploaded.error
           const { error } = await supabase.from('task_attachments').insert({ task_id: taskId, file_name: file.name, mime_type: file.type, file_size: file.size, storage_path: storagePath, uploaded_by: user!.id })
           if (error) { await supabase.storage.from('task-documents').remove([storagePath]); throw error }
+        }
+        if (!task && draft.notifyEmail) {
+          const { error } = await supabase.rpc('queue_creation_confirmation', { target_task_id: taskId })
+          if (error) throw error
         }
         if (notifyRecipients && hasInternal && (!task || task.status === 'pending')) {
           const { error } = await supabase.from('tasks').update({ notification_requested_at: new Date().toISOString() }).eq('id', taskId)

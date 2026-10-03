@@ -77,7 +77,7 @@ function formatSize(value: number | null) {
 export function subject(template: string, payload: Record<string, unknown>) {
   const title = text(payload.title)
   const labels: Record<string, string> = {
-    meeting_created: 'Meeting ใหม่', meeting_updated: 'Meeting ถูกแก้ไข', meeting_cancelled: 'Meeting ถูกยกเลิก',
+    meeting_created: 'คุณได้สร้าง Meeting แล้ว', task_created: 'คุณได้สร้าง Task แล้ว', meeting_updated: 'Meeting ถูกแก้ไข', meeting_cancelled: 'Meeting ถูกยกเลิก',
     meeting_guest_added: 'คุณได้รับเชิญเข้าร่วม Meeting', meeting_reminder: 'แจ้งเตือน Meeting', task_assigned: 'คุณได้รับมอบหมาย Task',
     task_reminder: 'แจ้งเตือน Task', task_updated: 'Task ถูกแก้ไข', task_cancelled: 'Task ถูกยกเลิก', task_completed: 'Task เสร็จแล้ว',
   }

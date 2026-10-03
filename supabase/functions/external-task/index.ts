@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { externalTaskUrl } from './link.ts'
+import { initialExternalRecipients } from './recipients.ts'
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -51,16 +52,30 @@ async function issueToken(request: Request) {
   const { data: recipients, error: recipientsError } = await admin.from('task_external_recipients').select('email').eq('task_id', task.id).order('email')
   if (recipientsError) throw recipientsError
   if (!recipients?.length) return response({ error: 'ไม่พบอีเมลผู้รับภายนอกสำหรับ Task นี้' }, 422)
+  let recipientEmails = recipients.map((recipient) => recipient.email)
+  if (notificationType === 'task_assigned') {
+    const [{ data: creator, error: creatorError }, { data: members, error: membersError }] = await Promise.all([
+      admin.from('profiles').select('email').eq('id', task.creator_user_id).single(),
+      admin.from('task_internal_recipients').select('profiles!user_id(email,status)').eq('task_id', task.id),
+    ])
+    if (creatorError || membersError) throw creatorError ?? membersError
+    const internalEmails = (members ?? []).flatMap((member) => {
+      const profile = member.profiles as unknown as { email: string; status: string } | null
+      return profile?.status === 'active' ? [profile.email] : []
+    })
+    recipientEmails = initialExternalRecipients(recipientEmails, creator.email, internalEmails)
+  }
   const deliveries = []
-  for (const recipient of recipients) {
+  for (const email of recipientEmails) {
     const token = randomToken()
     const tokenHash = await hashToken(token)
     const recipientTaskUrl = externalTaskUrl(publicAppUrl, token)
-    const { error: tokenError } = await admin.from('external_task_tokens').insert({ task_id: task.id, external_email: recipient.email, token_hash: tokenHash, expires_at: new Date(Date.now() + 30 * 24 * 60 * 60_000).toISOString() })
+    const { error: tokenError } = await admin.from('external_task_tokens').insert({ task_id: task.id, external_email: email, token_hash: tokenHash, expires_at: new Date(Date.now() + 30 * 24 * 60 * 60_000).toISOString() })
     if (tokenError) throw tokenError
-    deliveries.push({ task_id: task.id, recipient_type: 'external_assignee', recipient_reference: recipient.email, channel: 'email', idempotency_key: `external-task:${notificationType}:${task.id}:${tokenHash}`, scheduled_at: now, template_key: notificationType, payload: { entity: 'task', id: task.id, title: task.title, description: task.description, due_date: task.due_date, due_time: task.due_time, external_url: recipientTaskUrl } })
+    deliveries.push({ task_id: task.id, recipient_type: 'external_assignee', recipient_reference: email, channel: 'email', idempotency_key: `external-task:${notificationType}:${task.id}:${notificationType === 'task_assigned' ? email : tokenHash}`, scheduled_at: now, template_key: notificationType, payload: { entity: 'task', id: task.id, title: task.title, description: task.description, due_date: task.due_date, due_time: task.due_time, external_url: recipientTaskUrl } })
   }
-  const { error: queueError } = await admin.from('notification_deliveries').insert(deliveries)
+  if (!deliveries.length) return response({ issued: 0 })
+  const { error: queueError } = await admin.from('notification_deliveries').upsert(deliveries, { onConflict: 'idempotency_key', ignoreDuplicates: true })
   if (queueError) throw queueError
   return response({ issued: deliveries.length })
 }

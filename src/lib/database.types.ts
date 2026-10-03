@@ -269,6 +269,10 @@ export interface Database {
         Args: { target_event_id: string }
         Returns: number
       }
+      queue_creation_confirmation: {
+        Args: { target_event_id?: string; target_task_id?: string }
+        Returns: undefined
+      }
       queue_meeting_initial_notifications: {
         Args: { target_event_id: string }
         Returns: number

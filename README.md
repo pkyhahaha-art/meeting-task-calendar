@@ -132,6 +132,12 @@ GitHub remains the source repository. Vercel builds and serves the web applicati
 
 6. Pushes to `main` automatically create a production deployment. Keep the existing GitHub Pages site available until email links sent before the migration are no longer needed.
 
+## Creation confirmation emails
+
+When Email is enabled, saving a new Task or Meeting queues one creator confirmation with the subject `คุณได้สร้าง Task แล้ว` or `คุณได้สร้าง Meeting แล้ว`. A creator who is also an assignee or Meeting guest receives the confirmation instead of a second initial invitation. Other recipients still receive their invitations. Creation confirmations use a stable entity/template/email key, so retries do not queue another confirmation. Future reminders and explicitly requested update emails remain separate notifications; expired Task reminder offsets are skipped instead of being sent immediately after creation.
+
+Apply `supabase/migrations/202610030001_single_creation_confirmation.sql` and redeploy `external-task` and `process-notification-queue` together with the frontend. The rollback-only SQL verification is `supabase/tests/single_creation_confirmation.sql`.
+
 ## Google Sheets reporting
 
 The read-only Apps Script template is in [`integrations/google-sheets`](integrations/google-sheets). It syncs safe Users, Audit, Notification, and System reporting fields hourly; it excludes tokens, recipient addresses, attachment paths, and secrets.
