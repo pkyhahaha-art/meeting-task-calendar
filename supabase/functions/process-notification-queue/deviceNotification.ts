@@ -25,10 +25,16 @@ export function deviceNotification(deliveryId: string, title: string, payload: R
   const occurrenceNotice = template === 'meeting_occurrence_cancelled' || template === 'meeting_occurrence_moved'
   const snapshotText = occurrenceNotice ? jsonLimited : limited
   const dates = occurrenceNotice ? title.slice(title.lastIndexOf('»') + 1).replace(/^(ยกเลิก|ย้าย)ประชุม\s*/, '').trim() : ''
+  const overdueAt = new Date(String(payload.reminder_scheduled_at ?? ''))
+  const overdue = template === 'task_reminder' && payload.entity === 'task' && payload.reminder_key === 'overdue'
+    && typeof payload.id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payload.id)
+    && !Number.isNaN(overdueAt.getTime())
+  const replaceKey = overdue ? `task-overdue:${payload.id}` : ''
   return {
     id: deliveryId, title: snapshotText(title, occurrenceNotice ? 900 : 400),
     body: occurrenceNotice ? snapshotText(dates, 400) : limited(payload.description, 240) || 'คุณมีข้อความใหม่จากปฏิทิน PEA แตะเพื่อดูรายละเอียด',
-    tag: `delivery-${deliveryId}`, url: url.href,
+    tag: replaceKey || `delivery-${deliveryId}`, url: url.href,
+    ...(overdue ? { replaceKey, reminderAt: overdueAt.toISOString() } : {}),
     details: {
       entity: payload.entity === 'task' ? 'task' : 'meeting',
       title: snapshotText(payload.title, occurrenceNotice ? 300 : 400), description: snapshotText(payload.description, occurrenceNotice ? 600 : 1000),

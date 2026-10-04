@@ -12,6 +12,7 @@ type Options = {
   channel?: 'push' | 'email'; readError?: string; retry?: boolean
   actionPayload?: boolean
   uppercaseGuest?: boolean; missingGuestRow?: boolean
+  overdue?: boolean; expiredRound?: boolean; rescheduled?: boolean; cancelledReminder?: boolean; missingReminder?: boolean
 }
 
 // Execute the actual Edge handler and local payload builder. Adapters never make
@@ -20,15 +21,20 @@ function service(options: Options = {}) {
   let handler!: (request: Request) => Promise<Response>
   const recipient = 'recipient'
   const role = options.recipient ?? (options.meeting ? 'guest' : 'secondary')
+  const today = new Date(Date.now() + 7 * 60 * 60_000).toISOString().slice(0, 10)
+  const dueDate = new Date(Date.now() + 7 * 60 * 60_000 - 24 * 60 * 60_000).toISOString().slice(0, 10)
   const delivery = {
     id: 'delivery-1', event_id: options.meeting ? 'meeting-1' : null,
     task_id: options.meeting ? null : 'task-1',
     reminder_id: options.legacyFirst ? 'reminder-1' : null,
+    task_reminder_id: options.overdue ? 'task-reminder-1' : null,
     recipient_type: role === 'creator' ? 'task_creator' : role === 'owner' ? 'owner' : role === 'guest' ? options.channel === 'email' ? 'guest' : 'registered_user' : 'task_assignee',
     recipient_reference: options.channel === 'email' ? 'recipient@example.test' : 'device-1', channel: options.channel ?? 'push',
-    template_key: options.template ?? (options.meeting ? 'meeting_reminder' : 'task_updated'),
+    template_key: options.template ?? (options.overdue ? 'task_reminder' : options.meeting ? 'meeting_reminder' : 'task_updated'),
     payload: { entity: options.meeting ? 'meeting' : 'task', id: options.meeting ? 'meeting-1' : 'task-1',
       push_user_id: recipient, description: 'Private fixture', ...(options.scoped ? { occurrence_id: 'occurrence-1' } : {}),
+      ...(options.overdue ? { due_date: dueDate, due_time: null, reminder_key: 'overdue',
+        reminder_scheduled_at: options.expiredRound ? `${dueDate}T00:00:00+07:00` : `${today}T00:00:00+07:00` } : {}),
       ...(options.actionPayload ? { title: 'แผนงาน', original_occurrence_start: '2026-10-03T02:00:00Z', new_occurrence_start: '2026-10-02T02:00:00Z' } : {}) },
     attempt: options.retry ? 1 : 0,
   }
@@ -71,7 +77,9 @@ function service(options: Options = {}) {
             creator_user_id: role === 'creator' ? recipient : 'creator',
             assignee_type: 'internal', assignee_user_id: role === 'primary' ? recipient : 'primary',
             status: options.status ?? 'pending', deleted_at: options.deleted ? '2026-10-04T00:00:00Z' : null,
+            due_date: options.rescheduled ? '2099-01-01' : dueDate, due_time: null,
           }
+          : table === 'task_reminders' ? options.missingReminder ? null : { status: options.cancelledReminder ? 'cancelled' : 'completed', reminder_key: 'overdue' }
           : table === 'task_internal_recipients' ? options.removed ? null : { user_id: recipient }
           : table === 'events' ? options.missingEntity ? null : {
             id: 'meeting-1', owner_user_id: role === 'owner' ? recipient : 'owner', title: 'Meeting',
@@ -139,6 +147,28 @@ test('queued and retry Push never send to inactive, removed or re-paired recipie
     assert.equal(server.state().status, 'skipped')
     assert.equal(server.state().errorCode, 'push_recipient_unavailable')
     assert.equal(server.state().messages.length, 0)
+  }
+})
+
+test('overdue Email and Push skip closed, deleted, rescheduled, cancelled and expired daily retries before issuing links', async () => {
+  for (const channel of ['email', 'push'] as const) {
+    for (const options of [{ status: 'completed' }, { status: 'cancelled' }, { deleted: true },
+      { rescheduled: true }, { cancelledReminder: true }, { missingReminder: true }, { expiredRound: true }]) {
+      const server = service({ channel, overdue: true, recipient: 'creator', retry: true, ...options })
+      await server.run()
+      assert.equal(server.state().status, 'skipped')
+      assert.equal(server.state().errorCode, 'task_overdue_unavailable')
+      assert.equal(server.state().messages.length, 0)
+      assert.equal(server.state().signings, 0)
+      assert.ok(!server.state().queried.includes('email_acknowledgement_tokens'))
+    }
+    const eligible = service({ channel, overdue: true, recipient: 'creator' })
+    await eligible.run()
+    assert.equal(eligible.state().status, 'sent')
+    const failedLookup = service({ channel, overdue: true, recipient: 'creator', readError: 'task_reminders' })
+    await failedLookup.run()
+    assert.equal(failedLookup.state().status, 'retry')
+    assert.equal(failedLookup.state().messages.length, 0)
   }
 })
 

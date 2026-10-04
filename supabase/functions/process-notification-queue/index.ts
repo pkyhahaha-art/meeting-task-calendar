@@ -13,6 +13,7 @@ type Delivery = {
   event_id: string | null
   task_id: string | null
   reminder_id: string | null
+  task_reminder_id: string | null
   recipient_type: string
   recipient_reference: string
   channel: 'email' | 'line' | 'push'
@@ -37,6 +38,25 @@ const publicAppUrl = Deno.env.get('PUBLIC_APP_URL')
 
 function isOccurrenceNotice(delivery: Delivery) {
   return delivery.template_key === 'meeting_occurrence_cancelled' || delivery.template_key === 'meeting_occurrence_moved'
+}
+
+// An overdue retry belongs to its daily round. Stop it after a close/delete/
+// reschedule, or after that day ends, before issuing document links or sending.
+async function currentOverdueTaskDelivery(delivery: Delivery): Promise<boolean> {
+  if (delivery.template_key !== 'task_reminder' || delivery.payload.reminder_key !== 'overdue') return true
+  if (!delivery.task_id || !delivery.task_reminder_id) return false
+  const task = await supabase.from('tasks').select('status,deleted_at,due_date,due_time').eq('id', delivery.task_id).maybeSingle()
+  if (task.error) throw task.error
+  if (!task.data || task.data.status !== 'pending' || task.data.deleted_at
+    || task.data.due_date !== delivery.payload.due_date
+    || text(task.data.due_time).slice(0, 5) !== text(delivery.payload.due_time).slice(0, 5)) return false
+  const reminder = await supabase.from('task_reminders').select('status,reminder_key').eq('id', delivery.task_reminder_id).maybeSingle()
+  if (reminder.error) throw reminder.error
+  if (!reminder.data || reminder.data.status === 'cancelled' || reminder.data.reminder_key !== 'overdue') return false
+  const round = new Date(text(delivery.payload.reminder_scheduled_at))
+  const now = new Date()
+  const bangkokDay = (date: Date) => new Date(date.getTime() + 7 * 60 * 60_000).toISOString().slice(0, 10)
+  return !Number.isNaN(round.getTime()) && round <= now && bangkokDay(round) === bangkokDay(now)
 }
 
 function errorMessage(error: unknown) {
@@ -382,7 +402,7 @@ Deno.serve(async (request) => {
   const now = new Date().toISOString()
   const { data, error } = await supabase
     .from('notification_deliveries')
-    .select('id, event_id, task_id, reminder_id, recipient_type, recipient_reference, channel, template_key, payload, attempt')
+    .select('id, event_id, task_id, reminder_id, task_reminder_id, recipient_type, recipient_reference, channel, template_key, payload, attempt')
     .in('channel', ['email', 'line', 'push']).in('status', ['queued', 'retry'])
     .lte('scheduled_at', now)
     .or(`next_attempt_at.is.null,next_attempt_at.lte.${now}`)
@@ -399,6 +419,14 @@ Deno.serve(async (request) => {
     let response: Response
     let body: string
     try {
+      if (!await currentOverdueTaskDelivery(delivery)) {
+        const skipped = await supabase.from('notification_deliveries').update({
+          status: 'skipped', next_attempt_at: null, error_code: 'task_overdue_unavailable',
+          error_message: 'This overdue round expired or the Task was closed, deleted or rescheduled.',
+        }).eq('id', delivery.id)
+        if (skipped.error) throw skipped.error
+        continue
+      }
       if (delivery.channel === 'push' && !await currentPushRecipient(delivery)) {
         const skipped = await supabase.from('notification_deliveries').update({
           status: 'skipped', next_attempt_at: null, error_code: 'push_recipient_unavailable',

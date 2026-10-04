@@ -1,6 +1,7 @@
 export type DevicePairing = { subscriptionId: string; endpoint: string; userName: string; userId?: string; pairedAt: string }
 export type DeviceAlert = {
   id: string; title: string; body: string; receivedAt: string; read: boolean
+  replaceKey?: string; reminderAt?: string
   details?: { entity?: string; notice_template?: string; notification_template?: string; original_occurrence_start?: string; new_occurrence_start?: string;
     id?: string; title?: string; affiliation?: string; description?: string; start_datetime?: string;
     end_datetime?: string; due_date?: string; due_time?: string; location?: string; all_day?: boolean; status?: string }

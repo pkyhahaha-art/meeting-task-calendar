@@ -10,9 +10,16 @@ import { subject } from '../../supabase/functions/process-notification-queue/ema
 globalThis.indexedDB = indexedDB
 const workerSource = readFileSync(new URL('../../public/sw.js', import.meta.url), 'utf8')
 
+const overdueTaskId = '40000000-0000-4000-8000-000000000004'
+function overdueMessage(id: string, day: number) {
+  const payload = { entity: 'task', id: overdueTaskId, title: 'Report', description: 'Details',
+    due_date: '2026-10-06', reminder_key: 'overdue', reminder_scheduled_at: `2026-10-${String(day).padStart(2, '0')}T09:00:00+07:00` }
+  return deviceNotification(id, subject('task_reminder', payload), payload, 'https://example.github.io/calendar/', 'task_reminder')
+}
+
 function worker(factory: IDBFactory = indexedDB, badgeAvailable = true, badgeFails = false) {
   const listeners = new Map<string, (event: unknown) => void>()
-  const displayed: Array<{ title: string; options: NotificationOptions }> = []
+  const displayed: Array<{ title: string; options: NotificationOptions & { renotify?: boolean } }> = []
   const opened: string[] = []
   const badges: number[] = []
   const notices: Array<{ data: NotificationOptions['data']; closed: boolean; close(): void }> = []
@@ -92,6 +99,56 @@ test('an IndexedDB failure still displays the visible Push notification', async 
   await failing.push({ title: 'Message', body: 'Details', id: 'test' })
   assert.equal(failing.displayed.length, 1)
   assert.equal(failing.displayed[0].title, 'Message')
+})
+
+test('daily overdue Push replaces the same task message, resets unread only for a new round, and opens latest delivery details', async () => {
+  const pairing = { subscriptionId: 'daily-device', endpoint: 'https://web.push.apple.com/daily', userName: 'User', pairedAt: '2026-10-07T02:00:00Z' }
+  await saveDevicePairing(pairing, true)
+  await saveDeviceAlert({ id: 'created-separate', title: 'Created', body: '', read: true, receivedAt: '2026-10-06T02:00:00Z' })
+  await markDeviceAlertRead('created-separate')
+  const first = overdueMessage('50000000-0000-4000-8000-000000000005', 7)
+  const second = overdueMessage('60000000-0000-4000-8000-000000000006', 8)
+  const state = worker()
+  await state.push(first)
+  await markDeviceAlertRead(first.id)
+  await state.push(second)
+  let rows = await listDeviceAlerts()
+  assert.equal(rows.length, 2)
+  assert.ok(!rows.some((row) => row.id === first.id))
+  assert.equal(rows.find((row) => row.id === second.id)?.read, false)
+  assert.equal(state.badges.at(-1), 1)
+  assert.equal(state.displayed[0].options.tag, state.displayed[1].options.tag)
+  assert.equal(state.displayed[1].options.renotify, true)
+  await state.click(state.displayed[1].options.data.url)
+  assert.equal(state.opened[0], `https://example.github.io/calendar/#/device-inbox?notification=${second.id}`)
+  // Retried older deliveries cannot replace today's alert or reopen a read round.
+  await markDeviceAlertRead(second.id)
+  await state.push(first)
+  await state.push(second)
+  rows = await listDeviceAlerts()
+  assert.equal(rows.find((row) => row.id === second.id)?.read, true)
+  assert.equal(state.displayed.length, 2)
+  assert.equal(state.badges.at(-1), 0)
+  await deleteDeviceAlerts([second.id])
+  const third = overdueMessage('70000000-0000-4000-8000-000000000007', 9)
+  await worker().push(third)
+  assert.deepEqual((await listDeviceAlerts()).map((row) => row.id).sort(), ['created-separate', third.id].sort())
+  assert.deepEqual(await readDevicePairing(), pairing)
+})
+
+test('only marked overdue task reminders share a notification group; other task messages remain separate', () => {
+  const overdue = overdueMessage('daily-delivery', 7)
+  assert.equal(overdue.replaceKey, `task-overdue:${overdueTaskId}`)
+  assert.equal(overdue.reminderAt, '2026-10-07T02:00:00.000Z')
+  assert.match(overdue.title, /^งานเลยกำหนด/)
+  for (const template of ['task_created', 'task_updated', 'task_completed', 'meeting_reminder']) {
+    const message = deviceNotification('ordinary', 'Title', { entity: 'task', id: overdueTaskId,
+      reminder_key: 'overdue', reminder_scheduled_at: '2026-10-07T02:00:00Z' }, 'https://example.github.io/calendar/', template)
+    assert.equal(message.replaceKey, undefined)
+    assert.equal(message.tag, 'delivery-ordinary')
+  }
+  assert.equal(deviceNotification('ordinary', 'Title', { entity: 'task', id: overdueTaskId },
+    'https://example.github.io/calendar/', 'task_reminder').replaceKey, undefined)
 })
 
 test('the app icon counts unread messages, deduplicates Push, and clears after reading or deleting', async () => {
