@@ -119,31 +119,30 @@ function emailAssetUrl(appUrl: string, file: string) {
 export function html(template: string, payload: Record<string, unknown>, appUrl = '') {
   const isMeeting = payload.entity === 'meeting'
   const occurrenceNotice = template === 'meeting_occurrence_cancelled' || template === 'meeting_occurrence_moved'
+  const notificationHeading = subject(template, occurrenceNotice ? payload : {})
   const mascotUrl = emailAssetUrl(appUrl, 'pea-mail-mascot-v1.png')
   const logoUrl = emailAssetUrl(appUrl, 'pea-logo.png')
-  const description = occurrenceNotice ? '' : text(payload.description)
+  const description = text(payload.description)
   const allDay = payload.all_day === true
   const startsAt = allDay ? formatDate(payload.start_datetime) : formatDateTime(payload.start_datetime)
   const endsAt = allDay ? formatDate(payload.end_datetime) : formatDateTime(payload.end_datetime)
   const dueDate = text(payload.due_date)
   const dueTime = text(payload.due_time)
   const acknowledgeUrl = occurrenceNotice ? '' : validUrl(payload.ack_url)
-  const documentItems = occurrenceNotice ? [] : documents(isMeeting ? payload.meeting_documents : payload.task_documents)
-  const rows = (occurrenceNotice ? [] : [
+  const documentItems = documents(isMeeting ? payload.meeting_documents : payload.task_documents)
+  const rows = [
     ['ผู้จัด', text(payload.organizer)],
     ['หน่วยงาน / สังกัด', text(payload.affiliation)],
     ['วันและเวลาเริ่ม', startsAt],
     ['วันและเวลาสิ้นสุด', endsAt],
     ['สถานที่', text(payload.location)],
-    ['การทำซ้ำ', recurrenceLabel(payload.recurrence_rule)],
+    ['การทำซ้ำ', occurrenceNotice ? '' : recurrenceLabel(payload.recurrence_rule)],
     ['กำหนดส่ง', [dueDate, dueTime].filter(Boolean).join(' ')],
     ['สถานะ', statusLabel(payload.status)],
-  ]).filter(([, value]) => value)
+  ].filter(([, value]) => value)
     .map(([label, value]) => `<tr><td width="112" valign="top" style="width:112px;padding:12px;color:#766280;font-size:12px;line-height:1.7;border-bottom:1px solid #eee5f3;background:#fbf8fd">${escapeHtml(label)}</td><td valign="top" style="padding:12px;color:#35213f;font-size:14px;line-height:1.7;border-bottom:1px solid #eee5f3;word-break:break-word;overflow-wrap:anywhere">${escapeHtml(value)}</td></tr>`)
     .join('')
-  const descriptionBlock = occurrenceNotice
-    ? `<p style="margin:0;color:#35213f;font-size:16px;line-height:1.8;word-break:break-word">${escapeHtml(subject(template, payload))}</p>`
-    : description
+  const descriptionBlock = description
     ? `<div style="margin-top:22px"><div style="margin-bottom:10px;color:#650773;font-size:14px;font-weight:700">${isMeeting ? 'รายละเอียด / วาระการประชุม' : 'รายละเอียดงาน'}</div><div style="padding:16px;background:#faf5fc;border-left:4px solid #e4b445;border-radius:0 12px 12px 0;color:#51425c;font-size:14px;line-height:1.8;word-break:break-word;overflow-wrap:anywhere">${escapeHtml(description)}</div></div>`
     : ''
   const acknowledgeAction = acknowledgeUrl
@@ -163,5 +162,5 @@ export function html(template: string, payload: Record<string, unknown>, appUrl 
   const mascot = mascotUrl
     ? `<td width="104" valign="middle" style="width:104px;padding-left:14px"><img src="${escapeHtml(mascotUrl)}" width="104" alt="มาสคอต PEA ถือซองจดหมาย" style="display:block;width:104px;max-width:100%;height:auto;border:0"></td>`
     : ''
-  return `<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(subject(template, payload))}</title></head><body style="margin:0;padding:0;background:#f6f1f9;font-family:Arial,'Noto Sans Thai',Tahoma,sans-serif;color:#35213f"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f6f1f9" style="width:100%;background:#f6f1f9"><tr><td align="center" style="padding:24px 12px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width:100%;max-width:640px;background:#ffffff;border:1px solid #e9dbee;border-radius:22px;overflow:hidden"><tr><td style="padding:22px 24px 18px">${brand}<div style="margin-top:10px;color:#766280;font-size:10px;font-weight:700;letter-spacing:1px">PEA MEETING &amp; TASK CALENDAR</div></td></tr><tr><td bgcolor="#650773" style="padding:24px;background:#650773;border-bottom:4px solid #e4b445"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;table-layout:fixed"><tr><td valign="middle"><div style="margin-bottom:10px;color:#f7d879;font-size:13px;font-weight:700;line-height:1.7">${escapeHtml(subject(template, {}))}</div><h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;line-height:1.5;word-break:break-word;overflow-wrap:anywhere">${escapeHtml(payload.title || subject(template, payload))}</h1></td>${mascot}</tr></table></td></tr><tr><td style="padding:24px"><div style="margin-bottom:14px;color:#650773;font-size:15px;font-weight:700">${isMeeting ? 'รายละเอียดการประชุม' : 'รายละเอียดงาน'}</div>${rows ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;table-layout:fixed;border-collapse:collapse;border:1px solid #eee5f3">${rows}</table>` : ''}${descriptionBlock}${documentList}${acknowledgeAction}</td></tr><tr><td bgcolor="#faf7fc" style="padding:18px 24px;background:#faf7fc;border-top:1px solid #eee5f3"><div style="color:#650773;font-size:12px;font-weight:700;line-height:1.7">PEA · พลังงานเพื่อชีวิตที่ดีกว่า</div><div style="margin-top:5px;color:#8c7a97;font-size:11px;line-height:1.7">อีเมลนี้ส่งโดยระบบ PEA Meeting &amp; Task Calendar</div></td></tr></table></td></tr></table></body></html>`
+  return `<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(subject(template, payload))}</title></head><body style="margin:0;padding:0;background:#f6f1f9;font-family:Arial,'Noto Sans Thai',Tahoma,sans-serif;color:#35213f"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f6f1f9" style="width:100%;background:#f6f1f9"><tr><td align="center" style="padding:24px 12px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width:100%;max-width:640px;background:#ffffff;border:1px solid #e9dbee;border-radius:22px;overflow:hidden"><tr><td style="padding:22px 24px 18px">${brand}<div style="margin-top:10px;color:#766280;font-size:10px;font-weight:700;letter-spacing:1px">PEA MEETING &amp; TASK CALENDAR</div></td></tr><tr><td bgcolor="#650773" style="padding:24px;background:#650773;border-bottom:4px solid #e4b445"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;table-layout:fixed"><tr><td valign="middle"><div style="margin-bottom:10px;color:#f7d879;font-size:13px;font-weight:700;line-height:1.7">${escapeHtml(notificationHeading)}</div><h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;line-height:1.5;word-break:break-word;overflow-wrap:anywhere">${escapeHtml(payload.title || subject(template, payload))}</h1></td>${mascot}</tr></table></td></tr><tr><td style="padding:24px"><div style="margin-bottom:14px;color:#650773;font-size:15px;font-weight:700">${isMeeting ? 'รายละเอียดการประชุม' : 'รายละเอียดงาน'}</div>${rows ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;table-layout:fixed;border-collapse:collapse;border:1px solid #eee5f3">${rows}</table>` : ''}${descriptionBlock}${documentList}${acknowledgeAction}</td></tr><tr><td bgcolor="#faf7fc" style="padding:18px 24px;background:#faf7fc;border-top:1px solid #eee5f3"><div style="color:#650773;font-size:12px;font-weight:700;line-height:1.7">PEA · พลังงานเพื่อชีวิตที่ดีกว่า</div><div style="margin-top:5px;color:#8c7a97;font-size:11px;line-height:1.7">อีเมลนี้ส่งโดยระบบ PEA Meeting &amp; Task Calendar</div></td></tr></table></td></tr></table></body></html>`
 }

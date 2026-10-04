@@ -8,28 +8,38 @@ function limited(value: unknown, maxBytes: number) {
   return result
 }
 
+function jsonLimited(value: unknown, maxBytes: number) {
+  const encoder = new TextEncoder()
+  let result = ''
+  for (const character of String(value ?? '').replace(/[\r\n]+/g, ' ').trim()) {
+    // Quotes, backslashes and pasted controls can expand when serialized for Push.
+    if (encoder.encode(JSON.stringify(result + character)).length > maxBytes) break
+    result += character
+  }
+  return result
+}
+
 export function deviceNotification(deliveryId: string, title: string, payload: Record<string, unknown>, publicAppUrl: string, template = '') {
   const url = new URL(publicAppUrl)
   url.hash = `/device-inbox?notification=${encodeURIComponent(deliveryId)}`
-  if (template === 'meeting_occurrence_cancelled' || template === 'meeting_occurrence_moved') {
-    // Keep action notices immutable and small, without private agenda/document data.
-    const dates = title.slice(title.lastIndexOf('»') + 1).replace(/^(ยกเลิก|ย้าย)ประชุม\s*/, '').trim()
-    return {
-      id: deliveryId, title: limited(title, 1200), body: limited(dates, 600),
-      tag: `delivery-${deliveryId}`, url: url.href,
-      details: { entity: 'meeting', notice_template: template },
-    }
-  }
+  const occurrenceNotice = template === 'meeting_occurrence_cancelled' || template === 'meeting_occurrence_moved'
+  const snapshotText = occurrenceNotice ? jsonLimited : limited
+  const dates = occurrenceNotice ? title.slice(title.lastIndexOf('»') + 1).replace(/^(ยกเลิก|ย้าย)ประชุม\s*/, '').trim() : ''
   return {
-    id: deliveryId, title: limited(title, 400),
-    body: limited(payload.description, 240) || 'คุณมีข้อความใหม่จากปฏิทิน PEA แตะเพื่อดูรายละเอียด',
+    id: deliveryId, title: snapshotText(title, occurrenceNotice ? 900 : 400),
+    body: occurrenceNotice ? snapshotText(dates, 400) : limited(payload.description, 240) || 'คุณมีข้อความใหม่จากปฏิทิน PEA แตะเพื่อดูรายละเอียด',
     tag: `delivery-${deliveryId}`, url: url.href,
     details: {
       entity: payload.entity === 'task' ? 'task' : 'meeting',
-      title: limited(payload.title, 400), description: limited(payload.description, 1000),
-      start_datetime: limited(payload.start_datetime, 40), end_datetime: limited(payload.end_datetime, 40),
-      due_date: limited(payload.due_date, 20), due_time: limited(payload.due_time, 20),
-      location: limited(payload.location, 250),
+      title: snapshotText(payload.title, occurrenceNotice ? 300 : 400), description: snapshotText(payload.description, occurrenceNotice ? 600 : 1000),
+      start_datetime: snapshotText(payload.start_datetime, 40), end_datetime: snapshotText(payload.end_datetime, 40),
+      due_date: snapshotText(payload.due_date, 20), due_time: snapshotText(payload.due_time, 20),
+      location: snapshotText(payload.location, occurrenceNotice ? 150 : 250),
+      ...(occurrenceNotice ? {
+        notice_template: template, affiliation: snapshotText(payload.affiliation, 200), all_day: payload.all_day === true,
+        status: snapshotText(payload.status, 20), original_occurrence_start: snapshotText(payload.original_occurrence_start, 40),
+        new_occurrence_start: snapshotText(payload.new_occurrence_start, 40),
+      } : {}),
     },
   }
 }

@@ -1,7 +1,8 @@
 export type DevicePairing = { subscriptionId: string; endpoint: string; userName: string; userId?: string; pairedAt: string }
 export type DeviceAlert = {
   id: string; title: string; body: string; receivedAt: string; read: boolean
-  details?: { entity?: string; notice_template?: string; id?: string; title?: string; affiliation?: string; description?: string; start_datetime?: string;
+  details?: { entity?: string; notice_template?: string; notification_template?: string; original_occurrence_start?: string; new_occurrence_start?: string;
+    id?: string; title?: string; affiliation?: string; description?: string; start_datetime?: string;
     end_datetime?: string; due_date?: string; due_time?: string; location?: string; all_day?: boolean; status?: string }
 }
 export type DeviceInboxDocument = { id: string; name: string; size?: number; kind: 'file' | 'drive';
@@ -9,7 +10,8 @@ export type DeviceInboxDocument = { id: string; name: string; size?: number; kin
 export type DeviceNotificationContent = { details: NonNullable<DeviceAlert['details']>; documents: DeviceInboxDocument[]; linksExpireAt: string }
 
 export function isDeviceAppointmentNotice(alert?: DeviceAlert) {
-  return alert?.details?.notice_template === 'meeting_occurrence_cancelled' || alert?.details?.notice_template === 'meeting_occurrence_moved'
+  const template = alert?.details?.notice_template ?? alert?.details?.notification_template
+  return template === 'meeting_occurrence_cancelled' || template === 'meeting_occurrence_moved'
 }
 
 /** The worker reads the latest stored unread count; no login or server call needed. */
@@ -124,7 +126,15 @@ export async function updateDeviceAlertDetails(id: string, details: NonNullable<
       const transaction = db.transaction('alerts', 'readwrite')
       const store = transaction.objectStore('alerts')
       const request = store.get(id)
-      request.onsuccess = () => { if (request.result && !isDeviceAppointmentNotice(request.result)) store.put({ ...request.result, details }) }
+      request.onsuccess = () => {
+        if (!request.result) return
+        const previous = request.result as DeviceAlert
+        store.put({ ...previous, details: isDeviceAppointmentNotice(previous) ? {
+          ...details, notice_template: previous.details?.notice_template ?? previous.details?.notification_template,
+          original_occurrence_start: previous.details?.original_occurrence_start ?? details.original_occurrence_start,
+          new_occurrence_start: previous.details?.new_occurrence_start ?? details.new_occurrence_start,
+        } : details })
+      }
       transaction.oncomplete = () => resolve()
       transaction.onerror = () => reject(transaction.error)
       transaction.onabort = () => reject(transaction.error)

@@ -16,10 +16,7 @@ export function DeviceNotificationDetails({ alert, details = alert.details, docu
   alert: DeviceAlert; details?: DeviceAlert['details']; documents?: DeviceInboxDocument[];
   fetching?: boolean; error?: string; onlineDetails?: boolean; canLoad?: boolean; onRefresh?: () => void;
 }) {
-  if (isDeviceAppointmentNotice(alert)) return <>
-    <h2 className="break-words text-xl font-bold leading-relaxed text-slate-900">{alert.title}</h2>
-    <p className="text-xs text-slate-500">รับเมื่อ {dateLabel(alert.receivedAt)}</p>
-  </>
+  const occurrenceNotice = isDeviceAppointmentNotice(alert)
   const rows = [
     [details?.entity === 'task' ? 'ชื่องาน' : 'ชื่อการประชุม', details?.title],
     ['หน่วยงาน / สังกัด', details?.affiliation || (onlineDetails ? 'ไม่ระบุ' : '')],
@@ -30,8 +27,8 @@ export function DeviceNotificationDetails({ alert, details = alert.details, docu
   ].filter(([, value]) => value)
 
   return <>
-    <h2 className="break-words text-xl font-bold text-slate-900">{details?.title || alert.title}</h2>
-    <p className="text-xs text-slate-500">{alert.title} · รับเมื่อ {dateLabel(alert.receivedAt)}</p>
+    <h2 className="break-words text-xl font-bold text-slate-900">{occurrenceNotice ? alert.title : details?.title || alert.title}</h2>
+    <p className="text-xs text-slate-500">{!occurrenceNotice && `${alert.title} · `}รับเมื่อ {dateLabel(alert.receivedAt)}</p>
     {rows.length > 0 && <dl className="space-y-3 rounded-xl bg-purple-50 p-4 text-sm">{rows.map(([label, value]) => <div key={label}><dt className="font-semibold text-brand-700">{label}</dt><dd className="mt-1 break-words text-slate-800">{value}</dd></div>)}</dl>}
     <div className="space-y-2">
       <h3 className="text-sm font-semibold text-brand-700">{details?.entity === 'task' ? 'รายละเอียด / คำสั่งงาน' : 'รายละเอียด / วาระการประชุม'}</h3>

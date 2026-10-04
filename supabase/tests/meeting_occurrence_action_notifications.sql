@@ -55,7 +55,8 @@ begin
   if exists(select 1 from public.notification_deliveries where event_id=meeting_id and template_key='meeting_occurrence_cancelled'
     and ((payload->>'original_occurrence_start')::timestamptz<>cancel_at
       or payload->>'occurrence_id'<>appointment_id::text or payload->>'status'<>'cancelled'
-      or payload ? 'description' or payload ? 'documents')) then raise exception 'incorrect cancellation action payload'; end if;
+      or payload->>'description'<>'Specific agenda' or payload->>'location'<>'Room 7'
+      or payload ? 'documents')) then raise exception 'incorrect cancellation action payload'; end if;
   if not exists(select 1 from public.notification_deliveries where reminder_id=fixture_reminder_id and status='skipped')
     or exists(select 1 from public.reminders where id=fixture_reminder_id and status='scheduled') then
     raise exception 'cancelled reminder can still notify'; end if;

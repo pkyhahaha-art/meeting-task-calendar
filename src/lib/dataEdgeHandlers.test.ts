@@ -128,6 +128,86 @@ test('guest endpoint refuses a scoped guest token for another appointment', asyn
   assert.equal(service.signed(), 0)
 })
 
+function cancellationGuestStore(): Store {
+  const rows = guestStore()
+  rows.current_guests = [{ email: 'guest@gmail.com' }]
+  rows.event_occurrences[0] = {
+    ...rows.event_occurrences[0], status: 'cancelled', start_datetime: '2026-10-07T02:00:00Z',
+    end_datetime: '2026-10-07T03:00:00Z',
+    override_payload: { description: 'Cancelled appointment agenda', location: 'Room 7', cancelled_individually: true },
+  }
+  rows.notification_deliveries = [{
+    id: 'cancel-notice', event_id: 'meeting-id', channel: 'email', status: 'sent',
+    template_key: 'meeting_occurrence_cancelled', recipient_reference: 'guest@gmail.com',
+    payload: { occurrence_id: 'occurrence-id', original_occurrence_start: '2026-10-07T02:00:00Z' },
+  }]
+  rows.attachments.push(
+    { id: 'series-file', event_id: 'meeting-id', occurrence_id: null, storage_path: 'private/series.pdf', file_name: 'Series.pdf' },
+    { id: 'other-file', event_id: 'meeting-id', occurrence_id: 'other-appointment', storage_path: 'private/other.pdf', file_name: 'Other.pdf' },
+  )
+  return rows
+}
+const cancellationUrl = 'https://fixture.invalid/?token=' + token + '&notification_id=cancel-notice'
+
+test('the current recipient can read cancellation email details and only its occurrence documents', async () => {
+  const service = endpoint(['supabase/functions/guest-event/index.ts'], cancellationGuestStore())
+  const response = await service.handler(new Request(cancellationUrl))
+  assert.equal(response.status, 200)
+  const { event } = await response.json()
+  assert.equal(event.status, 'cancelled')
+  assert.equal(event.notification_template, 'meeting_occurrence_cancelled')
+  assert.equal(event.description, 'Cancelled appointment agenda')
+  assert.equal(event.location, 'Room 7')
+  assert.equal(event.original_occurrence_start, '2026-10-07T02:00:00Z')
+  assert.deepEqual(event.attachments.map((file: { id: string }) => file.id).sort(), ['file-id', 'series-file'])
+  assert.equal(service.signed(), 2)
+})
+
+test('cancellation email document links retain access and cannot sign another appointment file', async () => {
+  const service = endpoint(['supabase/functions/guest-event/index.ts'], cancellationGuestStore())
+  const allowed = await service.handler(new Request(cancellationUrl + '&attachment_id=file-id'))
+  assert.equal(allowed.status, 302)
+  assert.equal(service.signed(), 1)
+  const denied = await service.handler(new Request(cancellationUrl + '&attachment_id=other-file'))
+  assert.equal(denied.status, 404)
+  assert.equal(service.signed(), 1)
+})
+
+for (const [label, tamper] of [
+  ['different email recipient', (rows: Store) => { rows.notification_deliveries[0].recipient_reference = 'other@gmail.com' }],
+  ['different Meeting', (rows: Store) => { rows.notification_deliveries[0].event_id = 'other-meeting' }],
+  ['different appointment', (rows: Store) => { rows.notification_deliveries[0].payload = { occurrence_id: 'other-appointment' } }],
+  ['ordinary invitation delivery', (rows: Store) => { rows.notification_deliveries[0].template_key = 'meeting_guest_added' }],
+  ['Push delivery', (rows: Store) => { rows.notification_deliveries[0].channel = 'push' }],
+  ['unsent email', (rows: Store) => { rows.notification_deliveries[0].status = 'queued' }],
+  ['revoked guest', (rows: Store) => { rows.event_guests[0].revoked_at = timestamp }],
+  ['revoked token', (rows: Store) => { rows.guest_tokens[0].revoked_at = timestamp }],
+  ['expired token', (rows: Store) => { rows.guest_tokens[0].expires_at = '2026-10-01T00:00:00Z' }],
+  ['excluded occurrence guest', (rows: Store) => { rows.current_guests = [] }],
+  ['deleted Meeting', (rows: Store) => { rows.events[0].deleted_at = timestamp }],
+  ['cancelled series', (rows: Store) => { rows.events[0].status = 'cancelled' }],
+  ['not individually cancelled', (rows: Store) => { rows.event_occurrences[0].override_payload = {} }],
+] as const) test('cancellation email access rejects ' + label, async () => {
+  const rows = cancellationGuestStore(); tamper(rows)
+  const service = endpoint(['supabase/functions/guest-event/index.ts'], rows)
+  assert.equal((await service.handler(new Request(cancellationUrl + '&attachment_id=file-id'))).status, 404)
+  assert.equal(service.signed(), 0)
+  assert.deepEqual(service.writes, [])
+})
+
+test('a cancelled appointment still rejects ordinary links, forged notice ids and acknowledgements', async () => {
+  const service = endpoint(['supabase/functions/guest-event/index.ts'], cancellationGuestStore())
+  for (const url of ['https://fixture.invalid/?token=' + token, cancellationUrl.replace('cancel-notice', 'forged-id')]) {
+    assert.equal((await service.handler(new Request(url))).status, 404)
+  }
+  const response = await service.handler(new Request(cancellationUrl, {
+    method: 'POST', body: JSON.stringify({ token, action: 'acknowledge' }),
+  }))
+  assert.equal(response.status, 404)
+  assert.equal(service.signed(), 0)
+  assert.deepEqual(service.writes, [])
+})
+
 const externalFiles = ['supabase/functions/external-task/link.ts', 'supabase/functions/external-task/recipients.ts', 'supabase/functions/external-task/index.ts']
 function externalStore(status: string): Store {
   return {

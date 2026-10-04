@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import { BellRing, CalendarDays, CheckCircle2, ChevronLeft, Loader2, LogIn, RefreshCw, Smartphone, Send, Trash2 } from 'lucide-react'
-import { deleteDeviceAlerts, isDeviceAppointmentNotice, listDeviceAlerts, markDeviceAlertRead, requestDeviceInboxBadgeSync, updateDeviceAlertDetails, type DevicePairing } from '../lib/deviceInbox'
+import { deleteDeviceAlerts, listDeviceAlerts, markDeviceAlertRead, requestDeviceInboxBadgeSync, updateDeviceAlertDetails, type DevicePairing } from '../lib/deviceInbox'
 import { loadPairedDeviceNotification, restoreDevicePairing, sendPairedDeviceTestNotification } from '../lib/mobilePush'
 import { DeviceNotificationDetails } from '../components/DeviceNotificationDetails'
 import { useConfirm } from '../components/ConfirmDialogProvider'
@@ -34,7 +34,7 @@ export function DeviceInboxPage() {
   const alerts = useQuery({ queryKey: ['device-inbox'], queryFn: listDeviceAlerts })
   const refreshAlerts = alerts.refetch
   const selected = alerts.data?.find((alert) => alert.id === selectedId)
-  const canLoadDetails = Boolean(device && selected && !isDeviceAppointmentNotice(selected) && /^[0-9a-f-]{36}$/i.test(selected.id))
+  const canLoadDetails = Boolean(device && selected && /^[0-9a-f-]{36}$/i.test(selected.id))
   const content = useQuery({
     queryKey: ['device-notification-details', device?.subscriptionId, selectedId],
     queryFn: () => loadPairedDeviceNotification(selectedId!), enabled: canLoadDetails,

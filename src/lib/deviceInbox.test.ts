@@ -223,21 +223,46 @@ test('Thai notification snapshots fit Web Push payload limits and exclude creden
 test('appointment action survives worker restart and online refresh without rewriting the original action', async () => {
   await saveDevicePairing({ subscriptionId: 'action-device', endpoint: 'https://web.push.apple.com/actions', userName: 'User', pairedAt: '2026-10-04T02:00:00Z' }, true)
   for (const template of ['meeting_occurrence_cancelled', 'meeting_occurrence_moved']) {
-    const payload = { entity: 'meeting', title: 'ประชุม'.repeat(100), original_occurrence_start: '2026-10-02T17:30:00Z',
-      new_occurrence_start: '2026-10-01T17:30:00Z', description: 'PRIVATE AGENDA', guest_token: 'SECRET',
+    const payload = { entity: 'meeting', title: 'ประชุม😀'.repeat(100), original_occurrence_start: '2026-10-02T17:30:00Z',
+      new_occurrence_start: '2026-10-01T17:30:00Z', description: 'วาระ😀'.repeat(1000), guest_token: 'SECRET',
+      affiliation: 'ฝ่ายแผนงาน😀'.repeat(100), location: 'ห้องประชุม😀'.repeat(100),
+      start_datetime: '2026-10-03T02:00:00Z', end_datetime: '2026-10-03T03:00:00Z',
       meeting_documents: [{ name: 'PRIVATE DOCUMENT', url: 'https://storage.test/private' }] }
     const message = deviceNotification(template, subject(template, payload), payload, 'https://example.github.io/calendar/', template)
     assert.ok(new TextEncoder().encode(JSON.stringify(message)).length < 3500)
     assert.match(message.title, /3 ต\.ค\./)
     assert.doesNotMatch(message.body, /ประชุม|«|»/)
     if (template.endsWith('moved')) assert.match(message.body, /2 ต\.ค\. เวลา 00:30 น\./)
-    assert.doesNotMatch(JSON.stringify(message), /PRIVATE|SECRET|storage\.test/)
+    assert.doesNotMatch(JSON.stringify(message), /PRIVATE DOCUMENT|SECRET|storage\.test/)
+    assert.match(message.details.description, /วาระ/)
     await worker().push(message)
     await updateDeviceAlertDetails(template, { entity: 'meeting', title: 'New title', description: 'Current agenda', start_datetime: '2026-11-01T00:00:00Z' })
     const alert = (await listDeviceAlerts()).find((item) => item.id === template)!
     assert.equal(alert.title, message.title)
     assert.equal(alert.details?.notice_template, template)
-    assert.equal(alert.details?.description, undefined)
+    assert.equal(alert.details?.description, 'Current agenda')
+    assert.equal(alert.details?.original_occurrence_start, payload.original_occurrence_start)
+    assert.equal(alert.details?.new_occurrence_start, payload.new_occurrence_start)
+  }
+})
+
+test('action Push bounds serialized JSON when all restored fields contain controls, quotes or backslashes', () => {
+  const id = 'a0000000-0000-4000-8000-000000000001'
+  for (const template of ['meeting_occurrence_cancelled', 'meeting_occurrence_moved']) {
+    for (const value of ['\u0001', '\u0000\u0002\b\f\u001f', '"\\', 'ประชุม😀']) {
+      const longText = value.repeat(10000)
+      const payload = { entity: 'meeting', title: longText, description: longText, affiliation: longText, location: longText,
+        status: longText, due_date: longText, due_time: longText,
+        original_occurrence_start: '2026-10-03T02:00:00Z', new_occurrence_start: '2026-10-02T02:00:00Z',
+        start_datetime: '2026-10-02T02:00:00Z', end_datetime: '2026-10-02T03:00:00Z' }
+      const message = deviceNotification(id, subject(template, payload), payload, 'https://pkyhahaha-art.github.io/meeting-task-calendar/', template)
+      const bytes = new TextEncoder().encode(JSON.stringify(message)).length
+      assert.ok(bytes <= 3500, `${template} ${JSON.stringify(value)} produced ${bytes} serialized bytes`)
+      assert.match(message.title, /3 ต\.ค\./)
+      if (template.endsWith('moved')) assert.match(message.title, /2 ต\.ค\. เวลา 09:00 น\./)
+      assert.equal(message.details.original_occurrence_start, payload.original_occurrence_start)
+      assert.equal(message.details.new_occurrence_start, payload.new_occurrence_start)
+    }
   }
 })
 

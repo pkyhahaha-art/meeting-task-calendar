@@ -72,7 +72,7 @@ async function issueAcknowledgementUrl(delivery: Delivery) {
 }
 
 async function occurrenceIdForDelivery(delivery: Delivery, payload: Record<string, unknown>) {
-  const payloadOccurrenceId = text(payload.occurrence_id)
+  const payloadOccurrenceId = text(payload.occurrence_id) || (delivery.template_key === 'meeting_occurrence_cancelled' ? text(payload.original_occurrence_id) : '')
   if (payloadOccurrenceId) return payloadOccurrenceId
   if (!delivery.event_id || !delivery.reminder_id) return ''
   const { data, error } = await supabase.from('reminders').select('occurrence_id').eq('id', delivery.reminder_id).maybeSingle()
@@ -114,7 +114,8 @@ async function currentPushRecipient(delivery: Delivery): Promise<boolean> {
       .eq('id', delivery.event_id).maybeSingle()
     if (result.error) throw result.error
     const meeting = result.data
-    const cancellation = delivery.template_key === 'meeting_cancelled' || delivery.template_key === 'meeting_occurrence_cancelled'
+    const cancellation = delivery.template_key === 'meeting_cancelled'
+    const occurrenceCancellation = delivery.template_key === 'meeting_occurrence_cancelled'
     if (!meeting || (meeting.deleted_at && !cancellation)
       || (meeting.status !== 'scheduled' && !(delivery.template_key === 'meeting_created' && meeting.owner_user_id === recipientId)
         && !(cancellation && meeting.status === 'cancelled'))) return false
@@ -132,10 +133,10 @@ async function currentPushRecipient(delivery: Delivery): Promise<boolean> {
       const occurrence = await supabase.from('event_occurrences').select('status')
         .eq('id', occurrenceId).eq('event_id', delivery.event_id).maybeSingle()
       if (occurrence.error) throw occurrence.error
-      if (!occurrence.data || (occurrence.data.status !== 'scheduled' && !cancellation)) return false
-      if (delivery.template_key === 'meeting_occurrence_cancelled' && occurrence.data.status !== 'cancelled') return false
+      if (!occurrence.data || (occurrence.data.status !== 'scheduled' && !cancellation && !occurrenceCancellation)) return false
+      if (occurrenceCancellation && occurrence.data.status !== 'cancelled') return false
     }
-    if (delivery.template_key === 'meeting_occurrence_cancelled' && !occurrenceId) return false
+    if (occurrenceCancellation && !occurrenceId) return false
     if (meeting.owner_user_id === recipientId) return true
     const guests = await supabase.rpc('meeting_mobile_guest_users', {
       target_event_id: delivery.event_id, target_occurrence_id: occurrenceId || null,
@@ -147,18 +148,28 @@ async function currentPushRecipient(delivery: Delivery): Promise<boolean> {
 }
 
 async function payloadWithGuestLink(delivery: Delivery) {
-  if (isOccurrenceNotice(delivery)) return delivery.payload
   if (delivery.channel !== 'email' || delivery.recipient_type !== 'guest' || !delivery.event_id || !publicAppUrl) return delivery.payload
   const occurrenceId = await occurrenceIdForDelivery(delivery, delivery.payload)
-  const scopedGuest = occurrenceId
-    ? await supabase.from('event_guests').select('id').eq('event_id', delivery.event_id)
-      .eq('occurrence_id', occurrenceId).eq('email', delivery.recipient_reference).is('revoked_at', null).maybeSingle()
-    : { data: null, error: null }
-  if (scopedGuest.error) throw scopedGuest.error
-  const baseGuest = scopedGuest.data ? { data: null, error: null } : await supabase.from('event_guests').select('id').eq('event_id', delivery.event_id)
-    .is('occurrence_id', null).eq('email', delivery.recipient_reference).is('revoked_at', null).maybeSingle()
-  if (baseGuest.error) throw baseGuest.error
-  const guest = scopedGuest.data ?? baseGuest.data
+  let guest: { id: string } | null = null
+  if (isOccurrenceNotice(delivery)) {
+    const current = await supabase.from('event_guests').select('id,email,occurrence_id')
+      .eq('event_id', delivery.event_id).is('revoked_at', null)
+    if (current.error) throw current.error
+    const matching = (current.data ?? []).filter((row: { email: string }) => text(row.email).toLowerCase() === delivery.recipient_reference.trim().toLowerCase())
+    guest = (occurrenceId ? matching.find((row: { occurrence_id: string | null }) => row.occurrence_id === occurrenceId) : null)
+      ?? matching.find((row: { occurrence_id: string | null }) => !row.occurrence_id) ?? null
+    if (!guest) throw new Error('The Meeting guest is no longer available for this notification')
+  } else {
+    const scopedGuest = occurrenceId
+      ? await supabase.from('event_guests').select('id').eq('event_id', delivery.event_id)
+        .eq('occurrence_id', occurrenceId).eq('email', delivery.recipient_reference).is('revoked_at', null).maybeSingle()
+      : { data: null, error: null }
+    if (scopedGuest.error) throw scopedGuest.error
+    const baseGuest = scopedGuest.data ? { data: null, error: null } : await supabase.from('event_guests').select('id').eq('event_id', delivery.event_id)
+      .is('occurrence_id', null).eq('email', delivery.recipient_reference).is('revoked_at', null).maybeSingle()
+    if (baseGuest.error) throw baseGuest.error
+    guest = scopedGuest.data ?? baseGuest.data
+  }
   if (!guest) return occurrenceId ? { ...delivery.payload, occurrence_id: occurrenceId } : delivery.payload
   const token = randomToken()
   const revokeToken = supabase.from('guest_tokens').update({ revoked_at: new Date().toISOString() })
@@ -175,11 +186,14 @@ async function payloadWithGuestLink(delivery: Delivery) {
   if (error) throw error
   const url = new URL(publicAppUrl)
   url.hash = `/guest-event?token=${encodeURIComponent(token)}`
-  return { ...delivery.payload, ...(occurrenceId ? { occurrence_id: occurrenceId } : {}), guest_url: url.toString(), guest_token: token }
+  return { ...delivery.payload, ...(occurrenceId ? { occurrence_id: occurrenceId } : {}),
+    ...(delivery.template_key === 'meeting_occurrence_cancelled' ? {} : { guest_url: url.toString() }), guest_token: token }
 }
 
 async function payloadWithMeetingDetails(delivery: Delivery, payload: Record<string, unknown>) {
-  if (isOccurrenceNotice(delivery)) return payload
+  if (isOccurrenceNotice(delivery) && delivery.channel === 'email' && delivery.recipient_type === 'guest' && !text(payload.guest_token)) {
+    throw new Error('A scoped guest token is required for Meeting action documents')
+  }
   if (!delivery.event_id) return payload
   const { data: event, error: eventError } = await supabase.from('events')
     .select('id, owner_user_id, title, description, affiliation, start_datetime, end_datetime, all_day, location, timezone, recurrence_rule, status')
@@ -201,7 +215,7 @@ async function payloadWithMeetingDetails(delivery: Delivery, payload: Record<str
     ...payload,
     entity: 'meeting',
     id: event.id,
-    title: event.title,
+    title: isOccurrenceNotice(delivery) ? text(payload.title) || event.title : event.title,
     description,
     affiliation: event.affiliation,
     start_datetime: occurrenceStart,
@@ -210,7 +224,7 @@ async function payloadWithMeetingDetails(delivery: Delivery, payload: Record<str
     location,
     timezone: event.timezone,
     recurrence_rule: event.recurrence_rule,
-    status: event.status,
+    status: delivery.template_key === 'meeting_occurrence_cancelled' ? 'cancelled' : event.status,
     ...(occurrenceId ? { occurrence_id: occurrenceId } : {}),
   }
   if (delivery.channel !== 'email') return meetingPayload
@@ -232,6 +246,7 @@ async function payloadWithMeetingDetails(delivery: Delivery, payload: Record<str
       const url = new URL('/functions/v1/guest-event', supabaseUrl)
       url.searchParams.set('token', guestToken)
       url.searchParams.set('attachment_id', file.id)
+      if (delivery.template_key === 'meeting_occurrence_cancelled') url.searchParams.set('notification_id', delivery.id)
       return { name: file.file_name, size: file.file_size, url: url.toString() }
     }
     const { data, error } = await supabase.storage.from('meeting-documents').createSignedUrl(file.storage_path, 7 * 24 * 60 * 60)
@@ -247,6 +262,29 @@ async function payloadWithMeetingDetails(delivery: Delivery, payload: Record<str
     ...(meetingUrl ? { meeting_url: meetingUrl } : {}),
     meeting_documents: [...meetingDocuments, ...(documentLinks.data ?? []).map((link) => ({ name: link.display_name, url: link.url, kind: 'drive' }))],
   }
+}
+
+async function currentOccurrenceEmailRecipient(delivery: Delivery) {
+  if (!delivery.event_id) return false
+  const meeting = await supabase.from('events').select('owner_user_id,status,deleted_at').eq('id', delivery.event_id).maybeSingle()
+  if (meeting.error) throw meeting.error
+  if (!meeting.data || meeting.data.status !== 'scheduled' || meeting.data.deleted_at) return false
+  const occurrenceId = await occurrenceIdForDelivery(delivery, delivery.payload)
+  if (delivery.template_key === 'meeting_occurrence_cancelled') {
+    if (!occurrenceId) return false
+    const appointment = await supabase.from('event_occurrences').select('status').eq('event_id', delivery.event_id).eq('id', occurrenceId).maybeSingle()
+    if (appointment.error) throw appointment.error
+    if (appointment.data?.status !== 'cancelled') return false
+  }
+  if (delivery.recipient_type === 'owner') {
+    const owner = await supabase.from('profiles').select('email,status').eq('id', meeting.data.owner_user_id).maybeSingle()
+    if (owner.error) throw owner.error
+    return owner.data?.status === 'active' && text(owner.data.email).toLowerCase() === delivery.recipient_reference.trim().toLowerCase()
+  }
+  if (delivery.recipient_type !== 'guest') return false
+  const guests = await supabase.rpc('occurrence_guest_emails', { target_event_id: delivery.event_id, target_occurrence_id: occurrenceId || null })
+  if (guests.error) throw guests.error
+  return (guests.data ?? []).some((guest: { email: string }) => text(guest.email).toLowerCase() === delivery.recipient_reference.trim().toLowerCase())
 }
 
 async function issueExternalTaskUrl(delivery: Delivery, taskId: string) {
@@ -365,6 +403,14 @@ Deno.serve(async (request) => {
         const skipped = await supabase.from('notification_deliveries').update({
           status: 'skipped', next_attempt_at: null, error_code: 'push_recipient_unavailable',
           error_message: 'The recipient or item is no longer eligible for this Push notification.',
+        }).eq('id', delivery.id)
+        if (skipped.error) throw skipped.error
+        continue
+      }
+      if (delivery.channel === 'email' && isOccurrenceNotice(delivery) && !await currentOccurrenceEmailRecipient(delivery)) {
+        const skipped = await supabase.from('notification_deliveries').update({
+          status: 'skipped', next_attempt_at: null, error_code: 'meeting_recipient_unavailable',
+          error_message: 'The recipient or appointment is no longer eligible for this email notification.',
         }).eq('id', delivery.id)
         if (skipped.error) throw skipped.error
         continue

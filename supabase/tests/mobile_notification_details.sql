@@ -64,6 +64,63 @@ begin
   result:=public.mobile_notification_details(member_device,member_delivery);
   if result->'details'->>'description'<>'Only this appointment' or jsonb_array_length(result->'documents')<>2
     then raise exception 'Root reminder did not resolve the first appointment'; end if;
+
+  -- Cancellation keeps the concise action context plus full, currently
+  -- authorized details/documents of precisely the cancelled appointment.
+  perform public.cancel_meeting_occurrence(v_event_id,first_at);
+  select d.id into member_delivery from public.notification_deliveries d where d.event_id=v_event_id
+    and d.recipient_reference=member_device::text and d.template_key='meeting_occurrence_cancelled';
+  result:=public.mobile_notification_details(member_device,member_delivery);
+  if result is null or result->'details'->>'notification_template'<>'meeting_occurrence_cancelled'
+    or result->'details'->>'status'<>'cancelled' or result->'details'->>'affiliation'<>'Meeting Department'
+    or result->'details'->>'description'<>'Only this appointment' or result->'details'->>'location'<>'Room 7'
+    or (result->'details'->>'original_occurrence_start')::timestamptz<>first_at
+    or (result->'details'->>'end_datetime')::timestamptz<>first_at+interval '1 hour'
+    or jsonb_array_length(result->'documents')<>2 or result::text like '%Other appointment.pdf%' then
+    raise exception 'Cancellation lost full details, correct status or private appointment document scope'; end if;
+  if not exists(select 1 from public.notification_deliveries d where d.id=member_delivery
+    and d.payload->>'description'='Only this appointment' and d.payload->>'location'='Room 7'
+    and d.payload->>'affiliation'='Meeting Department'
+    and (d.payload->>'end_datetime')::timestamptz=first_at+interval '1 hour') then
+    raise exception 'Cancellation queue snapshot lacks selected appointment details'; end if;
+  -- Already queued 003 notices lack rich snapshot fields. They must still open
+  -- through current entity permissions, and retain the immutable action dates.
+  update public.notification_deliveries set payload=payload-'description'-'location'-'affiliation'-'end_datetime'-'occurrence_id'
+    where id=member_delivery;
+  result:=public.mobile_notification_details(member_device,member_delivery);
+  if result->'details'->>'description'<>'Only this appointment' or jsonb_array_length(result->'documents')<>2 then
+    raise exception 'Legacy cancellation payload cannot resolve authorized occurrence details'; end if;
+
+  declare
+    moved_id uuid; moved_delivery uuid; old_member_delivery uuid:=member_delivery;
+  begin
+    moved_id:=public.detach_meeting_occurrence(v_event_id,first_at+interval '1 day',first_at+interval '3 days',
+      'Moved appointment agenda','Room 8',array['rollback-'||member_id||'@gmail.com']);
+    -- Existing frontend copies documents after the atomic move; fixture the
+    -- new Meeting's documents to verify that the new delivery resolves them.
+    insert into public.attachments(event_id,scope,file_name,mime_type,file_size,storage_path,uploaded_by)
+      values(moved_id,'series','Moved.pdf','application/pdf',1024,creator_id||'/'||moved_id||'/moved.pdf',creator_id);
+    insert into public.document_links(event_id,display_name,url,added_by)
+      values(moved_id,'Moved Drive notes','https://docs.google.com/document/d/rollback-moved',creator_id);
+    select d.id into moved_delivery from public.notification_deliveries d where d.event_id=moved_id
+      and d.recipient_reference=member_device::text and d.template_key='meeting_occurrence_moved';
+    result:=public.mobile_notification_details(member_device,moved_delivery);
+    if result is null or result->'details'->>'notification_template'<>'meeting_occurrence_moved'
+      or result->'details'->>'description'<>'Moved appointment agenda' or result->'details'->>'location'<>'Room 8'
+      or result->'details'->>'affiliation'<>'Meeting Department' or result->'details'->>'status'<>'scheduled'
+      or (result->'details'->>'original_occurrence_start')::timestamptz<>first_at+interval '1 day'
+      or (result->'details'->>'new_occurrence_start')::timestamptz<>first_at+interval '3 days'
+      or jsonb_array_length(result->'documents')<>2 or result::text like '%Series.pdf%' then
+      raise exception 'Moved notice did not resolve new Meeting details/documents and original/new dates'; end if;
+    update public.event_guests set revoked_at=now() where event_id=moved_id;
+    if public.mobile_notification_details(member_device,moved_delivery) is not null then
+      raise exception 'Withdrawn moved appointment guest still reads details/documents'; end if;
+    insert into public.event_occurrence_guest_exclusions(occurrence_id,email)
+      values(appointment_id,'rollback-'||member_id||'@gmail.com');
+    if public.mobile_notification_details(member_device,old_member_delivery) is not null then
+      raise exception 'Excluded cancelled appointment guest still reads details/documents'; end if;
+    delete from public.event_occurrence_guest_exclusions where occurrence_id=appointment_id;
+  end;
   update public.event_guests set revoked_at=now() where event_guests.event_id=v_event_id;
   if public.mobile_notification_details(member_device,member_delivery) is not null then raise exception 'Revoked attendee can still fetch documents'; end if;
   update public.mobile_push_subscriptions set user_id=member_id where id=creator_device;

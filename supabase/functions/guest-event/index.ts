@@ -27,6 +27,7 @@ Deno.serve(async (request) => {
       ? typeof body?.token === 'string' ? body.token.trim() : ''
       : url.searchParams.get('token')?.trim()
     const attachmentId = url.searchParams.get('attachment_id')?.trim()
+    const notificationId = url.searchParams.get('notification_id')?.trim()
     if (!token) return json({ error: 'ลิงก์ไม่ถูกต้อง' }, 400)
     const { data: tokenRow, error: tokenError } = await admin.from('guest_tokens').select('*')
       .eq('token_hash', await hashToken(token)).is('revoked_at', null).gt('expires_at', new Date().toISOString()).maybeSingle()
@@ -49,7 +50,20 @@ Deno.serve(async (request) => {
     ])
     if (eventError || occurrenceError || attachmentError) throw eventError ?? occurrenceError ?? attachmentError
     if (!event || event.deleted_at || event.status !== 'scheduled') return json({ error: 'Meeting นี้ถูกยกเลิกแล้ว' }, 404)
-    if (tokenRow.occurrence_id && (!occurrence || occurrence.status !== 'scheduled')) return json({ error: 'นัดหมายรอบนี้ถูกยกเลิกแล้ว' }, 404)
+    let cancellationNotice: { original_occurrence_start?: unknown; new_occurrence_start?: unknown } | null = null
+    if (tokenRow.occurrence_id && (!occurrence || occurrence.status !== 'scheduled')) {
+      // Only the recipient's actual cancellation email can open its cancelled
+      // appointment. Ordinary invitation tokens and acknowledgements stay denied.
+      if (request.method !== 'GET' || !notificationId || occurrence?.status !== 'cancelled'
+        || occurrence.override_payload?.cancelled_individually !== true) return json({ error: 'นัดหมายรอบนี้ถูกยกเลิกแล้ว' }, 404)
+      const { data: notice, error: noticeError } = await admin.from('notification_deliveries')
+        .select('recipient_reference,payload').eq('id', notificationId).eq('event_id', event.id)
+        .eq('channel', 'email').eq('template_key', 'meeting_occurrence_cancelled').eq('status', 'sent').maybeSingle()
+      if (noticeError) throw noticeError
+      if (!notice || notice.recipient_reference?.trim().toLowerCase() !== guest.email.trim().toLowerCase()
+        || notice.payload?.occurrence_id !== occurrence.id) return json({ error: 'สิทธิ์เข้าถึงนัดหมายนี้ถูกยกเลิกแล้ว' }, 404)
+      cancellationNotice = notice.payload
+    }
     if (tokenRow.occurrence_id) {
       // A series guest may have been removed from this appointment after the
       // email was sent. Re-check current membership before signing any files.
@@ -68,6 +82,11 @@ Deno.serve(async (request) => {
       location: typeof occurrenceOverride.location === 'string' ? occurrenceOverride.location : event.location,
       start_datetime: occurrence?.start_datetime ?? event.start_datetime,
       end_datetime: occurrence?.end_datetime ?? event.end_datetime,
+      ...(cancellationNotice ? {
+        status: 'cancelled', notification_template: 'meeting_occurrence_cancelled',
+        original_occurrence_start: cancellationNotice.original_occurrence_start ?? occurrence?.start_datetime,
+        new_occurrence_start: cancellationNotice.new_occurrence_start ?? null,
+      } : {}),
     }
 
     if (request.method === 'POST') {
