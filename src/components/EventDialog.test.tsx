@@ -168,3 +168,46 @@ test('deleting or moving a selected occurrence uses its scope and chosen destina
   assert.equal(moved, '2030-10-08')
   act(() => renderer.unmount())
 })
+
+test('a pending date move blocks normal saves and form submission until it is cancelled', async () => {
+  let renderer!: ReactTestRenderer
+  const saved: Array<{ draft: EventDraft; scope: string }> = []
+  let moves = 0
+  const recurring = { ...event, recurrence_rule: 'FREQ=WEEKLY;BYDAY=TU,WE', recurrence_count: 4 }
+  act(() => { renderer = create(<LanguageProvider><EventDialog open event={recurring}
+    details={{ ...details, occurrenceId: 'selected-occurrence' }} occurrenceStart="2030-10-07T02:00:00.000Z"
+    hasConnectedDevices canEdit canViewDeliveryStatus={false} busy={false}
+    onClose={() => {}} onSave={async (draft, _notify, scope) => { saved.push({ draft, scope }) }} onDelete={noop}
+    onMoveOccurrence={async () => { moves++ }} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>) })
+  try {
+    act(() => renderer.root.findAllByType('input').filter((input) => input.props.name === 'event-edit-scope')[1].props.onChange())
+    const moveInput = () => renderer.root.findByProps({ id: 'move-occurrence-date' })
+    const saveMenu = () => renderer.root.findByType(SaveActionMenu)
+    act(() => moveInput().props.onChange({ target: { value: '2030-10-08' } }))
+    assert.equal(saveMenu().props.disabled, true)
+    assert.equal(saveMenu().findByType('button').props.disabled, true)
+    assert.match(renderer.root.findByProps({ role: 'status' }).children.join(''), /date has not been moved/)
+    await act(async () => { assert.equal(await saveMenu().props.onSave(false), false) })
+    await act(async () => { renderer.root.findByType('form').props.onSubmit({ preventDefault() {} }) })
+    assert.equal(saved.length, 0)
+    assert.equal(moves, 0)
+
+    const cancel = renderer.root.findAllByType('button').find((button) => button.children.includes('Cancel date move'))!
+    act(() => cancel.props.onClick())
+    assert.equal(moveInput().props.value, '')
+    assert.equal(saveMenu().props.disabled, false)
+    await act(async () => { assert.equal(await saveMenu().props.onSave(false), true) })
+    assert.equal(saved.length, 1)
+    assert.equal(saved[0].scope, 'occurrence')
+    assert.equal(moves, 0)
+
+    act(() => moveInput().props.onChange({ target: { value: '2030-10-08' } }))
+    act(() => renderer.root.findAllByType('input').filter((input) => input.props.name === 'event-edit-scope')[0].props.onChange())
+    assert.equal(saveMenu().props.disabled, false)
+    act(() => renderer.root.findAllByType('input').filter((input) => input.props.name === 'event-edit-scope')[1].props.onChange())
+    assert.equal(moveInput().props.value, '')
+    assert.equal(saveMenu().props.disabled, false)
+  } finally {
+    act(() => renderer.unmount())
+  }
+})

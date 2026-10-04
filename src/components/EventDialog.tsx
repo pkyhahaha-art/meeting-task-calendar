@@ -245,10 +245,14 @@ export function EventDialog({
 
   const canEditOccurrence = Boolean(event?.recurrence_rule && occurrenceStart && details?.occurrenceId && new Date(occurrenceStart).getTime() > Date.now())
   const isOccurrenceEdit = canEditOccurrence && editScope === 'occurrence'
+  const viewedOccurrenceDate = occurrenceStart ? bangkokDate(new Date(occurrenceStart)) : ''
+  const hasPendingMove = Boolean(isOccurrenceEdit && onMoveOccurrence && moveDate && moveDate !== viewedOccurrenceDate)
+  const pendingMoveMessage = text('ยังไม่ได้ย้ายวัน กรุณากด “ย้ายนัดและสร้างประชุมใหม่” หรือ “ยกเลิกการย้ายวัน” ก่อนบันทึกนัดเดิม', 'The date has not been moved. Choose “Move and create a new meeting” or “Cancel date move” before saving the original appointment.')
 
   const changeEditScope = (scope: 'series' | 'occurrence') => {
     if (!event) return
     setEditScope(scope)
+    setMoveDate('')
     setDraft((current) =>
       scope === 'occurrence'
         ? {
@@ -357,6 +361,7 @@ export function EventDialog({
   }
 
   const save = async (notifyRecipients: boolean) => {
+    if (hasPendingMove) return false
     if (!draft.title.trim() || !draft.date || !draft.start) {
       setError(text('กรุณากรอกชื่อและเวลาเริ่ม', 'Enter a title and start time.'))
       return false
@@ -434,7 +439,6 @@ export function EventDialog({
     })()
   }
 
-  const viewedOccurrenceDate = occurrenceStart ? bangkokDate(new Date(occurrenceStart)) : ''
   const isViewingLaterOccurrence = Boolean(event && viewedOccurrenceDate && viewedOccurrenceDate !== bangkokDate(new Date(event.start_datetime)))
   const occurrenceDateTime = occurrenceStart
     ? new Intl.DateTimeFormat(language === 'th' ? 'th-TH' : 'en-GB', {
@@ -514,9 +518,13 @@ export function EventDialog({
               )}
               {isOccurrenceEdit && onMoveOccurrence && <div className="mt-3 space-y-2 rounded-xl border border-brand-200 bg-white p-3">
                 <label htmlFor="move-occurrence-date" className="field-label">{text('ย้ายนัดนี้เป็นประชุมใหม่แบบไม่ทำซ้ำ', 'Move this appointment to a new non-recurring meeting')}</label>
-                <input id="move-occurrence-date" type="date" min={bangkokDate()} value={moveDate} onChange={(event) => setMoveDate(event.target.value)} className="field-input" />
+                <input id="move-occurrence-date" type="date" min={bangkokDate()} value={moveDate} onChange={(event) => setMoveDate(event.target.value)} className="field-input" aria-describedby="move-occurrence-help" />
                 <p className="text-xs text-slate-600">{text('ใช้เวลาเดิม ยกเลิกเฉพาะนัดเดิม และสร้าง Meeting แยกในวันที่เลือก', 'Keep the same time, cancel only the original appointment, and create a separate meeting on the chosen date.')}</p>
-                <button type="button" disabled={busy || !moveDate || moveDate === viewedOccurrenceDate} className="btn-secondary text-sm" onClick={() => void onMoveOccurrence(draft, moveDate).catch(() => setError(text('ย้ายนัดไม่ได้ กรุณาลองใหม่', 'Could not move the appointment. Please try again.')))}>{text('ย้ายนัดและสร้างประชุมใหม่', 'Move and create a new meeting')}</button>
+                <p id="move-occurrence-help" className="text-xs font-semibold text-brand-900">{text('การเลือกวันที่ยังไม่ย้ายนัด ต้องกดปุ่มย้ายด้านล่างและยืนยันก่อน', 'Selecting a date does not move the appointment. Use the move button below and confirm.')}</p>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" disabled={busy || !hasPendingMove} className="btn-primary text-sm" onClick={() => void onMoveOccurrence(draft, moveDate).catch(() => setError(text('ย้ายนัดไม่ได้ กรุณาลองใหม่', 'Could not move the appointment. Please try again.')))}>{text('ย้ายนัดและสร้างประชุมใหม่', 'Move and create a new meeting')}</button>
+                  {moveDate && <button type="button" disabled={busy} className="btn-secondary text-sm" onClick={() => setMoveDate('')}>{text('ยกเลิกการย้ายวัน', 'Cancel date move')}</button>}
+                </div>
               </div>}
             </fieldset>
           )}
@@ -1176,6 +1184,7 @@ export function EventDialog({
           )}
 
           {error && <p className="form-error" role="alert">{error}</p>}
+          {hasPendingMove && <p role="status" aria-live="polite" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">{pendingMoveMessage}</p>}
 
           <div className="flex flex-wrap justify-between gap-2 border-t border-slate-100 pt-4">
             {event && canEdit ? (
@@ -1197,7 +1206,7 @@ export function EventDialog({
               </button>
               {canEdit &&
                 (event ? (
-                  <SaveActionMenu busy={busy} onSave={save} onComplete={onClose} allowNotification={!isOccurrenceEdit} disabled={hasExpiredReminders} />
+                  <SaveActionMenu busy={busy} onSave={save} onComplete={onClose} allowNotification={!isOccurrenceEdit} disabled={hasExpiredReminders || hasPendingMove} />
                 ) : (
                   <button className="btn-primary" disabled={busy || savingNew || creationDateInPast || hasExpiredReminders}>
                     {(busy || savingNew) && <Loader2 className="animate-spin" size={17} />}
