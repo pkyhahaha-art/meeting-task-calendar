@@ -65,7 +65,7 @@ begin
   update public.events set recurrence_rule='FREQ=WEEKLY;INTERVAL=2;BYDAY=TU,WE',recurrence_count=5 where id=meeting_id;
   perform public.refresh_meeting_occurrences(meeting_id);
   select array_agg(start_datetime order by start_datetime) into actual from public.event_occurrences where event_id=meeting_id and status='scheduled';
-  if actual is distinct from array[first_at,first_at+interval '3 days',first_at+interval '4 days',first_at+interval '17 days',first_at+interval '18 days']
+  if actual is distinct from array[first_at,first_at+interval '10 days',first_at+interval '11 days',first_at+interval '24 days',first_at+interval '25 days']
     then raise exception 'biweekly anchor or Bangkok date changed'; end if;
   update public.events set recurrence_rule='FREQ=WEEKLY;BYDAY=TU,WE',recurrence_count=null,recurrence_until=first_at+interval '4 days' where id=meeting_id;
   perform public.refresh_meeting_occurrences(meeting_id);

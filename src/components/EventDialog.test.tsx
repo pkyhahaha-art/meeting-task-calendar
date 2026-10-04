@@ -23,7 +23,7 @@ const details: EventDetails = {
   occurrenceReminders: [], occurrenceNotificationDeliveries: [],
 }
 const noop = async () => {}
-function dialog(connected: boolean, onSave: (draft: EventDraft) => Promise<void | { warning: string }> = noop, open = true, savedEvent = event, checkMobileRecipients?: (emails: string[]) => Promise<boolean>) {
+function dialog(connected: boolean, onSave: (draft: EventDraft) => Promise<void | { warning: string }> = noop, open = true, savedEvent: typeof event | null = event, checkMobileRecipients?: (emails: string[]) => Promise<boolean>) {
   return <LanguageProvider><EventDialog open={open} event={savedEvent} details={details}
     hasConnectedDevices={connected} checkMobileRecipients={checkMobileRecipients} canEdit canViewDeliveryStatus={false} busy={false}
     onClose={() => {}} onSave={onSave} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>
@@ -145,6 +145,76 @@ test('the recurrence preview includes the off-pattern start in the total of four
   act(() => { renderer = create(dialog(true, noop, true, recurring)) })
   const preview = renderer.root.findByProps({ 'aria-label': 'Appointment date preview' })
   assert.deepEqual(preview.findAllByType('li').map((row) => row.children.join('')), ['1. 03/10/2026', '2. 06/10/2026', '3. 07/10/2026', '4. 13/10/2026'])
+  act(() => renderer.unmount())
+})
+
+test('new weekly Meetings offer one to four weeks in a readable touch dropdown', () => {
+  let renderer!: ReactTestRenderer
+  act(() => { renderer = create(dialog(true, noop, true, null)) })
+  act(() => renderer.root.findByProps({ id: 'recurrence-frequency' }).props.onChange({ target: { value: 'week' } }))
+  const interval = renderer.root.findByProps({ id: 'meeting-week-interval' })
+  assert.deepEqual(interval.findAllByType('option').map((option) => option.props.value), [1, 2, 3, 4])
+  assert.match(interval.props.className, /min-h-11/)
+  assert.match(interval.props.className, /w-full/)
+  act(() => renderer.unmount())
+})
+
+test('an unsupported weekly interval is rejected unless it is the original saved value', async () => {
+  let renderer!: ReactTestRenderer
+  let saved = false
+  act(() => { renderer = create(dialog(true, async () => { saved = true }, true, { ...event, recurrence_rule: 'FREQ=WEEKLY;INTERVAL=2;BYDAY=FR' })) })
+  act(() => renderer.root.findByProps({ id: 'meeting-week-interval' }).props.onChange({ target: { value: '5' } }))
+  let result: unknown
+  await act(async () => { result = await renderer.root.findByType(SaveActionMenu).props.onSave(false) })
+  assert.equal(result, false)
+  assert.equal(saved, false)
+  assert.match(renderer.root.findByProps({ role: 'alert' }).children.join(''), /available weekly repeat interval/)
+  act(() => renderer.unmount())
+})
+
+test('an existing longer weekly interval remains visible and savable or can change to four weeks', async () => {
+  let renderer!: ReactTestRenderer
+  let saved: EventDraft | undefined
+  const legacy = { ...event, recurrence_rule: 'FREQ=WEEKLY;INTERVAL=12;BYDAY=WE,FR' }
+  act(() => { renderer = create(dialog(true, async (draft) => { saved = draft }, true, legacy)) })
+  const interval = renderer.root.findByProps({ id: 'meeting-week-interval' })
+  assert.equal(interval.props.value, 12)
+  assert.deepEqual(interval.findAllByType('option').map((option) => option.props.value), [1, 2, 3, 4, 12])
+  assert.match(interval.findAllByType('option')[4].children.join(''), /saved value/)
+  await act(async () => { await renderer.root.findByType(SaveActionMenu).props.onSave(false) })
+  assert.equal(saved?.recurrence.interval, 12)
+  act(() => interval.props.onChange({ target: { value: '4' } }))
+  await act(async () => { await renderer.root.findByType(SaveActionMenu).props.onSave(false) })
+  assert.equal(saved?.recurrence.interval, 4)
+  act(() => renderer.unmount())
+})
+
+test('switching a long monthly recurrence to weekly does not carry over an unsupported interval', () => {
+  let renderer!: ReactTestRenderer
+  act(() => { renderer = create(dialog(true, noop, true, { ...event, recurrence_rule: 'FREQ=MONTHLY;INTERVAL=12' })) })
+  act(() => renderer.root.findByProps({ id: 'recurrence-frequency' }).props.onChange({ target: { value: 'week' } }))
+  const interval = renderer.root.findByProps({ id: 'meeting-week-interval' })
+  assert.equal(interval.props.value, 1)
+  assert.deepEqual(interval.findAllByType('option').map((option) => option.props.value), [1, 2, 3, 4])
+  act(() => renderer.unmount())
+})
+
+test('a saved longer weekly interval can be restored after switching recurrence frequency', () => {
+  let renderer!: ReactTestRenderer
+  act(() => { renderer = create(dialog(true, noop, true, { ...event, recurrence_rule: 'FREQ=WEEKLY;INTERVAL=12;BYDAY=FR' })) })
+  const frequency = renderer.root.findByProps({ id: 'recurrence-frequency' })
+  act(() => frequency.props.onChange({ target: { value: 'month' } }))
+  act(() => frequency.props.onChange({ target: { value: 'week' } }))
+  assert.equal(renderer.root.findByProps({ id: 'meeting-week-interval' }).props.value, 12)
+  act(() => renderer.unmount())
+})
+
+test('the biweekly preview uses shared calendar weeks for a Friday start and Wednesday-Friday selection', () => {
+  let renderer!: ReactTestRenderer
+  const recurring = { ...event, start_datetime: '2026-10-16T02:00:00.000Z', recurrence_rule: 'FREQ=WEEKLY;INTERVAL=2;BYDAY=WE,FR', recurrence_until: '2026-11-30T16:59:59.999Z' }
+  act(() => { renderer = create(dialog(true, noop, true, recurring)) })
+  const preview = renderer.root.findByProps({ 'aria-label': 'Appointment date preview' })
+  assert.deepEqual(preview.findAllByType('li').map((row) => row.children.join('')), ['1. 16/10/2026', '2. 28/10/2026', '3. 30/10/2026', '4. 11/11/2026'])
   act(() => renderer.unmount())
 })
 

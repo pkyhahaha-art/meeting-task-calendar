@@ -129,6 +129,16 @@ export function meetingRecurrenceRule(value: MeetingRecurrence) {
   return parts.join(';')
 }
 
+export function meetingWeeklyIntervalOptions(existingRule: string | null = null) {
+  const options = [1, 2, 3, 4]
+  const parts = recurrenceParts(existingRule)
+  const existingInterval = Number(parts.get('INTERVAL'))
+  if (parts.get('FREQ') === 'WEEKLY' && Number.isInteger(existingInterval) && existingInterval > 4) {
+    options.push(existingInterval)
+  }
+  return options
+}
+
 export const reminderOptions: { key: ReminderKey; label: string }[] = [
   { key: '0:minute', label: 'เมื่อถึงเวลานัด' },
   { key: '1:month', label: '1 เดือนก่อน' },

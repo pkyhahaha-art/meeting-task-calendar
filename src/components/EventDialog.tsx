@@ -16,6 +16,7 @@ import {
   meetingRecurrenceSummary,
   meetingReminderOptionLabel,
   meetingWeekdayForDate,
+  meetingWeeklyIntervalOptions,
   pastMeetingReminderKeys,
   parseGuestEmails,
   reminderOptions,
@@ -294,6 +295,7 @@ export function EventDialog({
   const expiredReminderLabels = expiredReminderKeys.map(reminderLabel).join(', ')
 
   const currentWeekday = meetingWeekdayForDate(draft.date)
+  const weeklyIntervalOptions = meetingWeeklyIntervalOptions(event?.recurrence_rule)
   const currentDayNum = Number(draft.date.slice(8, 10)) || 1
   const endOfYear = endOfYearBangkokDate(draft.date)
 
@@ -311,7 +313,7 @@ export function EventDialog({
     if (freq === 'week') {
       set('recurrence', {
         frequency: 'week',
-        interval: draft.recurrence.interval || 1,
+        interval: weeklyIntervalOptions.includes(draft.recurrence.interval) ? draft.recurrence.interval : 1,
         weekdays: draft.recurrence.weekdays.length ? draft.recurrence.weekdays : [currentWeekday],
         until: currentUntil,
         count: currentCount,
@@ -376,6 +378,10 @@ export function EventDialog({
     }
     if (!isOccurrenceEdit && draft.recurrence.until && draft.recurrence.until < draft.date) {
       setError(text('วันสิ้นสุดการทำซ้ำต้องไม่ก่อนวันนัดหมาย', 'The recurrence end date cannot be before the meeting date.'))
+      return false
+    }
+    if (!isOccurrenceEdit && draft.recurrence.frequency === 'week' && !weeklyIntervalOptions.includes(draft.recurrence.interval)) {
+      setError(text('กรุณาเลือกรอบการทำซ้ำรายสัปดาห์ที่กำหนด', 'Choose an available weekly repeat interval.'))
       return false
     }
     if (!isOccurrenceEdit && draft.sendImmediate && !draft.notifyEmail) {
@@ -699,20 +705,23 @@ export function EventDialog({
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2 pt-1">
-                        <span className="text-xs font-semibold text-slate-700">{text('รอบสัปดาห์:', 'Repeat interval:')}</span>
-                        <span className="text-sm text-slate-600">{text('ทุกๆ', 'Every')}</span>
-                        <input
-                          className="field-input w-16 py-1 text-center font-bold"
-                          type="number"
-                          min="1"
-                          max="52"
+                        <label htmlFor="meeting-week-interval" className="text-xs font-semibold text-slate-700">{text('รอบสัปดาห์:', 'Repeat interval:')}</label>
+                        <select
+                          id="meeting-week-interval"
+                          aria-label={text('รอบสัปดาห์', 'Week interval')}
+                          className="field-input min-h-11 w-full font-semibold sm:w-auto"
                           value={draft.recurrence.interval}
-                          onChange={(e) => updateRecurrence({ interval: Math.max(1, Number(e.target.value) || 1) })}
-                        />
+                          onChange={(e) => updateRecurrence({ interval: Number(e.target.value) })}
+                        >
+                          {weeklyIntervalOptions.map((interval) => <option key={interval} value={interval}>
+                            {text(`ทุก ${interval} สัปดาห์${interval > 4 ? ' (ค่าเดิม)' : ''}`, `Every ${interval} week${interval > 1 ? 's' : ''}${interval > 4 ? ' (saved value)' : ''}`)}
+                          </option>)}
+                        </select>
                         <span className="text-sm text-slate-600">
-                          {text('สัปดาห์ (1 = ทุกสัปดาห์, 2 = สัปดาห์เว้นสัปดาห์)', 'week(s) (1 = weekly, 2 = biweekly)')}
+                          {text('1 = ทุกสัปดาห์, 2 = สัปดาห์เว้นสัปดาห์', '1 = weekly, 2 = biweekly')}
                         </span>
                       </div>
+                      <p className="text-xs text-slate-500">{text('นับสัปดาห์จันทร์–อาทิตย์ โดยเริ่มจากสัปดาห์ที่มีวันนัดแรก', 'Count Monday-Sunday weeks, starting with the week of the first appointment.')}</p>
                     </div>
                   )}
 

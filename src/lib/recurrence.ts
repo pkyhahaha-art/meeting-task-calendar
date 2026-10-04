@@ -45,7 +45,7 @@ function ruleParts(rule: string) {
   return new Map(rule.split(';').map((part) => part.split('=', 2) as [string, string]))
 }
 
-function matches(current: Date, first: Date, parts: Map<string, string>) {
+function matches(current: Date, first: Date, parts: Map<string, string>, calendarWeeks: boolean) {
   const frequency = parts.get('FREQ')
   const interval = Math.max(1, Number(parts.get('INTERVAL')) || 1)
   const currentDate = localDate(current)
@@ -54,10 +54,13 @@ function matches(current: Date, first: Date, parts: Map<string, string>) {
   if (dayOffset < 0) return false
   if (frequency === 'DAILY') return dayOffset % interval === 0
   if (frequency === 'WEEKLY') {
-    if (Math.floor(dayOffset / 7) % interval !== 0) return false
+    const firstWeekday = new Date(`${firstDate}T12:00:00+07:00`).getUTCDay()
+    // Meetings use Monday-Sunday weeks; Tasks retain their rolling start window.
+    const weekOffset = Math.floor((dayOffset + (calendarWeeks ? (firstWeekday + 6) % 7 : 0)) / 7)
+    if (weekOffset % interval !== 0) return false
     const allowedDays = parts.get('BYDAY')?.split(',')
     const weekday = weekdayCodes[new Date(`${currentDate}T12:00:00+07:00`).getUTCDay()]
-    return allowedDays ? allowedDays.includes(weekday) : weekday === weekdayCodes[new Date(`${firstDate}T12:00:00+07:00`).getUTCDay()]
+    return allowedDays ? allowedDays.includes(weekday) : weekday === weekdayCodes[firstWeekday]
   }
   const [currentYear, currentMonth, currentDay] = currentDate.split('-').map(Number)
   const [firstYear, firstMonth, firstDay] = firstDate.split('-').map(Number)
@@ -86,7 +89,7 @@ function expandOccurrences<T extends RecurringEvent>(event: T, rangeStart: Date,
   let occurrenceCount = 0
   for (let current = new Date(first); current <= rangeEnd && occurrenceCount < (event.recurrence_count ?? Infinity); current.setUTCDate(current.getUTCDate() + 1)) {
     if (recurrenceUntil && current > recurrenceUntil) break
-    if (!(includeFirst && current.getTime() === first.getTime()) && !matches(current, first, parts)) continue
+    if (!(includeFirst && current.getTime() === first.getTime()) && !matches(current, first, parts, includeFirst)) continue
     occurrenceCount += 1
     if (current >= rangeStart) occurrences.push({
       key: `${event.id}-${current.toISOString()}`,

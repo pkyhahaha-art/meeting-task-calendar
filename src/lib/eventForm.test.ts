@@ -13,6 +13,7 @@ import {
   meetingReminderKeysFromTemplates,
   meetingReminderOptionLabel,
   meetingReminderStatus,
+  meetingWeeklyIntervalOptions,
   pastMeetingReminderKeys,
   parseDisplayDate,
   parseGuestEmails,
@@ -77,6 +78,20 @@ test('maps custom Meeting recurrences to and from an RRULE', () => {
     meetingRecurrenceFromRule('FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE', '2026-09-28', '2026-12-31T16:59:59.999Z', 12),
     recurrence,
   )
+})
+
+test('new weekly intervals offer one to four weeks while retaining an existing longer interval', () => {
+  assert.deepEqual(meetingWeeklyIntervalOptions(), [1, 2, 3, 4])
+  assert.deepEqual(meetingWeeklyIntervalOptions('FREQ=WEEKLY;INTERVAL=3;BYDAY=FR'), [1, 2, 3, 4])
+  assert.deepEqual(meetingWeeklyIntervalOptions('FREQ=WEEKLY;INTERVAL=12;BYDAY=FR'), [1, 2, 3, 4, 12])
+  assert.deepEqual(meetingWeeklyIntervalOptions('FREQ=MONTHLY;INTERVAL=12'), [1, 2, 3, 4])
+})
+
+test('loading and serializing a legacy weekly interval does not clamp its saved value', () => {
+  const rule = 'FREQ=WEEKLY;INTERVAL=12;BYDAY=WE,FR'
+  const recurrence = meetingRecurrenceFromRule(rule, '2026-10-16', '2027-11-30T16:59:59.999Z', null)
+  assert.equal(recurrence.interval, 12)
+  assert.equal(meetingRecurrenceRule(recurrence), rule)
 })
 
 test('calculates reminder schedule from event start', () => {
