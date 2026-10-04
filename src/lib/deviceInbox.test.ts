@@ -5,6 +5,7 @@ import vm from 'node:vm'
 import { indexedDB } from 'fake-indexeddb'
 import { deleteDeviceAlerts, listDeviceAlerts, markDeviceAlertRead, readDevicePairing, saveDeviceAlert, saveDevicePairing, updateDeviceAlertDetails } from './deviceInbox'
 import { deviceNotification } from '../../supabase/functions/process-notification-queue/deviceNotification'
+import { subject } from '../../supabase/functions/process-notification-queue/emailTemplate'
 
 globalThis.indexedDB = indexedDB
 const workerSource = readFileSync(new URL('../../public/sw.js', import.meta.url), 'utf8')
@@ -217,6 +218,27 @@ test('Thai notification snapshots fit Web Push payload limits and exclude creden
   assert.ok(new TextEncoder().encode(JSON.stringify(result)).length < 3500)
   assert.equal(result.details.due_date, '2026-10-06')
   assert.doesNotMatch(JSON.stringify(result), /SECRET|PRIVATE|ack_url|guest_token/)
+})
+
+test('appointment action survives worker restart and online refresh without rewriting the original action', async () => {
+  await saveDevicePairing({ subscriptionId: 'action-device', endpoint: 'https://web.push.apple.com/actions', userName: 'User', pairedAt: '2026-10-04T02:00:00Z' }, true)
+  for (const template of ['meeting_occurrence_cancelled', 'meeting_occurrence_moved']) {
+    const payload = { entity: 'meeting', title: 'ประชุม'.repeat(100), original_occurrence_start: '2026-10-02T17:30:00Z',
+      new_occurrence_start: '2026-10-01T17:30:00Z', description: 'PRIVATE AGENDA', guest_token: 'SECRET',
+      meeting_documents: [{ name: 'PRIVATE DOCUMENT', url: 'https://storage.test/private' }] }
+    const message = deviceNotification(template, subject(template, payload), payload, 'https://example.github.io/calendar/', template)
+    assert.ok(new TextEncoder().encode(JSON.stringify(message)).length < 3500)
+    assert.match(message.title, /3 ต\.ค\./)
+    assert.doesNotMatch(message.body, /ประชุม|«|»/)
+    if (template.endsWith('moved')) assert.match(message.body, /2 ต\.ค\. เวลา 00:30 น\./)
+    assert.doesNotMatch(JSON.stringify(message), /PRIVATE|SECRET|storage\.test/)
+    await worker().push(message)
+    await updateDeviceAlertDetails(template, { entity: 'meeting', title: 'New title', description: 'Current agenda', start_datetime: '2026-11-01T00:00:00Z' })
+    const alert = (await listDeviceAlerts()).find((item) => item.id === template)!
+    assert.equal(alert.title, message.title)
+    assert.equal(alert.details?.notice_template, template)
+    assert.equal(alert.details?.description, undefined)
+  }
 })
 
 test('caching full message details preserves read state and never restores a deleted alert', async () => {

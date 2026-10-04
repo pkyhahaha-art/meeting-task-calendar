@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { html } from '../../supabase/functions/process-notification-queue/emailTemplate'
+import { html, subject } from '../../supabase/functions/process-notification-queue/emailTemplate'
 import { internalMeetingUrl } from '../../supabase/functions/process-notification-queue/meetingLink'
 
 test('creates a hash-router link to a Meeting', () => {
@@ -59,4 +59,21 @@ test('email branding falls back to readable PEA text without a secure app URL', 
     assert.match(card, /งานใหม่/)
     assert.doesNotMatch(card, /<img|javascript:|localhost/)
   }
+})
+
+test('appointment action notices name the exact Bangkok date and remain concise in branded email', () => {
+  const payload = { entity: 'meeting', title: '<แผนงาน>', original_occurrence_start: '2026-10-02T17:30:00Z',
+    new_occurrence_start: '2026-10-01T17:30:00Z', description: 'PRIVATE AGENDA',
+    recurrence_rule: 'FREQ=WEEKLY;COUNT=4', ack_url: 'https://example.test/ack',
+    meeting_documents: [{ name: 'PRIVATE DOCUMENT', url: 'https://example.test/private' }] }
+  assert.equal(subject('meeting_occurrence_cancelled', payload), 'ยกเลิกประชุม «<แผนงาน>» วันที่ 3 ต.ค. เวลา 00:30 น.')
+  assert.equal(subject('meeting_occurrence_moved', payload), 'ย้ายประชุม «<แผนงาน>» จากวันที่ 3 ต.ค. เป็นวันที่ 2 ต.ค. เวลา 00:30 น.')
+  for (const template of ['meeting_occurrence_cancelled', 'meeting_occurrence_moved']) {
+    const card = html(template, payload, 'https://example.github.io/calendar/')
+    assert.ok(card.includes(subject(template, { ...payload, title: '&lt;แผนงาน&gt;' })))
+    assert.match(card, /pea-mail-mascot-v1\.png|PEA MEETING &amp; TASK CALENDAR/)
+    assert.doesNotMatch(card, /PRIVATE|FREQ|ทุกสัปดาห์|>รับทราบ|href=|วาระการประชุม|แบบไม่ทำซ้ำ|ยังคงเดิม/)
+  }
+  assert.equal(subject('meeting_occurrence_cancelled', { ...payload, all_day: true }), 'ยกเลิกประชุม «<แผนงาน>» วันที่ 3 ต.ค.')
+  assert.match(subject('meeting_occurrence_moved', { ...payload, original_occurrence_start: '2026-12-31T02:00:00Z', new_occurrence_start: '2027-01-01T02:00:00Z' }), /31 ธ\.ค\. 2569 เป็นวันที่ 1 ม\.ค\. 2570/)
 })

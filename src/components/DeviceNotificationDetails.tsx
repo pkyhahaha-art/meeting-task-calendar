@@ -1,5 +1,6 @@
 import { Download, ExternalLink, FileText, Loader2, RefreshCw } from 'lucide-react'
 import type { DeviceAlert, DeviceInboxDocument } from '../lib/deviceInbox'
+import { isDeviceAppointmentNotice } from '../lib/deviceInbox'
 import { deviceDocumentRoute } from '../lib/deviceDocument'
 
 function dateLabel(value?: string, allDay = false) {
@@ -15,6 +16,10 @@ export function DeviceNotificationDetails({ alert, details = alert.details, docu
   alert: DeviceAlert; details?: DeviceAlert['details']; documents?: DeviceInboxDocument[];
   fetching?: boolean; error?: string; onlineDetails?: boolean; canLoad?: boolean; onRefresh?: () => void;
 }) {
+  if (isDeviceAppointmentNotice(alert)) return <>
+    <h2 className="break-words text-xl font-bold leading-relaxed text-slate-900">{alert.title}</h2>
+    <p className="text-xs text-slate-500">รับเมื่อ {dateLabel(alert.receivedAt)}</p>
+  </>
   const rows = [
     [details?.entity === 'task' ? 'ชื่องาน' : 'ชื่อการประชุม', details?.title],
     ['หน่วยงาน / สังกัด', details?.affiliation || (onlineDetails ? 'ไม่ระบุ' : '')],

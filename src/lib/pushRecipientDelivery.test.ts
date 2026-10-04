@@ -10,6 +10,7 @@ type Options = {
   removed?: boolean; scoped?: boolean; legacyFirst?: boolean; missingOccurrence?: boolean
   cancelledOccurrence?: boolean; status?: string; deleted?: boolean; template?: string
   channel?: 'push' | 'email'; readError?: string; retry?: boolean
+  actionPayload?: boolean
 }
 
 // Execute the actual Edge handler and local payload builder. Adapters never make
@@ -26,7 +27,8 @@ function service(options: Options = {}) {
     recipient_reference: 'device-1', channel: options.channel ?? 'push',
     template_key: options.template ?? (options.meeting ? 'meeting_reminder' : 'task_updated'),
     payload: { entity: options.meeting ? 'meeting' : 'task', id: options.meeting ? 'meeting-1' : 'task-1',
-      push_user_id: recipient, description: 'Private fixture', ...(options.scoped ? { occurrence_id: 'occurrence-1' } : {}) },
+      push_user_id: recipient, description: 'Private fixture', ...(options.scoped ? { occurrence_id: 'occurrence-1' } : {}),
+      ...(options.actionPayload ? { title: 'แผนงาน', original_occurrence_start: '2026-10-03T02:00:00Z', new_occurrence_start: '2026-10-02T02:00:00Z' } : {}) },
     attempt: options.retry ? 1 : 0,
   }
   let status = options.retry ? 'retry' : 'queued'
@@ -89,7 +91,8 @@ function service(options: Options = {}) {
   }
   const source = readFileSync(new URL('../../supabase/functions/process-notification-queue/index.ts', import.meta.url), 'utf8').replace(/^import .*\n/gm, '')
   const payloadBuilder = readFileSync(new URL('../../supabase/functions/process-notification-queue/deviceNotification.ts', import.meta.url), 'utf8').replace(/export /g, '')
-  const compiled = ts.transpileModule(`${payloadBuilder}\n${source}`, {
+  const emailTemplate = readFileSync(new URL('../../supabase/functions/process-notification-queue/emailTemplate.ts', import.meta.url), 'utf8').replace(/export /g, '')
+  const compiled = ts.transpileModule(`${emailTemplate}\n${payloadBuilder}\n${source}`, {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None },
   }).outputText
   vm.runInNewContext(compiled, {
@@ -184,4 +187,41 @@ test('the Push eligibility guard does not change the existing email sending path
   assert.equal(server.state().status, 'sent')
   assert.deepEqual(server.state().messages, ['email'])
   assert.equal(server.state().queried.includes('profiles'), false)
+})
+
+test('appointment cancellation/move reaches only the current entitled device and never hydrates private details', async () => {
+  for (const template of ['meeting_occurrence_cancelled', 'meeting_occurrence_moved']) {
+    for (const recipient of ['owner', 'guest'] as const) {
+      const server = service({ meeting: true, template, recipient, actionPayload: true,
+        scoped: template === 'meeting_occurrence_cancelled', cancelledOccurrence: true })
+      await server.run()
+      assert.equal(server.state().status, 'sent')
+      const message = server.state().messages[0] as { title: string; body: string; details: { notice_template: string } }
+      assert.equal(message.title, template === 'meeting_occurrence_cancelled'
+        ? 'ยกเลิกประชุม «แผนงาน» วันที่ 3 ต.ค. เวลา 09:00 น.'
+        : 'ย้ายประชุม «แผนงาน» จากวันที่ 3 ต.ค. เป็นวันที่ 2 ต.ค. เวลา 09:00 น.')
+      assert.equal(message.body, template === 'meeting_occurrence_cancelled'
+        ? 'วันที่ 3 ต.ค. เวลา 09:00 น.'
+        : 'จากวันที่ 3 ต.ค. เป็นวันที่ 2 ต.ค. เวลา 09:00 น.')
+      assert.equal(message.details.notice_template, template)
+      assert.doesNotMatch(JSON.stringify(message), /Private|agenda|token|push_user_id/)
+      assert.ok(!server.state().queried.some((table) => ['attachments', 'document_links', 'guest_tokens', 'email_acknowledgement_tokens'].includes(table)))
+    }
+    for (const options of [{ removed: true }, { inactive: true }, { changedDevice: true }, { missingEntity: true },
+      ...(template === 'meeting_occurrence_cancelled' ? [{ missingOccurrence: true }] : [])]) {
+      const server = service({ meeting: true, template, actionPayload: true, scoped: template === 'meeting_occurrence_cancelled', cancelledOccurrence: true, ...options })
+      await server.run()
+      assert.equal(server.state().status, 'skipped')
+      assert.equal(server.state().messages.length, 0)
+    }
+  }
+})
+
+test('appointment action email skips token/acknowledgement and document enrichment', async () => {
+  for (const template of ['meeting_occurrence_cancelled', 'meeting_occurrence_moved']) {
+    const server = service({ meeting: true, template, channel: 'email', actionPayload: true })
+    await server.run()
+    assert.equal(server.state().status, 'sent')
+    assert.deepEqual(server.state().queried, ['notification_deliveries', 'notification_deliveries', 'notification_deliveries'])
+  }
 })

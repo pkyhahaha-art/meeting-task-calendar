@@ -1,12 +1,16 @@
 export type DevicePairing = { subscriptionId: string; endpoint: string; userName: string; userId?: string; pairedAt: string }
 export type DeviceAlert = {
   id: string; title: string; body: string; receivedAt: string; read: boolean
-  details?: { entity?: string; id?: string; title?: string; affiliation?: string; description?: string; start_datetime?: string;
+  details?: { entity?: string; notice_template?: string; id?: string; title?: string; affiliation?: string; description?: string; start_datetime?: string;
     end_datetime?: string; due_date?: string; due_time?: string; location?: string; all_day?: boolean; status?: string }
 }
 export type DeviceInboxDocument = { id: string; name: string; size?: number; kind: 'file' | 'drive';
   previewUrl?: string; downloadUrl?: string; error?: string }
 export type DeviceNotificationContent = { details: NonNullable<DeviceAlert['details']>; documents: DeviceInboxDocument[]; linksExpireAt: string }
+
+export function isDeviceAppointmentNotice(alert?: DeviceAlert) {
+  return alert?.details?.notice_template === 'meeting_occurrence_cancelled' || alert?.details?.notice_template === 'meeting_occurrence_moved'
+}
 
 /** The worker reads the latest stored unread count; no login or server call needed. */
 export function requestDeviceInboxBadgeSync(removedIds: string[] = []) {
@@ -120,7 +124,7 @@ export async function updateDeviceAlertDetails(id: string, details: NonNullable<
       const transaction = db.transaction('alerts', 'readwrite')
       const store = transaction.objectStore('alerts')
       const request = store.get(id)
-      request.onsuccess = () => { if (request.result) store.put({ ...request.result, details }) }
+      request.onsuccess = () => { if (request.result && !isDeviceAppointmentNotice(request.result)) store.put({ ...request.result, details }) }
       transaction.oncomplete = () => resolve()
       transaction.onerror = () => reject(transaction.error)
       transaction.onabort = () => reject(transaction.error)

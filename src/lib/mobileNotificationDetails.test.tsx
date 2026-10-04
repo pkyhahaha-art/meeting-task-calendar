@@ -72,3 +72,18 @@ test('Meeting details show start/end, department and offline messages retain the
   const html = renderToStaticMarkup(<DeviceNotificationDetails alert={alert} canLoad error="ไม่มีอินเทอร์เน็ต" />)
   for (const text of ['ชื่อการประชุม', 'ประชุมแผนงาน', 'ฝ่ายแผนงาน', 'เริ่มประชุม', 'สิ้นสุดประชุม', '09:00', '10:00', 'ห้อง 7', 'ไม่มีอินเทอร์เน็ต', 'โหลดใหม่']) assert.ok(html.includes(text), text)
 })
+
+test('appointment action details show one concise historical notice even if latest details or documents are supplied', () => {
+  for (const template of ['meeting_occurrence_cancelled', 'meeting_occurrence_moved']) {
+    const title = template.endsWith('moved') ? 'ย้ายประชุม «แผนงาน» จากวันที่ 3 ต.ค. เป็นวันที่ 2 ต.ค. เวลา 09:00 น.'
+      : 'ยกเลิกประชุม «แผนงาน» วันที่ 3 ต.ค. เวลา 09:00 น.'
+    const html = renderToStaticMarkup(<DeviceNotificationDetails canLoad onlineDetails
+      alert={{ id: 'action', title, body: title, receivedAt: '2026-10-04T02:00:00Z', read: true, details: { entity: 'meeting', notice_template: template } }}
+      details={{ entity: 'meeting', title: 'Renamed Meeting', description: 'PRIVATE AGENDA', start_datetime: '2026-11-01T00:00:00Z' }}
+      documents={[{ id: 'file', name: 'PRIVATE DOCUMENT', kind: 'file', previewUrl: 'https://storage.test/private' }]} />)
+    assert.ok(html.includes(title))
+    assert.equal(html.split(title).length, 2)
+    assert.doesNotMatch(html, /PRIVATE|Renamed|เอกสารแนบ|วาระการประชุม|เปิดดู|storage\.test/)
+    assert.match(html, /รับเมื่อ/)
+  }
+})

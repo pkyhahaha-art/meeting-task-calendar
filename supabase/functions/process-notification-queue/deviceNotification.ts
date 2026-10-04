@@ -8,9 +8,18 @@ function limited(value: unknown, maxBytes: number) {
   return result
 }
 
-export function deviceNotification(deliveryId: string, title: string, payload: Record<string, unknown>, publicAppUrl: string) {
+export function deviceNotification(deliveryId: string, title: string, payload: Record<string, unknown>, publicAppUrl: string, template = '') {
   const url = new URL(publicAppUrl)
   url.hash = `/device-inbox?notification=${encodeURIComponent(deliveryId)}`
+  if (template === 'meeting_occurrence_cancelled' || template === 'meeting_occurrence_moved') {
+    // Keep action notices immutable and small, without private agenda/document data.
+    const dates = title.slice(title.lastIndexOf('»') + 1).replace(/^(ยกเลิก|ย้าย)ประชุม\s*/, '').trim()
+    return {
+      id: deliveryId, title: limited(title, 1200), body: limited(dates, 600),
+      tag: `delivery-${deliveryId}`, url: url.href,
+      details: { entity: 'meeting', notice_template: template },
+    }
+  }
   return {
     id: deliveryId, title: limited(title, 400),
     body: limited(payload.description, 240) || 'คุณมีข้อความใหม่จากปฏิทิน PEA แตะเพื่อดูรายละเอียด',

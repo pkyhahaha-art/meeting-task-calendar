@@ -76,6 +76,27 @@ function formatSize(value: number | null) {
 
 export function subject(template: string, payload: Record<string, unknown>) {
   const title = text(payload.title)
+  if (template === 'meeting_occurrence_cancelled' || template === 'meeting_occurrence_moved') {
+    const titleCharacters = Array.from(title)
+    const noticeTitle = titleCharacters.length > 80 ? `${titleCharacters.slice(0, 80).join('')}…` : title
+    const original = new Date(String(payload.original_occurrence_start ?? ''))
+    const destination = new Date(String(payload.new_occurrence_start ?? ''))
+    const validOriginal = !Number.isNaN(original.getTime())
+    const validDestination = !Number.isNaN(destination.getTime())
+    const crossYear = validOriginal && validDestination && new Intl.DateTimeFormat('en', { year: 'numeric', timeZone: 'Asia/Bangkok' }).format(original)
+      !== new Intl.DateTimeFormat('en', { year: 'numeric', timeZone: 'Asia/Bangkok' }).format(destination)
+    const day = (date: Date) => new Intl.DateTimeFormat('th-TH', {
+      day: 'numeric', month: 'short', ...(crossYear ? { year: 'numeric' as const } : {}), timeZone: 'Asia/Bangkok',
+    }).format(date)
+    const appointment = template === 'meeting_occurrence_moved' ? destination : original
+    const time = !Number.isNaN(appointment.getTime()) && payload.all_day !== true
+      ? ` เวลา ${new Intl.DateTimeFormat('th-TH', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'Asia/Bangkok' }).format(appointment)} น.` : ''
+    const heading = `${template === 'meeting_occurrence_moved' ? 'ย้ายประชุม' : 'ยกเลิกประชุม'}${noticeTitle ? ` «${noticeTitle}»` : ''}`
+    const dates = template === 'meeting_occurrence_moved'
+      ? validOriginal && validDestination ? ` จากวันที่ ${day(original)} เป็นวันที่ ${day(destination)}` : ''
+      : validOriginal ? ` วันที่ ${day(original)}` : ''
+    return `${heading}${dates}${time}`
+  }
   const labels: Record<string, string> = {
     meeting_created: 'คุณได้สร้าง Meeting แล้ว', task_created: 'คุณได้สร้าง Task แล้ว', meeting_updated: 'Meeting ถูกแก้ไข', meeting_cancelled: 'Meeting ถูกยกเลิก',
     meeting_guest_added: 'คุณได้รับเชิญเข้าร่วม Meeting', meeting_reminder: 'แจ้งเตือน Meeting', task_assigned: 'คุณได้รับมอบหมาย Task',
@@ -97,17 +118,18 @@ function emailAssetUrl(appUrl: string, file: string) {
 
 export function html(template: string, payload: Record<string, unknown>, appUrl = '') {
   const isMeeting = payload.entity === 'meeting'
+  const occurrenceNotice = template === 'meeting_occurrence_cancelled' || template === 'meeting_occurrence_moved'
   const mascotUrl = emailAssetUrl(appUrl, 'pea-mail-mascot-v1.png')
   const logoUrl = emailAssetUrl(appUrl, 'pea-logo.png')
-  const description = text(payload.description)
+  const description = occurrenceNotice ? '' : text(payload.description)
   const allDay = payload.all_day === true
   const startsAt = allDay ? formatDate(payload.start_datetime) : formatDateTime(payload.start_datetime)
   const endsAt = allDay ? formatDate(payload.end_datetime) : formatDateTime(payload.end_datetime)
   const dueDate = text(payload.due_date)
   const dueTime = text(payload.due_time)
-  const acknowledgeUrl = validUrl(payload.ack_url)
-  const documentItems = documents(isMeeting ? payload.meeting_documents : payload.task_documents)
-  const rows = [
+  const acknowledgeUrl = occurrenceNotice ? '' : validUrl(payload.ack_url)
+  const documentItems = occurrenceNotice ? [] : documents(isMeeting ? payload.meeting_documents : payload.task_documents)
+  const rows = (occurrenceNotice ? [] : [
     ['ผู้จัด', text(payload.organizer)],
     ['หน่วยงาน / สังกัด', text(payload.affiliation)],
     ['วันและเวลาเริ่ม', startsAt],
@@ -116,10 +138,12 @@ export function html(template: string, payload: Record<string, unknown>, appUrl 
     ['การทำซ้ำ', recurrenceLabel(payload.recurrence_rule)],
     ['กำหนดส่ง', [dueDate, dueTime].filter(Boolean).join(' ')],
     ['สถานะ', statusLabel(payload.status)],
-  ].filter(([, value]) => value)
+  ]).filter(([, value]) => value)
     .map(([label, value]) => `<tr><td width="112" valign="top" style="width:112px;padding:12px;color:#766280;font-size:12px;line-height:1.7;border-bottom:1px solid #eee5f3;background:#fbf8fd">${escapeHtml(label)}</td><td valign="top" style="padding:12px;color:#35213f;font-size:14px;line-height:1.7;border-bottom:1px solid #eee5f3;word-break:break-word;overflow-wrap:anywhere">${escapeHtml(value)}</td></tr>`)
     .join('')
-  const descriptionBlock = description
+  const descriptionBlock = occurrenceNotice
+    ? `<p style="margin:0;color:#35213f;font-size:16px;line-height:1.8;word-break:break-word">${escapeHtml(subject(template, payload))}</p>`
+    : description
     ? `<div style="margin-top:22px"><div style="margin-bottom:10px;color:#650773;font-size:14px;font-weight:700">${isMeeting ? 'รายละเอียด / วาระการประชุม' : 'รายละเอียดงาน'}</div><div style="padding:16px;background:#faf5fc;border-left:4px solid #e4b445;border-radius:0 12px 12px 0;color:#51425c;font-size:14px;line-height:1.8;word-break:break-word;overflow-wrap:anywhere">${escapeHtml(description)}</div></div>`
     : ''
   const acknowledgeAction = acknowledgeUrl

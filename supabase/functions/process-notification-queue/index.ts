@@ -35,6 +35,10 @@ const cronSecret = Deno.env.get('NOTIFICATION_CRON_SECRET')
 const lineAccessToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN')
 const publicAppUrl = Deno.env.get('PUBLIC_APP_URL')
 
+function isOccurrenceNotice(delivery: Delivery) {
+  return delivery.template_key === 'meeting_occurrence_cancelled' || delivery.template_key === 'meeting_occurrence_moved'
+}
+
 function errorMessage(error: unknown) {
   if (error instanceof Error) return error.message
   try { return JSON.stringify(error) || 'Unknown error' } catch { return String(error) }
@@ -110,7 +114,7 @@ async function currentPushRecipient(delivery: Delivery): Promise<boolean> {
       .eq('id', delivery.event_id).maybeSingle()
     if (result.error) throw result.error
     const meeting = result.data
-    const cancellation = delivery.template_key === 'meeting_cancelled'
+    const cancellation = delivery.template_key === 'meeting_cancelled' || delivery.template_key === 'meeting_occurrence_cancelled'
     if (!meeting || (meeting.deleted_at && !cancellation)
       || (meeting.status !== 'scheduled' && !(delivery.template_key === 'meeting_created' && meeting.owner_user_id === recipientId)
         && !(cancellation && meeting.status === 'cancelled'))) return false
@@ -129,7 +133,9 @@ async function currentPushRecipient(delivery: Delivery): Promise<boolean> {
         .eq('id', occurrenceId).eq('event_id', delivery.event_id).maybeSingle()
       if (occurrence.error) throw occurrence.error
       if (!occurrence.data || (occurrence.data.status !== 'scheduled' && !cancellation)) return false
+      if (delivery.template_key === 'meeting_occurrence_cancelled' && occurrence.data.status !== 'cancelled') return false
     }
+    if (delivery.template_key === 'meeting_occurrence_cancelled' && !occurrenceId) return false
     if (meeting.owner_user_id === recipientId) return true
     const guests = await supabase.rpc('meeting_mobile_guest_users', {
       target_event_id: delivery.event_id, target_occurrence_id: occurrenceId || null,
@@ -141,6 +147,7 @@ async function currentPushRecipient(delivery: Delivery): Promise<boolean> {
 }
 
 async function payloadWithGuestLink(delivery: Delivery) {
+  if (isOccurrenceNotice(delivery)) return delivery.payload
   if (delivery.channel !== 'email' || delivery.recipient_type !== 'guest' || !delivery.event_id || !publicAppUrl) return delivery.payload
   const occurrenceId = await occurrenceIdForDelivery(delivery, delivery.payload)
   const scopedGuest = occurrenceId
@@ -172,6 +179,7 @@ async function payloadWithGuestLink(delivery: Delivery) {
 }
 
 async function payloadWithMeetingDetails(delivery: Delivery, payload: Record<string, unknown>) {
+  if (isOccurrenceNotice(delivery)) return payload
   if (!delivery.event_id) return payload
   const { data: event, error: eventError } = await supabase.from('events')
     .select('id, owner_user_id, title, description, affiliation, start_datetime, end_datetime, all_day, location, timezone, recurrence_rule, status')
@@ -301,7 +309,7 @@ async function send(delivery: Delivery, payload: Record<string, unknown>) {
     if (!device) return new Response('Push device is no longer connected', { status: 410 })
     // A device re-paired to another account must never receive an older owner's delivery.
     if (device.user_id !== text(payload.push_user_id)) return new Response('Push recipient changed', { status: 410 })
-    const result = await deliverWebPush(device as PushSubscriptionRecord, deviceNotification(delivery.id, subject(delivery.template_key, payload), payload, publicAppUrl), config, webpush.generateRequestDetails)
+    const result = await deliverWebPush(device as PushSubscriptionRecord, deviceNotification(delivery.id, subject(delivery.template_key, payload), payload, publicAppUrl, delivery.template_key), config, webpush.generateRequestDetails)
     if (result.expired) await supabase.from('mobile_push_subscriptions').delete().eq('id', device.id).eq('user_id', device.user_id)
     return new Response(result.sent ? 'Push provider accepted the notification' : `Push provider status ${result.status}`, { status: result.sent ? 200 : result.status })
   }
@@ -364,7 +372,7 @@ Deno.serve(async (request) => {
       const guestPayload = await payloadWithGuestLink(delivery)
       const meetingPayload = await payloadWithMeetingDetails(delivery, guestPayload)
       const documentPayload = await payloadWithTaskDocuments(delivery, meetingPayload)
-      const acknowledgement = !['meeting_cancelled', 'task_cancelled', 'task_completed'].includes(delivery.template_key)
+      const acknowledgement = !isOccurrenceNotice(delivery) && !['meeting_cancelled', 'task_cancelled', 'task_completed'].includes(delivery.template_key)
         ? await issueAcknowledgementUrl(delivery)
         : ''
       const payload = acknowledgement ? { ...documentPayload, ack_url: acknowledgement } : documentPayload
