@@ -138,7 +138,7 @@ export function EventDialog({
   hasConnectedDevices?: boolean
   checkMobileRecipients?: (emails: string[]) => Promise<boolean>
   onClose: () => void
-  onSave: (draft: EventDraft, notifyRecipients: boolean, scope: 'series' | 'occurrence') => Promise<void>
+  onSave: (draft: EventDraft, notifyRecipients: boolean, scope: 'series' | 'occurrence') => Promise<void | { warning: string }>
   onDelete: (scope?: 'series' | 'occurrence') => Promise<void>
   onMoveOccurrence?: (draft: EventDraft, date: string) => Promise<void>
   onDeleteAttachment: (attachment: AttachmentRow) => Promise<void>
@@ -402,8 +402,8 @@ export function EventDialog({
     }
     setError('')
     try {
-      await onSave(draft, isOccurrenceEdit ? false : notifyRecipients, isOccurrenceEdit ? 'occurrence' : 'series')
-      return true
+      const result = await onSave(draft, isOccurrenceEdit ? false : notifyRecipients, isOccurrenceEdit ? 'occurrence' : 'series')
+      return result?.warning ? { warning: result.warning } : true
     } catch (error) {
       setError(error instanceof Error && error.message.startsWith('เซสชันหมดอายุ') ? error.message : text('บันทึกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง', 'Could not save. Please try again.'))
       return false
@@ -415,14 +415,16 @@ export function EventDialog({
     void (async () => {
       setSavingNew(true)
       try {
-        if (await save(!event) && !event) {
+        const result = await save(!event)
+        if (result && !event) {
           await Swal.fire({
-            icon: 'success',
-            title: text('สำเร็จ', 'Success'),
-            text: text('สร้างการประชุมเรียบร้อยแล้ว', 'Meeting created.'),
-            showConfirmButton: false,
-            timer: 2000,
-            timerProgressBar: true,
+            icon: typeof result === 'object' ? 'warning' : 'success',
+            title: typeof result === 'object' ? text('บันทึกการประชุมแล้ว', 'Meeting saved') : text('สำเร็จ', 'Success'),
+            text: typeof result === 'object' ? result.warning : text('สร้างการประชุมเรียบร้อยแล้ว', 'Meeting created.'),
+            showConfirmButton: typeof result === 'object',
+            confirmButtonText: text('รับทราบ', 'OK'),
+            timer: typeof result === 'object' ? undefined : 2000,
+            timerProgressBar: typeof result !== 'object',
           })
           onClose()
         }

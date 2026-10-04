@@ -3,7 +3,7 @@ import { Loader2 } from 'lucide-react'
 import Swal from 'sweetalert2'
 import { useLanguage } from '../i18n/LanguageProvider'
 
-export function SaveActionMenu({ busy, onSave, onComplete, allowNotification = true, disabled = false }: { busy: boolean; onSave: (notifyRecipients: boolean) => Promise<boolean>; onComplete: () => void; allowNotification?: boolean; disabled?: boolean }) {
+export function SaveActionMenu({ busy, onSave, onComplete, allowNotification = true, disabled = false }: { busy: boolean; onSave: (notifyRecipients: boolean) => Promise<boolean | { warning: string }>; onComplete: () => void; allowNotification?: boolean; disabled?: boolean }) {
   const { text } = useLanguage()
   const [savingWithNotification, setSavingWithNotification] = useState<boolean | null>(null)
   const saving = savingWithNotification !== null
@@ -27,14 +27,16 @@ export function SaveActionMenu({ busy, onSave, onComplete, allowNotification = t
     setSavingWithNotification(notifyRecipients)
     let completed = false
     try {
-      if (!await onSave(notifyRecipients)) return
+      const saved = await onSave(notifyRecipients)
+      if (!saved) return
       await Swal.fire({
-        icon: 'success',
-        title: text('สำเร็จ', 'Success'),
-        text: notifyRecipients ? text('บันทึกการแก้ไขและแจ้งเตือนผู้รับแล้ว', 'Changes saved and recipients notified.') : allowNotification ? text('บันทึกการแก้ไขเรียบร้อยแล้ว', 'Changes saved.') : text('บันทึกการแก้ไขเฉพาะนัดแล้ว', 'Changes for this occurrence have been saved.'),
-        showConfirmButton: false,
-        timer: 2000,
-        timerProgressBar: true,
+        icon: typeof saved === 'object' ? 'warning' : 'success',
+        title: typeof saved === 'object' ? text('บันทึกการประชุมแล้ว', 'Meeting saved') : text('สำเร็จ', 'Success'),
+        text: typeof saved === 'object' ? saved.warning : notifyRecipients ? text('บันทึกการแก้ไขและแจ้งเตือนผู้รับแล้ว', 'Changes saved and recipients notified.') : allowNotification ? text('บันทึกการแก้ไขเรียบร้อยแล้ว', 'Changes saved.') : text('บันทึกการแก้ไขเฉพาะนัดแล้ว', 'Changes for this occurrence have been saved.'),
+        showConfirmButton: typeof saved === 'object',
+        confirmButtonText: text('รับทราบ', 'OK'),
+        timer: typeof saved === 'object' ? undefined : 2000,
+        timerProgressBar: typeof saved !== 'object',
       })
       completed = true
     } finally {

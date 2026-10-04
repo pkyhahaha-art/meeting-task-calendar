@@ -20,7 +20,8 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import type { Database } from '../lib/database.types'
 import { bangkokDate, isPastBangkokDate, meetingRecurrenceRule, meetingReminderKeysFromTemplates, meetingReminderStatus, parseGuestEmails, reminderDate } from '../lib/eventForm'
 import { appUrl } from '../lib/appUrl'
-import { canManageMeeting, meetingCreateArgs } from '../lib/meetingAccess'
+import { canManageMeeting } from '../lib/meetingAccess'
+import { meetingSaveId, saveMeetingWithFollowUp, type MeetingSaveAttempt } from '../lib/meetingSave'
 import { expandEvent } from '../lib/recurrence'
 import {
   generateContinuousReminderDates,
@@ -105,6 +106,8 @@ export function CalendarPage() {
   const [showOverdue, setShowOverdue] = useState(true)
   const [sideTab, setSideTab] = useState<'upcoming' | 'documents'>('upcoming')
   const [taskSaveWarning, setTaskSaveWarning] = useState('')
+  const [eventSaveWarning, setEventSaveWarning] = useState('')
+  const pendingMeetingSave = useRef<MeetingSaveAttempt>(null)
   const [eventDialog, setEventDialog] = useState<{ open: boolean; event: EventRow | null; date?: string; occurrenceStart?: string }>({ open: false, event: null })
   const [taskDialog, setTaskDialog] = useState<{ open: boolean; task: TaskRow | null; date?: string }>({ open: false, task: null })
   const [openedEventLink, setOpenedEventLink] = useState<string | null>(null)
@@ -345,6 +348,7 @@ export function CalendarPage() {
   })
 
   const eventMutation = useMutation({
+    onMutate: () => setEventSaveWarning(''),
     mutationFn: async ({ draft, event, notifyRecipients, scope, occurrenceStart }: { draft: EventDraft; event: EventRow | null; notifyRecipients: boolean; scope: 'series' | 'occurrence'; occurrenceStart?: string }) => {
       const { data: userData, error: userError } = await supabase.auth.getUser()
       if (userError || !userData.user) throw new Error('เซสชันหมดอายุ กรุณาออกจากระบบแล้วเข้าสู่ระบบใหม่')
@@ -366,7 +370,7 @@ export function CalendarPage() {
           const { error } = await supabase.from('attachments').insert({ event_id: event.id, occurrence_id: occurrenceId, scope: 'occurrence', file_name: file.name, mime_type: file.type, file_size: file.size, storage_path: storagePath, uploaded_by: eventUserId })
           if (error) { await supabase.storage.from('meeting-documents').remove([storagePath]); throw error }
         }
-        return
+        return { eventId: event.id, warning: '' }
       }
       if (!event && isPastBangkokDate(draft.date)) throw new Error('ไม่สามารถสร้าง Meeting ในวันที่ผ่านมาแล้ว')
       const startIso = toIso(draft.date, draft.start, draft.all_day)
@@ -376,87 +380,61 @@ export function CalendarPage() {
         recurrence_rule: meetingRecurrenceRule(draft.recurrence), recurrence_until: draft.recurrence.until ? endOfBangkokDay(draft.recurrence.until) : null,
         recurrence_count: draft.recurrence.count,
       }
-      let eventId = event?.id
-      if (eventId) {
-        const { error } = await supabase.from('events').update({ ...payload, suppress_guest_notifications: true }).eq('id', eventId)
-        if (error) throw error
-      } else {
-        const { data, error } = await supabase.rpc('create_meeting_event_v2', meetingCreateArgs(payload)).single<EventRow>()
-        if (error) throw error
-        eventId = data.id
-      }
-      const [existingGuests, deletedReminders] = await Promise.all([
-        supabase.from('event_guests').select('id, email').eq('event_id', eventId).is('occurrence_id', null).is('revoked_at', null),
-        supabase.from('reminders').delete().eq('event_id', eventId),
-      ])
-      if (existingGuests.error) throw existingGuests.error
-      if (deletedReminders.error) throw deletedReminders.error
-      const emails = parseGuestEmails(draft.guestEmails)
-      const removedIds = (existingGuests.data ?? []).filter((guest) => !emails.includes(guest.email.toLowerCase())).map((guest) => guest.id)
-      if (removedIds.length) {
-        const { error } = await supabase.from('event_guests').delete().in('id', removedIds)
-        if (error) throw error
-      }
-      const existingEmails = new Set((existingGuests.data ?? []).map((guest) => guest.email.toLowerCase()))
-      const addedEmails = emails.filter((email) => !existingEmails.has(email))
-      if (addedEmails.length) {
-        const { error } = await supabase.from('event_guests').insert(addedEmails.map((email) => ({ event_id: eventId!, email })))
-        if (error) throw error
-      }
-      if (draft.reminderKeys.length) {
-        const start = new Date(startIso)
-        const reminders = draft.reminderKeys.map((key) => {
-          const [value, unit] = key.split(':') as [string, 'minute' | 'day' | 'week' | 'month']
-          const scheduledAt = reminderDate(start, key)
-          return {
-            event_id: eventId!, offset_value: Number(value), offset_unit: unit, scheduled_at: scheduledAt.toISOString(), channel_email: draft.notifyEmail, channel_line: draft.notifyLine,
-            status: meetingReminderStatus(scheduledAt)
-          }
+      const eventId = meetingSaveId(event?.id, eventUserId, pendingMeetingSave)
+      const start = new Date(startIso)
+      const reminders = draft.reminderKeys.map((key) => {
+        const [value, unit] = key.split(':') as [string, 'minute' | 'day' | 'week' | 'month']
+        const scheduledAt = reminderDate(start, key)
+        return {
+          offset_value: Number(value), offset_unit: unit, scheduled_at: scheduledAt.toISOString(), channel_email: draft.notifyEmail, channel_line: draft.notifyLine,
+          status: meetingReminderStatus(scheduledAt)
+        }
+      })
+      return saveMeetingWithFollowUp(eventId, async (targetEventId) => {
+        const { data, error } = await supabase.rpc('save_meeting_event_v3', {
+          target_event_id: targetEventId,
+          target_new: !event,
+          target_event: { ...payload, mobile_notifications_enabled: draft.notifyLine, email_notifications_enabled: draft.notifyEmail },
+          target_guest_emails: parseGuestEmails(draft.guestEmails),
+          target_reminders: reminders,
         })
-        const { error } = await supabase.from('reminders').insert(reminders)
-        if (error) throw error
-      }
-      if (payload.recurrence_rule) {
-        const { error } = await supabase.rpc('refresh_meeting_occurrences', { target_event_id: eventId! })
-        if (error) throw error
-      }
-      for (const file of draft.files) {
-        const storagePath = `${eventUserId}/${eventId}/${crypto.randomUUID()}-${safeFileName(file.name)}`
-        const uploaded = await supabase.storage.from('meeting-documents').upload(storagePath, file, { contentType: file.type, upsert: false })
-        if (uploaded.error) throw uploaded.error
-        const { error } = await supabase.from('attachments').insert({ event_id: eventId, file_name: file.name, mime_type: file.type, file_size: file.size, storage_path: storagePath, uploaded_by: eventUserId })
-        if (error) { await supabase.storage.from('meeting-documents').remove([storagePath]); throw error }
-      }
-      if (!event) {
-        const { error } = await supabase.from('events').update({ suppress_guest_notifications: false, mobile_notifications_enabled: draft.notifyLine, email_notifications_enabled: draft.notifyEmail }).eq('id', eventId)
-        if (error) throw error
-        if (draft.notifyEmail) {
-          const { error } = await supabase.rpc('queue_creation_confirmation', { target_event_id: eventId! })
-          if (error) throw error
+        if (error || !data) throw error ?? new Error('ไม่สามารถบันทึกการประชุมได้')
+        return data
+      }, async (savedEventId) => {
+        for (const file of draft.files) {
+          const storagePath = `${eventUserId}/${savedEventId}/${crypto.randomUUID()}-${safeFileName(file.name)}`
+          const uploaded = await supabase.storage.from('meeting-documents').upload(storagePath, file, { contentType: file.type, upsert: false })
+          if (uploaded.error) throw new Error(`อัปโหลดไฟล์ ${file.name} ไม่สำเร็จ`)
+          const { error } = await supabase.from('attachments').insert({ event_id: savedEventId, file_name: file.name, mime_type: file.type, file_size: file.size, storage_path: storagePath, uploaded_by: eventUserId })
+          if (error) { await supabase.storage.from('meeting-documents').remove([storagePath]); throw new Error(`บันทึกข้อมูลไฟล์ ${file.name} ไม่สำเร็จ`) }
         }
-        if (draft.notifyLine) {
-          const { error } = await supabase.rpc('queue_meeting_mobile_notification', { target_event_id: eventId! })
-          if (error) throw error
+        if (!event) {
+          if (draft.notifyEmail) {
+            const { error } = await supabase.rpc('queue_creation_confirmation', { target_event_id: savedEventId })
+            if (error) throw new Error('ยังยืนยันการเข้าคิวอีเมลยืนยันการสร้างประชุมไม่ได้')
+          }
+          if (draft.notifyLine) {
+            const { error } = await supabase.rpc('queue_meeting_mobile_notification', { target_event_id: savedEventId })
+            if (error) throw new Error('ยังยืนยันการเข้าคิวแจ้งเตือนมือถือไม่ได้')
+          }
+          if (draft.sendImmediate) {
+            const { error: notificationError } = await supabase.rpc('queue_meeting_initial_notifications', { target_event_id: savedEventId })
+            if (notificationError) throw new Error('ยังยืนยันการเข้าคิวคำเชิญผู้เข้าร่วมไม่ได้')
+          }
+        } else {
+          if (notifyRecipients) {
+            const { error } = await supabase.from('events').update({ notification_requested_at: new Date().toISOString() }).eq('id', savedEventId)
+            if (error) throw new Error('ยังยืนยันการขอส่งแจ้งเตือนการแก้ไขประชุมไม่ได้')
+          }
+          if (notifyRecipients && draft.notifyLine) {
+            const { error } = await supabase.rpc('queue_meeting_mobile_notification', { target_event_id: savedEventId, target_initial: false })
+            if (error) throw new Error('ยังยืนยันการเข้าคิวแจ้งเตือนมือถือจากการแก้ไขประชุมไม่ได้')
+          }
         }
-        if (draft.sendImmediate) {
-          const { error: notificationError } = await supabase.rpc('queue_meeting_initial_notifications', { target_event_id: eventId! })
-          if (notificationError) throw notificationError
-        }
-      } else {
-        const { error } = await supabase.from('events').update({
-          suppress_guest_notifications: false,
-          mobile_notifications_enabled: draft.notifyLine,
-          email_notifications_enabled: draft.notifyEmail,
-          ...(notifyRecipients ? { notification_requested_at: new Date().toISOString() } : {}),
-        }).eq('id', eventId)
-        if (error) throw error
-        if (notifyRecipients && draft.notifyLine) {
-          const { error } = await supabase.rpc('queue_meeting_mobile_notification', { target_event_id: eventId!, target_initial: false })
-          if (error) throw error
-        }
-      }
+      })
     },
-    onSuccess: async () => {
+    onSuccess: async ({ warning }) => {
+      setEventSaveWarning(warning)
       await Promise.all([queryClient.invalidateQueries({ queryKey: ['events'] }), queryClient.invalidateQueries({ queryKey: ['event-details'] }), queryClient.invalidateQueries({ queryKey: ['meeting-exceptions'] }), queryClient.invalidateQueries({ queryKey: ['recent-documents'] }), queryClient.invalidateQueries({ queryKey: ['event-creation-stats'] })])
     },
   })
@@ -928,12 +906,13 @@ export function CalendarPage() {
       </div>
       {(eventMutation.isError || taskMutation.isError || deleteEventMutation.isError || deleteTaskMutation.isError || deleteEventAttachmentMutation.isError || deleteTaskAttachmentMutation.isError || toggleTaskMutation.isError || acknowledgeTaskMutation.isError || retryNotificationMutation.isError) && <p className="fixed bottom-4 right-4 rounded-xl bg-red-600 px-4 py-3 text-sm text-white shadow-lg">{text('ดำเนินการไม่สำเร็จ กรุณาตรวจสอบข้อมูลและลองใหม่', 'The action could not be completed. Check the details and try again.')}</p>}
       {taskSaveWarning && <div className="fixed bottom-4 right-4 max-w-md rounded-xl bg-amber-100 px-4 py-3 text-sm text-amber-950 shadow-lg" role="alert"><p>{taskSaveWarning}</p><button type="button" className="mt-2 font-semibold underline" onClick={() => setTaskSaveWarning('')}>{text('ปิด', 'Close')}</button></div>}
+      {eventSaveWarning && <div className="fixed bottom-4 right-4 max-w-md rounded-xl bg-amber-100 px-4 py-3 text-sm text-amber-950 shadow-lg" role="alert"><p>{eventSaveWarning}</p><button type="button" className="mt-2 font-semibold underline" onClick={() => setEventSaveWarning('')}>{text('ปิด', 'Close')}</button></div>}
 
       <EventDialog
         defaultAffiliation={profileAffiliation(profile)}
         open={eventDialog.open} event={selectedEvent} details={eventDetailsQuery.data} selectedDate={eventDialog.date} occurrenceStart={eventDialog.occurrenceStart}
         canEdit={canEditEvent} canViewDeliveryStatus={canViewEventDeliveryStatus} hasConnectedDevices={hasConnectedDevices && (!selectedEvent || selectedEvent.owner_user_id === user?.id)} checkMobileRecipients={checkMobileRecipients} busy={busy || eventDetailsQuery.isLoading || appointmentMutation.isPending}
-        onClose={() => setEventDialog({ open: false, event: null })}
+        onClose={() => { pendingMeetingSave.current = null; setEventDialog({ open: false, event: null }) }}
         onSave={(draft, notifyRecipients, scope) => eventMutation.mutateAsync({ draft, event: selectedEvent, notifyRecipients, scope, occurrenceStart: selectedEventOccurrenceStart })}
         onDelete={async (scope) => {
           if (!selectedEvent) return

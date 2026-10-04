@@ -76,6 +76,70 @@ async function occurrenceIdForDelivery(delivery: Delivery, payload: Record<strin
   return data?.occurrence_id ?? ''
 }
 
+// Queue-time eligibility can change while a delivery waits for its next attempt.
+// Recheck before enriching or sending Push; retained inbox details have their own guard.
+async function currentPushRecipient(delivery: Delivery): Promise<boolean> {
+  const recipientId = text(delivery.payload.push_user_id)
+  const device = await supabase.from('mobile_push_subscriptions').select('user_id')
+    .eq('id', delivery.recipient_reference).maybeSingle()
+  if (device.error) throw device.error
+  if (!recipientId || device.data?.user_id !== recipientId) return false
+  const profile = await supabase.from('profiles').select('status').eq('id', recipientId).maybeSingle()
+  if (profile.error) throw profile.error
+  if (profile.data?.status !== 'active') return false
+
+  if (delivery.task_id) {
+    const result = await supabase.from('tasks').select('creator_user_id,assignee_type,assignee_user_id,status,deleted_at')
+      .eq('id', delivery.task_id).maybeSingle()
+    if (result.error) throw result.error
+    const task = result.data
+    const cancellation = delivery.template_key === 'task_cancelled'
+    if (!task || (task.deleted_at && !cancellation)
+      || (task.status !== 'pending' && !(delivery.template_key === 'task_created' && task.creator_user_id === recipientId)
+        && !(cancellation && task.status === 'cancelled')
+        && !(delivery.template_key === 'task_completed' && task.status === 'completed'))) return false
+    if (task.creator_user_id === recipientId || (task.assignee_type === 'internal' && task.assignee_user_id === recipientId)) return true
+    const member = await supabase.from('task_internal_recipients').select('user_id')
+      .eq('task_id', delivery.task_id).eq('user_id', recipientId).maybeSingle()
+    if (member.error) throw member.error
+    return Boolean(member.data)
+  }
+
+  if (delivery.event_id) {
+    const result = await supabase.from('events').select('owner_user_id,start_datetime,status,deleted_at')
+      .eq('id', delivery.event_id).maybeSingle()
+    if (result.error) throw result.error
+    const meeting = result.data
+    const cancellation = delivery.template_key === 'meeting_cancelled'
+    if (!meeting || (meeting.deleted_at && !cancellation)
+      || (meeting.status !== 'scheduled' && !(delivery.template_key === 'meeting_created' && meeting.owner_user_id === recipientId)
+        && !(cancellation && meeting.status === 'cancelled'))) return false
+    let occurrenceId = await occurrenceIdForDelivery(delivery, delivery.payload)
+    // Older first-appointment reminders use a null occurrence_id. Their guests
+    // still follow that appointment's exclusions, rather than the whole series.
+    if (!occurrenceId && delivery.reminder_id) {
+      const first = await supabase.from('event_occurrences').select('id')
+        .eq('event_id', delivery.event_id).eq('occurrence_key', meeting.start_datetime).maybeSingle()
+      if (first.error) throw first.error
+      if (!first.data) return false
+      occurrenceId = first.data.id
+    }
+    if (occurrenceId) {
+      const occurrence = await supabase.from('event_occurrences').select('status')
+        .eq('id', occurrenceId).eq('event_id', delivery.event_id).maybeSingle()
+      if (occurrence.error) throw occurrence.error
+      if (!occurrence.data || (occurrence.data.status !== 'scheduled' && !cancellation)) return false
+    }
+    if (meeting.owner_user_id === recipientId) return true
+    const guests = await supabase.rpc('meeting_mobile_guest_users', {
+      target_event_id: delivery.event_id, target_occurrence_id: occurrenceId || null,
+    })
+    if (guests.error) throw guests.error
+    return (guests.data ?? []).some((guest: { user_id: string }) => guest.user_id === recipientId)
+  }
+  return false
+}
+
 async function payloadWithGuestLink(delivery: Delivery) {
   if (delivery.channel !== 'email' || delivery.recipient_type !== 'guest' || !delivery.event_id || !publicAppUrl) return delivery.payload
   const occurrenceId = await occurrenceIdForDelivery(delivery, delivery.payload)
@@ -289,6 +353,14 @@ Deno.serve(async (request) => {
     let response: Response
     let body: string
     try {
+      if (delivery.channel === 'push' && !await currentPushRecipient(delivery)) {
+        const skipped = await supabase.from('notification_deliveries').update({
+          status: 'skipped', next_attempt_at: null, error_code: 'push_recipient_unavailable',
+          error_message: 'The recipient or item is no longer eligible for this Push notification.',
+        }).eq('id', delivery.id)
+        if (skipped.error) throw skipped.error
+        continue
+      }
       const guestPayload = await payloadWithGuestLink(delivery)
       const meetingPayload = await payloadWithMeetingDetails(delivery, guestPayload)
       const documentPayload = await payloadWithTaskDocuments(delivery, meetingPayload)

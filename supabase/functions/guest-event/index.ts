@@ -37,6 +37,7 @@ Deno.serve(async (request) => {
       .eq('id', tokenRow.guest_id).is('revoked_at', null).maybeSingle()
     if (guestError) throw guestError
     if (!guest) return json({ error: 'สิทธิ์เข้าถึงถูกยกเลิกแล้ว' }, 404)
+    if (guest.occurrence_id && guest.occurrence_id !== tokenRow.occurrence_id) return json({ error: 'สิทธิ์เข้าถึงนัดหมายนี้ถูกยกเลิกแล้ว' }, 404)
 
     const occurrenceRequest = tokenRow.occurrence_id
       ? admin.from('event_occurrences').select('id,start_datetime,end_datetime,override_payload,status').eq('id', tokenRow.occurrence_id).eq('event_id', guest.event_id).maybeSingle()
@@ -49,6 +50,15 @@ Deno.serve(async (request) => {
     if (eventError || occurrenceError || attachmentError) throw eventError ?? occurrenceError ?? attachmentError
     if (!event || event.deleted_at || event.status !== 'scheduled') return json({ error: 'Meeting นี้ถูกยกเลิกแล้ว' }, 404)
     if (tokenRow.occurrence_id && (!occurrence || occurrence.status !== 'scheduled')) return json({ error: 'นัดหมายรอบนี้ถูกยกเลิกแล้ว' }, 404)
+    if (tokenRow.occurrence_id) {
+      // A series guest may have been removed from this appointment after the
+      // email was sent. Re-check current membership before signing any files.
+      const { data: currentGuests, error: accessError } = await admin.rpc('occurrence_guest_emails', {
+        target_event_id: guest.event_id, target_occurrence_id: tokenRow.occurrence_id,
+      })
+      if (accessError) throw accessError
+      if (!currentGuests?.some((item: { email: string }) => item.email.toLowerCase() === guest.email.trim().toLowerCase())) return json({ error: 'สิทธิ์เข้าถึงนัดหมายนี้ถูกยกเลิกแล้ว' }, 404)
+    }
     const override = occurrence?.override_payload
     const occurrenceOverride = override && typeof override === 'object' && !Array.isArray(override) ? override as Record<string, unknown> : {}
     const occurrenceAttachments = (attachments ?? []).filter((attachment) => !attachment.occurrence_id || attachment.occurrence_id === tokenRow.occurrence_id)

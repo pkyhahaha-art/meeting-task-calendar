@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
+import Swal from 'sweetalert2'
 import { LanguageProvider } from '../i18n/LanguageProvider'
 import type { Database } from '../lib/database.types'
 import { EventDialog, type EventDetails, type EventDraft } from './EventDialog'
@@ -22,7 +23,7 @@ const details: EventDetails = {
   occurrenceReminders: [], occurrenceNotificationDeliveries: [],
 }
 const noop = async () => {}
-function dialog(connected: boolean, onSave: (draft: EventDraft) => Promise<void> = noop, open = true, savedEvent = event, checkMobileRecipients?: (emails: string[]) => Promise<boolean>) {
+function dialog(connected: boolean, onSave: (draft: EventDraft) => Promise<void | { warning: string }> = noop, open = true, savedEvent = event, checkMobileRecipients?: (emails: string[]) => Promise<boolean>) {
   return <LanguageProvider><EventDialog open={open} event={savedEvent} details={details}
     hasConnectedDevices={connected} checkMobileRecipients={checkMobileRecipients} canEdit canViewDeliveryStatus={false} busy={false}
     onClose={() => {}} onSave={onSave} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>
@@ -38,6 +39,46 @@ test('reopening a saved meeting retains both channels after its scheduled remind
   assert.equal(checkbox(renderer, 'Gmail / Email').props.checked, true)
   assert.equal(checkbox(renderer, 'Mobile notification').props.checked, true)
   act(() => renderer.unmount())
+})
+
+test('a saved meeting with an incomplete follow-up passes its warning to the save menu', async () => {
+  let renderer!: ReactTestRenderer
+  const warning = 'Meeting saved; the mobile message has not been confirmed.'
+  act(() => { renderer = create(dialog(true, async () => ({ warning }))) })
+  let result: unknown
+  await act(async () => { result = await renderer.root.findByType(SaveActionMenu).props.onSave(true) })
+  assert.deepEqual(result, { warning })
+  act(() => renderer.unmount())
+})
+
+test('the save menu shows a partial-save warning and closes without claiming recipients were notified', async () => {
+  let renderer!: ReactTestRenderer
+  let completed = false
+  const warning = 'Meeting saved; the mobile message has not been confirmed.'
+  const shown: Array<{ icon?: string; text?: string; timer?: number; showConfirmButton?: boolean }> = []
+  const originalFire = Swal.fire
+  Swal.fire = (async (options: unknown) => {
+    if (typeof options === 'object' && options) shown.push(options)
+    return { isConfirmed: true, isDenied: shown.length === 1, isDismissed: false }
+  }) as typeof Swal.fire
+  try {
+    act(() => {
+      renderer = create(<LanguageProvider><SaveActionMenu busy={false}
+        onSave={async () => ({ warning })} onComplete={() => { completed = true }} /></LanguageProvider>)
+    })
+    await act(async () => {
+      renderer.root.findByType('button').props.onClick()
+      await new Promise((resolve) => setImmediate(resolve))
+    })
+    assert.equal(shown[1].icon, 'warning')
+    assert.equal(shown[1].text, warning)
+    assert.equal(shown[1].showConfirmButton, true)
+    assert.equal(shown[1].timer, undefined)
+    assert.equal(completed, true)
+  } finally {
+    Swal.fire = originalFire
+    if (renderer) act(() => renderer.unmount())
+  }
 })
 
 test('mobile checkbox requires a paired organizer or attendee and retains saved preferences', async () => {

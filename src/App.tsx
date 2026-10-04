@@ -12,6 +12,7 @@ import { ResetPasswordPage } from './pages/ResetPasswordPage'
 import { ExternalTaskPage } from './pages/ExternalTaskPage'
 import { GuestEventPage } from './pages/GuestEventPage'
 import { AcknowledgementPage } from './pages/AcknowledgementPage'
+import { AccountDisabledPage } from './pages/AccountDisabledPage'
 
 const CalendarPage = lazy(() => import('./pages/CalendarPage').then((module) => ({ default: module.CalendarPage })))
 const ProfilePage = lazy(() => import('./pages/ProfilePage').then((module) => ({ default: module.ProfilePage })))
@@ -43,7 +44,7 @@ export default function App() {
       <Route path="/profile" element={<Suspense fallback={pageFallback}><ProfilePage /></Suspense>} />
       <Route path="/admin" element={<Suspense fallback={pageFallback}><AdminPage /></Suspense>} />
     </Route></Route>
-    <Route path="/account-disabled" element={<main className="flex min-h-screen items-center justify-center p-6 text-center"><div><h1 className="text-2xl font-bold">บัญชีถูกระงับ</h1><p className="mt-2 text-slate-600">กรุณาติดต่อผู้ดูแลระบบ</p></div></main>} />
+    <Route path="/account-disabled" element={<AccountDisabledPage />} />
     <Route path="*" element={<Navigate to="/calendar" replace />} />
   </Routes>
 }

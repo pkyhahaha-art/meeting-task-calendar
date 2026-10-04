@@ -182,7 +182,7 @@ export function TaskDialog({
       reminderKeys: details?.reminderKeys.filter((k) => k !== 'continuous') ?? [],
       continuousConfig: details?.continuousConfig ?? { startDaysBefore: 3, frequency: 'daily' },
       notifyEmail: details?.notifyEmail ?? true,
-      notifyLine: hasConnectedDevices ? (details?.notifyLine ?? false) : false,
+      notifyLine: details?.notifyLine ?? false,
       files: [],
       driveLinks: details?.documentLinks.length
         ? details.documentLinks.map((link) => ({ displayName: link.display_name, url: link.url }))
@@ -287,14 +287,14 @@ export function TaskDialog({
       return false
     }
     const hasReminders = draft.reminderMode === 'continuous' || draft.reminderKeys.length > 0
-    const activeNotifyLine = hasConnectedDevices && draft.notifyLine && draft.internalUserIds.length > 0
+    const activeNotifyLine = draft.notifyLine && draft.internalUserIds.length > 0
     if (hasReminders && !draft.notifyEmail && !activeNotifyLine) {
       setError(text('กรุณาเลือกช่องทางแจ้งเตือนอย่างน้อย 1 ช่องทาง', 'Choose at least one notification channel.'))
       return false
     }
     setError('')
     try {
-      await onSave({ ...draft, driveLinks: links, notifyLine: hasConnectedDevices ? draft.notifyLine : false }, notifyRecipients)
+      await onSave({ ...draft, driveLinks: links }, notifyRecipients)
       return true
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : text('บันทึก Task ไม่สำเร็จ กรุณาลองใหม่', 'Could not save the task. Please try again.'))
@@ -836,7 +836,7 @@ export function TaskDialog({
                 >
                   <input
                     type="checkbox"
-                    checked={Boolean(hasConnectedDevices && draft.notifyLine)}
+                    checked={draft.notifyLine}
                     disabled={!hasConnectedDevices}
                     onChange={(event) => set('notifyLine', event.target.checked)}
                   />

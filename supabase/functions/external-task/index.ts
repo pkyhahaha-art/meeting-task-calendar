@@ -38,6 +38,9 @@ async function issueToken(request: Request) {
   const requester = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authorization } } })
   const { data: { user }, error: userError } = await requester.auth.getUser()
   if (userError || !user) return response({ error: 'เซสชันไม่ถูกต้อง' }, 401)
+  const { data: profile, error: profileError } = await admin.from('profiles').select('status').eq('id', user.id).maybeSingle()
+  if (profileError) throw profileError
+  if (profile?.status !== 'active') return response({ error: 'บัญชีนี้ไม่สามารถใช้งานได้' }, 403)
   const body = await request.json()
   const taskId = typeof body.taskId === 'string' ? body.taskId : ''
   const notificationType = body.notificationType === 'task_updated' ? 'task_updated' : 'task_assigned'
