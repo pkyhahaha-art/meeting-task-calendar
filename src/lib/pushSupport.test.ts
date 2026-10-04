@@ -1,11 +1,21 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { pushSupport, tokenFromPairingLink, type PushEnvironment } from './pushSupport.js'
+import { pushSupport, tokenFromPairingLink, touchDesktopChrome, type PushEnvironment } from './pushSupport.js'
 
 const supported: PushEnvironment = {
   userAgent: 'Android Chrome', maxTouchPoints: 5, standalone: false,
   secure: true, notifications: true, serviceWorker: true, pushManager: true,
 }
+
+test('touch Chrome with a Linux desktop UA gets guidance without changing Push support', () => {
+  const desktopUa = 'Mozilla/5.0 (X11; Linux x86_64) Chrome/141.0.0.0 Safari/537.36'
+  assert.equal(touchDesktopChrome(desktopUa, 5), true)
+  assert.equal(touchDesktopChrome(desktopUa, 0), false)
+  assert.equal(touchDesktopChrome('Linux; Android 10; Chrome/141.0 Mobile', 5), false)
+  assert.equal(touchDesktopChrome('Windows Chrome/141.0', 5), false)
+  assert.equal(touchDesktopChrome('Linux Firefox/142.0', 5), false)
+  assert.equal(pushSupport({ ...supported, userAgent: desktopUa }), 'ready')
+})
 
 test('iPhone Safari needs a Home Screen app before requesting notifications', () => {
   const iphone = { ...supported, userAgent: 'iPhone Safari', notifications: false, pushManager: false }

@@ -8,6 +8,13 @@ export interface PushEnvironment {
   pushManager: boolean
 }
 
+// Android Chrome can send a Linux desktop UA when Desktop site is enabled.
+// This detects that combination without claiming to know the hidden OS.
+export function touchDesktopChrome(userAgent: string, maxTouchPoints: number): boolean {
+  return maxTouchPoints > 0 && /Linux/.test(userAgent) && /Chrome/.test(userAgent)
+    && !/Android|Edg|OPR/.test(userAgent)
+}
+
 export function pushSupport(environment: PushEnvironment): 'ready' | 'ios-install' | 'insecure' | 'unsupported' {
   if (!environment.secure) return 'insecure'
   const ios = /iPad|iPhone|iPod/.test(environment.userAgent)

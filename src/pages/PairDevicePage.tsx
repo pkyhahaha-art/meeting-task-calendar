@@ -19,7 +19,7 @@ import mascotHoldingPad from '../../ภาพประกอบUI/02_Hand I-Pad.
 import { AppLogo } from '../components/AppLogo'
 import { AppFooter } from '../components/AppFooter'
 import { useLanguage } from '../i18n/LanguageProvider'
-import { currentPushSupport, tokenFromPairingLink } from '../lib/pushSupport'
+import { currentPushSupport, tokenFromPairingLink, touchDesktopChrome } from '../lib/pushSupport'
 import { appUrl } from '../lib/appUrl'
 import { loadMobilePushConfig } from '../lib/mobilePushConfig'
 import {
@@ -47,6 +47,7 @@ export function PairDevicePage() {
   const [linkError, setLinkError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const support = currentPushSupport()
+  const desktopTouchDevice = touchDesktopChrome(navigator.userAgent, navigator.maxTouchPoints)
   const pushConfig = useQuery({ queryKey: ['mobile-push-config'], queryFn: () => loadMobilePushConfig(import.meta.env.VITE_SUPABASE_URL), retry: false, staleTime: 0 })
   const pushConfigured = pushConfig.data?.ready === true
 
@@ -134,19 +135,23 @@ export function PairDevicePage() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-amber-50 p-4 sm:p-6 flex flex-col items-center justify-center">
-      <div className="w-full max-w-md space-y-6">
+    <main className={`min-h-screen bg-gradient-to-br from-purple-50 via-white to-amber-50 p-4 sm:p-6 flex flex-col items-center ${desktopTouchDevice ? 'justify-start' : 'justify-start sm:justify-center'}`}>
+      <div className="w-full max-w-md space-y-5">
         {/* PEA Brand Header */}
         <div className="flex flex-col items-center text-center space-y-2">
           <AppLogo className="h-24 w-24" />
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-purple-100/80 px-3 py-0.5 text-xs font-bold text-brand-700">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-purple-100/80 px-3 py-1 text-sm font-bold text-brand-700">
             <Sparkles size={13} className="text-amber-500" />
             PEA Meeting &amp; Task Calendar
           </span>
         </div>
 
         {/* Content Card */}
-        <div className="relative overflow-hidden rounded-3xl border border-purple-100 bg-white p-6 sm:p-8 shadow-xl shadow-purple-950/5 text-center">
+        {desktopTouchDevice && <aside role="note" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left text-base leading-relaxed text-amber-950">
+          <h2 className="font-bold">{text('หน้าเว็บเล็กบนมือถือ?', 'Page too small on your phone?')}</h2>
+          <p>{text('แตะเมนู ⋮ ของ Chrome แล้วปิด “เว็บไซต์เดสก์ท็อป” (Desktop site) หน้าเว็บจะกลับมาขนาดมือถือ จากนั้นเลือก “เพิ่มลงในหน้าจอหลัก” หรือ “ติดตั้งแอป”', 'Open Chrome’s ⋮ menu and turn off Desktop site to use the mobile layout. Then choose Add to Home Screen or Install app.')}</p>
+        </aside>}
+        <div className="relative overflow-hidden rounded-3xl border border-purple-100 bg-white p-5 sm:p-8 shadow-xl shadow-purple-950/5 text-center">
           {/* Top Mascot image */}
           <div className="mx-auto mb-5 relative flex h-32 w-32 items-center justify-center rounded-3xl overflow-hidden border-2 border-brand-200/80 bg-gradient-to-b from-purple-50 to-amber-50 shadow-md">
             <img
@@ -189,9 +194,9 @@ export function PairDevicePage() {
               <h1 className="text-xl font-extrabold text-slate-900">{text('เชื่อมต่อมือถือกับปฏิทิน', 'Pair this device')}</h1>
               <p className="text-sm text-slate-600">{text('วางลิงก์ที่คัดลอกไว้จากหน้า QR Code เพื่อเชื่อมต่อโดยไม่ต้องล็อกอินอีกครั้ง', 'Paste the copied QR pairing link without signing in again.')}</p>
               <label htmlFor="pairing-link" className="block text-sm font-semibold">{text('ลิงก์เชื่อมต่อ', 'Pairing link')}</label>
-              <input id="pairing-link" type="text" value={pastedLink} onChange={(event) => setPastedLink(event.target.value)} placeholder="https://…/#/pair-device?token=…" autoComplete="off" className="field-input w-full" />
+              <input id="pairing-link" type="text" value={pastedLink} onChange={(event) => setPastedLink(event.target.value)} placeholder="https://…/#/pair-device?token=…" autoComplete="off" className="field-input min-h-12 w-full text-base" />
               {linkError && <p role="alert" className="text-sm text-red-600">{linkError}</p>}
-              <button type="submit" className="w-full min-h-11 rounded-xl bg-brand-700 px-4 py-2 font-bold text-white">{text('ตรวจสอบลิงก์เชื่อมต่อ', 'Verify pairing link')}</button>
+              <button type="submit" className="w-full min-h-12 rounded-xl bg-brand-700 px-4 py-2 font-bold text-white">{text('ตรวจสอบลิงก์เชื่อมต่อ', 'Verify pairing link')}</button>
             </form>
           ) : success ? (
             /* Success View */
@@ -262,18 +267,18 @@ export function PairDevicePage() {
                 <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900">
                   {text('เปิดรับการแจ้งเตือนบนมือถือ', 'Enable Mobile Notifications')}
                 </h1>
-                <p className="text-xs text-slate-500">
+                <p className="text-sm text-slate-500">
                   {text('เชื่อมต่ออุปกรณ์นี้เข้ากับระบบปฏิทิน PEA', 'Pair this device with your PEA Meeting & Task Calendar')}
                 </p>
               </div>
 
-              <div className="rounded-2xl border border-purple-100 bg-purple-50/50 p-3.5 text-left text-xs text-slate-600 flex items-center gap-3">
+              <div className="rounded-2xl border border-purple-100 bg-purple-50/50 p-3.5 text-left text-sm text-slate-600 flex items-center gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-100 text-brand-700">
                   <Smartphone size={20} />
                 </div>
                 <div className="min-w-0">
                   <span className="block font-bold text-slate-900">{deviceName}</span>
-                  <span className="block text-slate-500 text-[11px]">ตรวจพบอุปกรณ์ปัจจุบัน</span>
+                  <span className="block text-slate-500 text-sm">ตรวจพบอุปกรณ์ปัจจุบัน</span>
                 </div>
               </div>
 
@@ -290,7 +295,7 @@ export function PairDevicePage() {
                   </>
                 ) : (
                   <>
-                    <BellRing size={19} />
+                    <BellRing size={19} className="shrink-0" />
                     <span>{text('เปิดการแจ้งเตือนบนมือถือเครื่องนี้', 'Enable Notifications on This Device')}</span>
                   </>
                 )}
@@ -303,7 +308,7 @@ export function PairDevicePage() {
                 <button type="button" disabled={pushConfig.isFetching} onClick={() => void pushConfig.refetch()} className="min-h-11 rounded-xl border border-amber-300 px-4 py-2 font-semibold disabled:opacity-60">{text('ตรวจสอบระบบอีกครั้ง', 'Check server again')}</button>
               </div>}
 
-              <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
+              <div className="flex items-center justify-center gap-1.5 text-sm text-slate-500">
                 <ShieldCheck size={14} className="text-green-600" />
                 <span>{text('ปลอดภัย ไม่ต้องกรอกรหัสผ่าน Gmail', 'Safe & encrypted without password entry')}</span>
               </div>

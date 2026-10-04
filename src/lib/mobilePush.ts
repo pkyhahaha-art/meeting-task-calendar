@@ -1,5 +1,5 @@
 import { supabase, supabaseUrl, supabasePublishableKey } from './supabase'
-import { currentPushSupport } from './pushSupport'
+import { currentPushSupport, touchDesktopChrome } from './pushSupport'
 import { activeNotificationWorker, showLocalTestNotification } from './notificationWorker'
 import { readDevicePairing, saveDevicePairing, type DevicePairing } from './deviceInbox'
 import { withNotificationTimeout } from './notificationWorker'
@@ -21,6 +21,7 @@ export function detectDeviceName(): string {
   else if (/Android/.test(ua)) os = 'อุปกรณ์ Android'
   else if (/Windows/.test(ua)) os = 'คอมพิวเตอร์ Windows'
   else if (/Macintosh|Mac OS X/.test(ua)) os = 'เครื่อง Mac (macOS)'
+  else if (touchDesktopChrome(ua, navigator.maxTouchPoints)) os = 'อุปกรณ์จอสัมผัส (โหมดคอมพิวเตอร์)'
   else if (/Linux/.test(ua)) os = 'Linux'
 
   let browser = 'เบราว์เซอร์'
