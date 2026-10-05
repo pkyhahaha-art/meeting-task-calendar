@@ -239,6 +239,13 @@ export interface Database {
     }
     Views: Record<string, never>
     Functions: {
+      admin_calendar_items: {
+        Args: { target_entity?: string; target_creator_user_id?: string | null; target_search?: string; target_created_from?: string | null; target_created_to?: string | null; target_offset?: number; target_limit?: number }
+        Returns: Json
+      }
+      admin_meeting_occurrences: { Args: { target_event_id: string }; Returns: Json }
+      admin_trash_calendar_items: { Args: { target_items: Json; target_reason: string }; Returns: number }
+      admin_cancel_meeting_occurrence: { Args: { target_event_id: string; target_occurrence_start: string; target_reason: string }; Returns: string }
       meeting_mobile_recipients_available: { Args: { target_guest_emails: string[]; target_event_id?: string }; Returns: boolean }
       cancel_meeting_occurrence: { Args: { target_event_id: string; target_occurrence_start: string }; Returns: string }
       detach_meeting_occurrence: {

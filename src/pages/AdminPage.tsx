@@ -11,6 +11,7 @@ import { downloadCsv, filterAdminProfiles, reportDateBounds, reportPageSize, typ
 import { loadAdminOverview, loadAdminProfiles, loadLatestSystemLog } from '../lib/adminReportQueries'
 import { AdminFilter, AdminPager, AdminStatus, adminDate } from '../components/AdminReportControls'
 import { AdminHistoryPanel } from '../components/AdminHistoryPanel'
+import { AdminCalendarItemsPanel } from '../components/AdminCalendarItemsPanel'
 
 const statusText = { pending_verification: 'รอยืนยัน Gmail', active: 'ใช้งานอยู่', disabled: 'ระงับแล้ว' }
 const emptyFilters: MemberFilters = { search: '', status: '', unit: '', department: '', missing: false }
@@ -22,6 +23,7 @@ export function AdminPage() {
   const queryClient = useQueryClient()
   const [working, setWorking] = useState<string | null>(null)
   const [message, setMessage] = useState('')
+  const [area, setArea] = useState<'overview' | 'items'>('overview')
   const [filters, setFilters] = useState(emptyFilters)
   const [page, setPage] = useState(0)
   const [dates, setDates] = useState(() => ({ from: `${today().slice(0, 7)}-01`, to: today() }))
@@ -66,6 +68,8 @@ export function AdminPage() {
 
   return <main className="mx-auto max-w-6xl space-y-5 p-4 sm:p-6">
     <header className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900"><ShieldCheck className="text-brand-600" />ผู้ดูแลระบบ</h1><p className="mt-1 text-sm text-slate-500">จัดการสมาชิก ตรวจการแจ้งเตือน และดูรายงาน</p></div><button type="button" className="btn-secondary" onClick={refresh} disabled={profilesQuery.isFetching || overviewQuery.isFetching || latestSystem.isFetching}><RefreshCw size={16} />โหลดภาพรวมใหม่</button></header>
+    <nav className="flex flex-wrap gap-2" aria-label="ส่วนจัดการของ Admin"><button type="button" className={area === 'overview' ? 'btn-primary' : 'btn-secondary'} aria-pressed={area === 'overview'} onClick={() => setArea('overview')}>สมาชิกและรายงาน</button><button type="button" className={area === 'items' ? 'btn-primary' : 'btn-secondary'} aria-pressed={area === 'items'} onClick={() => setArea('items')}>จัดการงานและประชุม</button></nav>
+    {area === 'items' ? <AdminCalendarItemsPanel adminUserId={user!.id} members={members} /> : <>
     <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900"><strong>การลืมรหัสผ่านเป็นบริการแบบทำเอง:</strong> ให้พนักงานกด “ลืมรหัสผ่าน” ที่หน้าเข้าสู่ระบบ อีเมลยืนยันส่งอัตโนมัติเมื่อสมัคร ปุ่มส่งใหม่ใช้เฉพาะเมื่อสมาชิกยังไม่ยืนยันและต้องการลิงก์ใหม่</div>
     {message && <p role="status" className="rounded-xl bg-purple-50 p-3 text-sm text-brand-800">{message}</p>}
     <section className="grid gap-3 sm:grid-cols-3" aria-label="ภาพรวมบัญชีสมาชิกทั้งหมด">
@@ -98,5 +102,6 @@ export function AdminPage() {
     </section>
     <section className="card space-y-2 p-4"><h2 className="font-bold">งานระบบล่าสุด · ทุกช่วงเวลา</h2>{latestSystem.isPending ? <p role="status" className="text-sm text-slate-500">กำลังตรวจงานระบบ…</p> : latestSystem.isError ? <p role="alert" className="text-sm text-red-700">ตรวจงานระบบไม่ได้ กรุณาโหลดภาพรวมใหม่</p> : latestSystem.data ? <p className="text-sm text-slate-600">{latestSystem.data.job_name} · <AdminStatus value={latestSystem.data.status} /> · {adminDate(latestSystem.data.created_at)} · ประมวลผล {latestSystem.data.processed_count} รายการ</p> : <p className="text-sm text-slate-500">ยังไม่มีประวัติงานระบบ</p>}</section>
     <AdminHistoryPanel members={members} dates={dates} />
+    </>}
   </main>
 }
