@@ -166,7 +166,7 @@ test('already initialized sessions remain usable, save errors allow retry, and a
   try {
     h.failUpdate(true)
     await h.submit()
-    assert.equal(h.renderer.root.findByType('button').props.disabled, false)
+    assert.equal(h.renderer.root.findByProps({ className: 'btn-primary w-full' }).props.disabled, false)
     assert.equal(h.renderer.root.findAllByProps({ 'data-status': 'error' }).length, 1)
     h.failUpdate(false)
     await h.submit()

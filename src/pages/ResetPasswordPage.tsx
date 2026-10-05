@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Eye, EyeOff } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { AuthLayout } from '../components/AuthLayout'
 import { FormMessage } from '../components/FormMessage'
@@ -7,6 +8,8 @@ import { supabase } from '../lib/supabase'
 export function ResetPasswordPage() {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [linkState, setLinkState] = useState<'checking' | 'valid' | 'invalid'>('checking')
@@ -83,8 +86,14 @@ export function ResetPasswordPage() {
       {linkState === 'checking' && <p className="text-center text-slate-600">กำลังตรวจสอบลิงก์…</p>}
       {linkState === 'invalid' && <><FormMessage type="error">ลิงก์ไม่ถูกต้อง ถูกใช้แล้ว หรือหมดอายุ กรุณาขอลิงก์ใหม่</FormMessage><Link to="/forgot-password" className="btn-primary w-full">ขอลิงก์ตั้งรหัสผ่านใหม่</Link></>}
       {message && <FormMessage type={message.type}>{message.text}</FormMessage>}
-      {linkState === 'valid' && message?.type !== 'success' && <><div><label className="field-label" htmlFor="password">รหัสผ่านใหม่</label><input id="password" type="password" className="field-input" value={password} onChange={(event) => setPassword(event.target.value)} /></div>
-      <div><label className="field-label" htmlFor="confirmPassword">ยืนยันรหัสผ่านใหม่</label><input id="confirmPassword" type="password" className="field-input" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /></div>
+      {linkState === 'valid' && message?.type !== 'success' && <><div><label className="field-label" htmlFor="password">รหัสผ่านใหม่</label>
+        <div className="relative"><input id="password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" className="field-input min-h-11 pr-12" value={password} onChange={(event) => setPassword(event.target.value)} />
+          <button type="button" className="absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center rounded-r-xl text-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'ซ่อนรหัสผ่านใหม่' : 'แสดงรหัสผ่านใหม่'} aria-controls="password" aria-pressed={showPassword}>{showPassword ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}</button>
+        </div></div>
+      <div><label className="field-label" htmlFor="confirmPassword">ยืนยันรหัสผ่านใหม่</label>
+        <div className="relative"><input id="confirmPassword" type={showConfirmPassword ? 'text' : 'password'} autoComplete="new-password" className="field-input min-h-11 pr-12" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} />
+          <button type="button" className="absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center rounded-r-xl text-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500" onClick={() => setShowConfirmPassword((value) => !value)} aria-label={showConfirmPassword ? 'ซ่อนรหัสผ่านยืนยัน' : 'แสดงรหัสผ่านยืนยัน'} aria-controls="confirmPassword" aria-pressed={showConfirmPassword}>{showConfirmPassword ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}</button>
+        </div></div>
       <button className="btn-primary w-full" disabled={busy}>{busy ? 'กำลังบันทึก…' : 'บันทึกรหัสผ่านใหม่'}</button></>}
       {message?.type === 'success' && <Link to="/login" className="btn-secondary w-full">เข้าสู่ระบบ</Link>}
     </form>
