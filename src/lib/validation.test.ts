@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { registrationSchema } from './validation'
+import { departmentsFor, memberOrganizationData, organizationUnits, unspecifiedDepartment } from './organization'
 
 const validRegistration = {
   namePrefix: 'นาย' as const,
@@ -20,9 +21,23 @@ describe('registrationSchema', () => {
     assert.equal(registrationSchema.safeParse({ ...validRegistration, organizationUnit: '' }).success, false)
     assert.equal(registrationSchema.safeParse({ ...validRegistration, department: '' }).success, false)
     assert.equal(registrationSchema.safeParse({ ...validRegistration, department: 'ผสอ.' }).success, false)
-    assert.equal(registrationSchema.safeParse({ ...validRegistration, organizationUnit: 'กกร.', department: '' }).success, true)
+    assert.equal(registrationSchema.safeParse({ ...validRegistration, organizationUnit: 'กกร. (Team-Based)', department: '' }).success, true)
     assert.equal(registrationSchema.safeParse({ ...validRegistration, organizationUnit: 'ประจำฝ่าย (ฝลส.)', department: '' }).success, true)
-    assert.equal(registrationSchema.safeParse({ ...validRegistration, organizationUnit: 'กกร.', department: 'ผคอ.' }).success, false)
+    assert.equal(registrationSchema.safeParse({ ...validRegistration, organizationUnit: 'กกร. (Team-Based)', department: 'ผคอ.' }).success, false)
+  })
+  it('accepts each new organization with its department or explicit unspecified choice and serializes absence as null', () => {
+    for (const organizationUnit of organizationUnits) {
+      const departments = departmentsFor(organizationUnit)
+      for (const department of departments.length ? [...departments, unspecifiedDepartment] : ['']) {
+        const result = registrationSchema.safeParse({ ...validRegistration, organizationUnit, department })
+        assert.equal(result.success, true, `${organizationUnit}/${department}`)
+        if (result.success) assert.deepEqual(memberOrganizationData(result.data.organizationUnit, result.data.department), {
+          organization_unit: organizationUnit, department: department === unspecifiedDepartment || !department ? null : department,
+        })
+      }
+      if (!departments.length) assert.equal(registrationSchema.safeParse({ ...validRegistration, organizationUnit, department: unspecifiedDepartment }).success, false)
+    }
+    assert.equal(registrationSchema.safeParse({ ...validRegistration, organizationUnit: 'กกก.' }).success, false)
   })
   it('accepts the required registration fields', () => {
     assert.equal(registrationSchema.safeParse(validRegistration).success, true)

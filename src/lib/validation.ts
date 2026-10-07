@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { departmentsFor, organizationUnits } from './organization'
+import { departmentsFor, organizationUnits, unspecifiedDepartment } from './organization'
 
 export const loginSchema = z.object({
   email: z.string().trim().email('กรุณากรอก Gmail ให้ถูกต้อง'),
@@ -24,7 +24,7 @@ export const registrationSchema = z.object({
   confirmPassword: z.string(),
 }).superRefine((data, context) => {
   const departments = departmentsFor(data.organizationUnit)
-  if (departments.length ? !departments.includes(data.department) : data.department !== '') {
+  if (departments.length ? data.department !== unspecifiedDepartment && !departments.includes(data.department) : data.department !== '') {
     context.addIssue({ code: 'custom', message: departments.length ? 'กรุณาเลือกแผนกภายใต้หน่วยงานที่เลือก' : 'หน่วยงานนี้ไม่มีแผนก', path: ['department'] })
   }
   if (data.password !== data.confirmPassword) context.addIssue({ code: 'custom', message: 'รหัสผ่านทั้งสองช่องไม่ตรงกัน', path: ['confirmPassword'] })

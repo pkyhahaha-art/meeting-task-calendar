@@ -19,10 +19,23 @@ test('member search, status, organization and department work together and CSV r
 })
 
 test('missing organization filter does not flag departments that are intentionally absent', () => {
-  const rows = [profile('missing', {}), profile('needs-department', { organization_unit: 'กคน.' }),
+  const rows = [profile('missing', {}), profile('wrong-department', { organization_unit: 'กคน.', department: 'ผสอ.' }),
+    profile('unspecified', { organization_unit: 'กคน.' }),
     profile('office', { organization_unit: 'ประจำฝ่าย (ฝลส.)' }), profile('no-department', { organization_unit: 'กกร.' }),
     profile('complete', { organization_unit: 'กคน.', department: 'ผคอ.' })]
-  assert.deepEqual(filterAdminProfiles(rows, { ...filters, missing: true }).map((row) => row.id), ['missing', 'needs-department'])
+  assert.deepEqual(filterAdminProfiles(rows, { ...filters, missing: true }).map((row) => row.id), ['missing', 'wrong-department'])
+})
+
+test('canonical organization filters include legacy names and explicit unspecified departments without changing stored rows', () => {
+  const rows = [profile('old', { organization_unit: 'กกก.', department: 'ผนผ.' }),
+    profile('new', { organization_unit: 'กกท.', department: 'ผนผ.' }), profile('none', { organization_unit: 'กกก.' }),
+    profile('old-team', { organization_unit: 'กกร.' }), profile('new-team', { organization_unit: 'กกร. (Team-Based)' }),
+    profile('office', { organization_unit: 'ประจำกอง (กกท.)' })]
+  assert.deepEqual(filterAdminProfiles(rows, { ...filters, unit: 'กกท.', department: 'ผนผ.' }).map(row => row.id), ['old', 'new'])
+  assert.deepEqual(filterAdminProfiles(rows, { ...filters, unit: 'กกท.', department: 'ไม่ระบุ' }).map(row => row.id), ['none'])
+  assert.deepEqual(filterAdminProfiles(rows, { ...filters, unit: 'กกร. (Team-Based)' }).map(row => row.id), ['old-team', 'new-team'])
+  assert.deepEqual(filterAdminProfiles(rows, { ...filters, unit: 'ประจำกอง (กกท.)' }).map(row => row.id), ['office'])
+  assert.equal(rows[0].organization_unit, 'กกก.')
 })
 
 test('Thai date range includes the entire final day and rejects invalid or reversed dates', () => {

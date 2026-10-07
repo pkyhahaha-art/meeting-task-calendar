@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../auth/AuthProvider'
 import { useLanguage } from '../i18n/LanguageProvider'
-import { validOrganization } from '../lib/organization'
+import { departmentsFor, memberOrganizationData, normalizeOrganizationUnit, unspecifiedDepartment, validOrganization } from '../lib/organization'
 import { supabase } from '../lib/supabase'
 import { OrganizationFields } from './OrganizationFields'
 
@@ -14,16 +14,17 @@ export function ProfileOrganizationForm() {
   const [message, setMessage] = useState('')
   const [failed, setFailed] = useState(false)
   useEffect(() => {
-    setUnit(profile?.organization_unit || '')
-    setDepartment(profile?.department || '')
+    setUnit(normalizeOrganizationUnit(profile?.organization_unit))
+    setDepartment(profile?.department || (departmentsFor(profile?.organization_unit).length ? unspecifiedDepartment : ''))
   }, [profile?.id, profile?.organization_unit, profile?.department])
+  const validSelection = validOrganization(unit, department) && (!departmentsFor(unit).length || department !== '')
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault()
-    if (!profile || !validOrganization(unit, department) || saving) return
+    if (!profile || !validSelection || saving) return
     setSaving(true); setMessage(''); setFailed(false)
     try {
-      const { data, error } = await supabase.from('profiles').update({ organization_unit: unit, department: department || null })
+      const { data, error } = await supabase.from('profiles').update(memberOrganizationData(unit, department))
         .eq('id', profile.id).select('id').single()
       if (error || !data) throw error || new Error('No profile updated')
       await refreshProfile()
@@ -37,7 +38,7 @@ export function ProfileOrganizationForm() {
     <p className="text-sm text-slate-500">{text('สังกัดของคุณใช้เติมในงานและประชุมใหม่ สมาชิกเดิมเลือกข้อมูลส่วนนี้ได้โดยไม่ต้องสมัครใหม่', 'Your affiliation is filled into new Tasks and Meetings. Existing members can set it here. No new account is needed.')}</p>
     <OrganizationFields idPrefix="profile" unit={unit} department={department} disabled={saving || profileLoading || !profile}
       onChange={(value, selectedDepartment) => { setUnit(value); setDepartment(selectedDepartment); setMessage('') }} />
-    <button type="submit" className="btn-secondary" disabled={saving || profileLoading || !profile || !validOrganization(unit, department)}>{saving ? text('กำลังบันทึก…', 'Saving…') : text('บันทึกสังกัด', 'Save affiliation')}</button>
+    <button type="submit" className="btn-secondary" disabled={saving || profileLoading || !profile || !validSelection}>{saving ? text('กำลังบันทึก…', 'Saving…') : text('บันทึกสังกัด', 'Save affiliation')}</button>
     {message && <p role={failed ? 'alert' : 'status'} className={`text-sm ${failed ? 'text-red-700' : 'text-green-700'}`}>{message}</p>}
   </form>
 }

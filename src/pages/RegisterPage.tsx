@@ -7,7 +7,7 @@ import { AuthLayout } from '../components/AuthLayout'
 import { Captcha } from '../components/Captcha'
 import { FormMessage } from '../components/FormMessage'
 import { OrganizationFields } from '../components/OrganizationFields'
-import type { OrganizationUnit } from '../lib/organization'
+import { memberOrganizationData, type OrganizationUnit } from '../lib/organization'
 import { useLanguage } from '../i18n/LanguageProvider'
 import { appUrl } from '../lib/appUrl'
 import { supabase } from '../lib/supabase'
@@ -30,7 +30,7 @@ export function RegisterPage() {
       password: values.password,
       options: {
         emailRedirectTo: appUrl('/auth/callback'),
-        data: { full_name: fullName, employee_id: values.employeeId, organization_unit: values.organizationUnit, department: values.department || null },
+        data: { full_name: fullName, employee_id: values.employeeId, ...memberOrganizationData(values.organizationUnit, values.department) },
         captchaToken: captchaToken ?? undefined,
       },
     })
