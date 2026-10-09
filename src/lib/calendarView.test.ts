@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { calendarClickedDate, calendarDayKey, calendarMeetingOccurrences, calendarViewType, readCalendarPages } from './calendarView'
+import { calendarClickedDate, calendarDayKey, calendarEntriesByDay, calendarMeetingOccurrences, calendarViewType, readCalendarPages } from './calendarView'
 
 test('all four choices keep their meaning when the screen changes size', () => {
   assert.equal(calendarViewType('day', false), 'timeGridDay')
@@ -15,6 +15,21 @@ test('time-grid clicks supply a date to the existing form and UTC midnight uses 
   assert.equal(calendarClickedDate('2026-10-09'), '2026-10-09')
   assert.equal(calendarDayKey('2026-10-08T17:30:00Z'), '2026-10-09')
   assert.equal(calendarDayKey('2026-10-08T16:30:00Z'), '2026-10-08')
+})
+
+test('day index preserves Bangkok boundaries, date-only entries, order and original details', () => {
+  const entries = [
+    { start: '2026-10-08T16:59:59Z', title: 'Previous day', occurrenceStart: 'original' },
+    { start: '2026-10-08T17:00:00Z', title: 'Midnight meeting', occurrenceStart: 'original' },
+    { start: '2026-10-09', title: 'All-day task', occurrenceStart: 'original' },
+    { start: new Date('2026-10-09T14:30:00+07:00'), title: 'Timed task', occurrenceStart: 'original' },
+  ]
+  const index = calendarEntriesByDay(entries)
+  assert.deepEqual(index.get('2026-10-08'), [entries[0]])
+  assert.deepEqual(index.get('2026-10-09'), entries.slice(1))
+  assert.equal(index.get('2026-10-09')?.[0], entries[1])
+  assert.equal(index.has('2026-10-10'), false)
+  assert.equal(calendarEntriesByDay([]).size, 0)
 })
 
 test('year navigation expands meetings outside the old today-centered window without changing count', () => {

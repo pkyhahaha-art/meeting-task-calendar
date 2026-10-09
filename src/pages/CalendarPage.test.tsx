@@ -7,9 +7,18 @@ import ts from 'typescript'
 import React from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { bangkokDate } from '../lib/eventForm'
+import * as calendarView from '../lib/calendarView'
 
 function calendarPage() {
   const today = bangkokDate()
+  let currentDay = today
+  let userId = 'owner'
+  let language = 'en'
+  let text = (_: string, en: string) => en
+  let calendarRenders = 0
+  const occurrenceRanges: { start: Date; end: Date }[] = []
+  const confirmations: Record<string, unknown>[] = []
+  const confirm = async (options: Record<string, unknown>) => { confirmations.push(options); return false }
   const anchor = new Date('2030-09-21T02:00:00Z')
   const changes: { view: string; date: Date }[] = []
   const listeners = new Set<() => void>()
@@ -28,7 +37,7 @@ function calendarPage() {
   class Calendar extends React.Component<Record<string, unknown>> {
     api = { view: { type: 'dayGridMonth' }, getDate: () => anchor, changeView: (view: string, date: Date) => { this.api.view.type = view; changes.push({ view, date }) } }
     getApi() { return this.api }
-    render() { return React.createElement('div', { ...this.props, 'data-testid': 'calendar-fixture' }) }
+    render() { calendarRenders++; return React.createElement('div', { ...this.props, 'data-testid': 'calendar-fixture' }) }
   }
   const require = createRequire(import.meta.url)
   const exports: { CalendarPage?: React.ComponentType } = {}
@@ -37,9 +46,11 @@ function calendarPage() {
     '@fullcalendar/react': Calendar,
     '@tanstack/react-query': { useQuery: ({ queryKey }: { queryKey: string[] }) => ({ data: queryData[queryKey[0]], isError: false, isLoading: false }), useMutation: () => ({ isPending: false, isError: false, mutateAsync: async () => {} }), useQueryClient: () => ({ invalidateQueries: async () => {} }) },
     'react-router-dom': { useLocation: () => ({ search: '' }), useNavigate: () => () => {} },
-    '../auth/AuthProvider': { useAuth: () => ({ user: { id: 'owner' }, profile: { role: 'user' } }) },
-    '../i18n/LanguageProvider': { useLanguage: () => ({ language: 'en', text: (_: string, en: string) => en }) },
-    '../components/ConfirmDialogProvider': { useConfirm: () => async () => false },
+    '../auth/AuthProvider': { useAuth: () => ({ user: { id: userId }, profile: { role: 'user' } }) },
+    '../i18n/LanguageProvider': { useLanguage: () => ({ language, text }) },
+    '../components/ConfirmDialogProvider': { useConfirm: () => confirm },
+    '../lib/eventForm': { ...require('../lib/eventForm'), bangkokDate: () => currentDay },
+    '../lib/calendarView': { ...calendarView, calendarMeetingOccurrences: (...args: Parameters<typeof calendarView.calendarMeetingOccurrences>) => { occurrenceRanges.push({ start: args[1], end: args[2] }); return calendarView.calendarMeetingOccurrences(...args) } },
     '../components/EventDialog': { EventDialog: (props: Record<string, unknown>) => React.createElement('div', { ...props, 'data-testid': 'event-dialog' }) },
     '../components/TaskDialog': { TaskDialog: (props: Record<string, unknown>) => React.createElement('task-dialog', props) },
     '../lib/supabase': { supabase: {} },
@@ -52,7 +63,15 @@ function calendarPage() {
   act(() => { renderer = create(React.createElement(exports.CalendarPage!)) })
   const calendar = () => renderer.root.findByProps({ 'data-testid': 'calendar-fixture' })
   const button = (label: string) => renderer.root.findAllByType('button').find((node) => node.children.includes(label))!
-  return { renderer, calendar, button, changes, anchor, resize: (compact: boolean) => act(() => { media.matches = compact; listeners.forEach((listener) => listener()) }) }
+  const refresh = () => act(() => renderer.update(React.createElement(exports.CalendarPage!)))
+  return {
+    renderer, calendar, button, changes, anchor, queryData, meetings, tasks, occurrenceRanges, confirmations,
+    renders: () => calendarRenders, refresh,
+    setLanguage: (next: string) => { language = next; text = (th, en) => next === 'th' ? th : en; refresh() },
+    setUser: (next: string) => { userId = next; refresh() },
+    setToday: (next: string) => { currentDay = next; refresh() },
+    resize: (compact: boolean) => act(() => { media.matches = compact; listeners.forEach((listener) => listener()) }),
+  }
 }
 
 test('switcher changes all views, marks the selected choice, and keeps the viewed date on mobile resize', () => {
@@ -96,5 +115,108 @@ test('clicking a timed slot opens the existing form with only the selected date'
     const dialog = page.renderer.root.findByProps({ 'data-testid': 'event-dialog' })
     assert.equal(dialog.props.open, true)
     assert.equal(dialog.props.selectedDate, '2099-10-09')
+  } finally { act(() => page.renderer.unmount()) }
+})
+
+test('tooltips, sidebar tabs and dialog open/close do not redraw the calendar', () => {
+  const page = calendarPage()
+  try {
+    const before = page.renders()
+    const day = page.calendar().props.dayCellContent({ date: new Date(`${bangkokDate()}T00:00:00+07:00`), dayNumberText: '9' })
+    act(() => day.props.onMouseEnter({ clientX: 100, clientY: 100 }))
+    assert.equal(page.renderer.root.findByProps({ role: 'tooltip' }).findAllByType('section').length, 3)
+    act(() => day.props.onMouseLeave())
+    act(() => page.button('Recent documents').props.onClick())
+    act(() => page.button('Upcoming').props.onClick())
+    act(() => page.button('Add meeting').props.onClick())
+    act(() => page.renderer.root.findByProps({ 'data-testid': 'event-dialog' }).props.onClose())
+    act(() => page.button('Add task').props.onClick())
+    act(() => page.renderer.root.findByType('task-dialog' as React.ElementType).props.onClose())
+    assert.equal(page.renders(), before)
+  } finally { act(() => page.renderer.unmount()) }
+})
+
+test('range changes expand only the viewed meetings and keep today and upcoming summaries', () => {
+  const page = calendarPage()
+  try {
+    const before = page.occurrenceRanges.length
+    const start = new Date('2030-01-01T00:00:00+07:00')
+    const end = new Date('2031-01-01T00:00:00+07:00')
+    act(() => page.calendar().props.datesSet({ start, end }))
+    assert.equal(page.occurrenceRanges.length - before, page.meetings.length)
+    assert.ok(page.occurrenceRanges.slice(before).every((range) => range.start === start && range.end === end))
+    const renders = page.renders()
+    act(() => page.calendar().props.datesSet({ start: new Date(start), end: new Date(end) }))
+    assert.equal(page.renders(), renders)
+    const day = page.calendar().props.dayCellContent({ date: new Date('2030-09-21T00:00:00+07:00'), dayNumberText: '21' })
+    act(() => day.props.onMouseEnter({ clientX: 100, clientY: 100 }))
+    const tooltip = page.renderer.root.findByProps({ role: 'tooltip' })
+    assert.equal(tooltip.findAllByType('section').length, 1)
+    assert.ok(tooltip.findAllByType('dd').some((node) => node.children.includes('Annual meeting')))
+    assert.ok(page.renderer.root.findAllByType('span').some((node) => node.children.includes('Meeting today')))
+    act(() => day.props.onMouseLeave())
+    page.queryData['meeting-exceptions'] = [
+      { event_id: 'cancelled', occurrence_key: '2030-09-21T02:00:00Z' },
+      { event_id: 'annual', occurrence_key: '2030-09-21T02:00:00Z' },
+    ]
+    page.refresh()
+    assert.equal(page.calendar().props.events.some((entry: { title: string }) => entry.title === 'Annual meeting'), false)
+    const cancelledDay = page.calendar().props.dayCellContent({ date: new Date('2030-09-21T00:00:00+07:00'), dayNumberText: '21' })
+    assert.equal(cancelledDay.props.className, undefined)
+  } finally { act(() => page.renderer.unmount()) }
+})
+
+test('query refresh replaces edited, added and deleted records in events, day tooltips and summary', () => {
+  const page = calendarPage()
+  try {
+    const before = page.renders()
+    page.queryData.events = [{ ...page.meetings[0], title: 'Edited meeting' }, { ...page.meetings[0], id: 'new', title: 'New meeting' }]
+    page.queryData.tasks = []
+    page.refresh()
+    assert.equal(page.renders(), before + 1)
+    const entries = page.calendar().props.events as { title: string }[]
+    assert.deepEqual(Array.from(entries, (entry) => entry.title), ['Edited meeting', 'New meeting'])
+    const day = page.calendar().props.dayCellContent({ date: new Date(`${bangkokDate()}T00:00:00+07:00`), dayNumberText: '9' })
+    act(() => day.props.onMouseEnter({ clientX: 100, clientY: 100 }))
+    assert.equal(page.renderer.root.findByProps({ role: 'tooltip' }).findAllByType('section').length, 2)
+    assert.ok(page.renderer.root.findAllByType('span').some((node) => node.children.includes('Edited meeting')))
+    act(() => day.props.onMouseLeave())
+    page.queryData.events = []
+    page.refresh()
+    assert.equal(page.calendar().props.events.length, 0)
+    const empty = page.calendar().props.dayCellContent({ date: new Date(`${bangkokDate()}T00:00:00+07:00`), dayNumberText: '9' })
+    act(() => empty.props.onMouseEnter({ clientX: 100, clientY: 100 }))
+    assert.equal(empty.props.className, undefined)
+    assert.equal(page.renderer.root.findAllByProps({ role: 'tooltip' }).length, 0)
+    assert.ok(page.renderer.root.findAllByType('p').some((node) => node.children.includes('No calendar items today.')))
+  } finally { act(() => page.renderer.unmount()) }
+})
+
+test('search, filters, account, locale and date changes still refresh calendar options and controls', async () => {
+  const page = calendarPage()
+  try {
+    const search = page.renderer.root.findByProps({ placeholder: 'Search meetings or tasks' })
+    act(() => search.props.onChange({ target: { value: 'Timed task' } }))
+    assert.deepEqual(Array.from(page.calendar().props.events, (entry: { title: string }) => entry.title), ['Timed task'])
+    act(() => search.props.onChange({ target: { value: '' } }))
+    const meetingsFilter = page.renderer.root.findAllByType('input').filter((node) => node.props.type === 'checkbox')[0]
+    act(() => meetingsFilter.props.onChange({ target: { checked: false } }))
+    assert.ok(page.calendar().props.events.every((entry: { extendedProps: { kind: string } }) => entry.extendedProps.kind === 'task'))
+    act(() => meetingsFilter.props.onChange({ target: { checked: true } }))
+    page.setUser('another-account')
+    assert.equal(page.calendar().props.events.find((entry: { title: string }) => entry.title === 'Meeting today').backgroundColor, '#f1e7fa')
+    act(() => page.calendar().props.eventClick({ event: { extendedProps: { kind: 'event', row: page.meetings[0], occurrenceStart: page.meetings[0].start_datetime } } }))
+    const dialog = page.renderer.root.findByProps({ 'data-testid': 'event-dialog' })
+    assert.equal(dialog.props.canEdit, false)
+    assert.equal(dialog.props.occurrenceStart, page.meetings[0].start_datetime)
+    page.setLanguage('th')
+    assert.equal(page.calendar().props.moreLinkContent({ num: 2 }), '+2 เพิ่มเติม')
+    await act(async () => { page.calendar().props.dateClick({ dateStr: '2020-10-09' }) })
+    assert.equal(page.confirmations.at(-1)?.title, 'ไม่สามารถสร้างรายการย้อนหลัง')
+    const tomorrow = new Date(`${bangkokDate()}T00:00:00+07:00`)
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1)
+    page.setToday(calendarView.calendarDayKey(tomorrow))
+    assert.equal(page.calendar().props.events.find((entry: { title: string }) => entry.title === 'Meeting today').extendedProps.isOverdue, true)
+    assert.equal(page.calendar().props.events.find((entry: { title: string }) => entry.title === 'Timed task').extendedProps.isOverdue, true)
   } finally { act(() => page.renderer.unmount()) }
 })

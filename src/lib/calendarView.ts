@@ -2,6 +2,8 @@ import { expandEvent, type RecurringEvent } from './recurrence'
 
 export type CalendarView = 'day' | 'week' | 'month' | 'year'
 
+const bangkokDayFormatter = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit' })
+
 export function calendarViewType(view: CalendarView, compact: boolean) {
   if (view === 'day') return 'timeGridDay'
   if (view === 'week') return compact ? 'listWeek' : 'timeGridWeek'
@@ -9,9 +11,20 @@ export function calendarViewType(view: CalendarView, compact: boolean) {
 }
 
 export function calendarDayKey(date: Date | string) {
-  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(date))
+  const parts = bangkokDayFormatter.formatToParts(new Date(date))
   const value = (type: Intl.DateTimeFormatPart['type']) => parts.find((part) => part.type === type)?.value
   return `${value('year')}-${value('month')}-${value('day')}`
+}
+
+export function calendarEntriesByDay<T extends { start: Date | string }>(entries: readonly T[]) {
+  const days = new Map<string, T[]>()
+  for (const entry of entries) {
+    const key = calendarDayKey(entry.start)
+    const day = days.get(key)
+    if (day) day.push(entry)
+    else days.set(key, [entry])
+  }
+  return days
 }
 
 export function calendarClickedDate(dateStr: string) {

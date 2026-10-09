@@ -26,7 +26,7 @@ import { bangkokDate, isPastBangkokDate, meetingRecurrenceRule, meetingReminderK
 import { appUrl } from '../lib/appUrl'
 import { canManageMeeting } from '../lib/meetingAccess'
 import { meetingSaveId, saveMeetingWithFollowUp, type MeetingSaveAttempt } from '../lib/meetingSave'
-import { calendarClickedDate, calendarDayKey, calendarMeetingOccurrences, calendarViewType, readCalendarPages, type CalendarView } from '../lib/calendarView'
+import { calendarClickedDate, calendarDayKey, calendarEntriesByDay, calendarMeetingOccurrences, calendarViewType, readCalendarPages, type CalendarView } from '../lib/calendarView'
 import {
   generateContinuousReminderDates,
   isTaskOverdue,
@@ -709,16 +709,17 @@ export function CalendarPage() {
   const taskRows = useMemo(() => (tasksQuery.data ?? []).filter((task) => (showCompletedTasks || task.status !== 'completed') && `${task.title} ${task.affiliation} ${task.description}`.toLowerCase().includes(normalizedSearch)), [normalizedSearch, showCompletedTasks, tasksQuery.data])
   const cancelledAppointments = useMemo(() => new Set((exceptionsQuery.data ?? []).map((exception) => `${exception.event_id}:${new Date(exception.occurrence_key).getTime()}`)), [exceptionsQuery.data])
   const today = bangkokDate()
-  const { calendarEntries, summaryEntries } = useMemo(() => {
-    const entriesForRange = (rangeStart: Date, rangeEnd: Date) => [
+  const entriesForRange = useCallback((rangeStart: Date, rangeEnd: Date) => {
+    const now = new Date(`${today}T00:00:00+07:00`)
+    return [
     ...(showMeetings ? eventRows.flatMap((event) => calendarMeetingOccurrences(event, rangeStart, rangeEnd).filter((occurrence) => !cancelledAppointments.has(`${event.id}:${new Date(occurrence.start).getTime()}`)).map((occurrence) => {
-      const isOverdue = isPastBangkokDate(calendarDayKey(occurrence.start))
+      const isOverdue = isPastBangkokDate(calendarDayKey(occurrence.start), now)
       return { id: `event-${occurrence.key}`, title: event.title, start: event.all_day ? calendarDayKey(occurrence.start) : occurrence.start, end: occurrence.end ? event.all_day ? calendarDayKey(occurrence.end) : occurrence.end : undefined, allDay: event.all_day, backgroundColor: isOverdue ? '#fee2e2' : event.owner_user_id === user?.id ? '#edddf6' : '#f1e7fa', borderColor: 'transparent', textColor: isOverdue ? '#991b1b' : '#6b2170', extendedProps: { kind: 'event', row: event, isOverdue, occurrenceStart: occurrence.start } }
     })) : []),
     ...(showTasks ? taskRows.flatMap((task) => {
       if (task.recurrence_series_id) return []
       if (task.status === 'completed' && !showCompletedTasks) return []
-      const isOverdue = isTaskOverdue(task.status, task.due_date)
+      const isOverdue = isTaskOverdue(task.status, task.due_date, now)
       return [{
         id: `task-${task.id}`,
         title: task.title,
@@ -731,13 +732,17 @@ export function CalendarPage() {
       }]
     }) : []),
     ].filter((entry) => showOverdue || !entry.extendedProps.isOverdue)
+  }, [eventRows, taskRows, cancelledAppointments, showMeetings, showTasks, showCompletedTasks, showOverdue, user?.id, today])
+  const calendarEntries = useMemo(() => entriesForRange(calendarRange.start, calendarRange.end), [entriesForRange, calendarRange])
+  const entriesByDay = useMemo(() => calendarEntriesByDay(calendarEntries), [calendarEntries])
+  const summaryEntries = useMemo(() => {
     const summaryStart = new Date(`${today}T00:00:00+07:00`); summaryStart.setUTCFullYear(summaryStart.getUTCFullYear() - 1)
     const summaryEnd = new Date(`${today}T23:59:59.999+07:00`); summaryEnd.setUTCFullYear(summaryEnd.getUTCFullYear() + 1)
-    return { calendarEntries: entriesForRange(calendarRange.start, calendarRange.end), summaryEntries: entriesForRange(summaryStart, summaryEnd) }
-  }, [eventRows, taskRows, cancelledAppointments, calendarRange, showMeetings, showTasks, showCompletedTasks, showOverdue, user?.id, today])
-  const todayEntries = summaryEntries.filter((entry) => calendarDayKey(entry.start) === today)
-  const upcomingEntries = summaryEntries.filter((entry) => calendarDayKey(entry.start) >= today)
-    .sort((first, second) => new Date(first.start).getTime() - new Date(second.start).getTime()).slice(0, 3)
+    return entriesForRange(summaryStart, summaryEnd)
+  }, [entriesForRange, today])
+  const todayEntries = useMemo(() => summaryEntries.filter((entry) => calendarDayKey(entry.start) === today), [summaryEntries, today])
+  const upcomingEntries = useMemo(() => summaryEntries.filter((entry) => calendarDayKey(entry.start) >= today)
+    .sort((first, second) => new Date(first.start).getTime() - new Date(second.start).getTime()).slice(0, 3), [summaryEntries, today])
   const recentDocuments = (recentDocumentsQuery.data ?? []).filter((document) => document.parent === 'event'
     ? eventsQuery.data?.some((event) => event.id === document.parentId)
     : tasksQuery.data?.some((task) => task.id === document.parentId)).slice(0, 3)
@@ -756,14 +761,14 @@ export function CalendarPage() {
       if (event) setEventDialog({ open: true, event })
     }
   }
-  const setCalendarTooltipAt = (items: CalendarTooltipItem[], clientX: number, clientY: number) => {
+  const setCalendarTooltipAt = useCallback((items: CalendarTooltipItem[], clientX: number, clientY: number) => {
     setCalendarTooltip({
       items,
       x: Math.max(12, Math.min(clientX + 14, window.innerWidth - 308)),
       y: Math.max(12, Math.min(clientY + 14, window.innerHeight - 180)),
     })
-  }
-  const showCalendarTooltip = (info: EventHoveringArg) => {
+  }, [])
+  const showCalendarTooltip = useCallback((info: EventHoveringArg) => {
     const isTask = info.event.extendedProps.kind === 'task'
     const row = info.event.extendedProps.row as EventRow | TaskRow
     if (!info.event.start) return
@@ -774,17 +779,66 @@ export function CalendarPage() {
       date: info.event.start,
       isOverdue: Boolean(info.event.extendedProps.isOverdue),
     }], info.jsEvent.clientX, info.jsEvent.clientY)
-  }
+  }, [setCalendarTooltipAt])
   const canEditEvent = canManageMeeting(selectedEvent?.owner_user_id, user?.id)
   const canEditTask = !selectedTask || selectedTask.creator_user_id === user?.id
   const canCompleteTask = Boolean(selectedTask && selectedTask.creator_user_id === user?.id)
   const canAcknowledgeTask = Boolean(selectedTask && selectedTask.creator_user_id !== user?.id && selectedTask.status === 'pending' && taskDetailsQuery.data?.internalRecipients.some((recipient) => recipient.user_id === user?.id && !recipient.acknowledged_at))
   const busy = eventMutation.isPending || taskMutation.isPending || deleteEventMutation.isPending || deleteTaskMutation.isPending || deleteEventAttachmentMutation.isPending || deleteTaskAttachmentMutation.isPending || toggleTaskMutation.isPending || acknowledgeTaskMutation.isPending
-  const warnPastCreation = async (date: string) => {
+  const warnPastCreation = useCallback(async (date: string) => {
     if (!isPastBangkokDate(date)) return false
     await confirm({ title: text('ไม่สามารถสร้างรายการย้อนหลัง', 'Cannot create an item in the past'), message: text(`ไม่สามารถสร้าง Meeting หรือ Task ก่อนวันที่ ${bangkokDate()} ได้`, `Meetings and Tasks cannot be created before ${bangkokDate()}.`), confirmLabel: text('รับทราบ', 'OK'), tone: 'danger' })
     return true
-  }
+  }, [confirm, text])
+
+  // Keep calendar options stable while tooltips, dialogs, or sidebar tabs change.
+  const calendar = useMemo(() => (
+    <FullCalendar
+      ref={calendarRef}
+      plugins={[dayGridPlugin, interactionPlugin, timeGridPlugin, multiMonthPlugin, listPlugin, luxonPlugin]}
+      locale={language === 'th' ? thLocale : enGbLocale}
+      timeZone="Asia/Bangkok"
+      initialView={calendarViewType(calendarView, compactCalendar)}
+      datesSet={updateCalendarRange}
+      firstDay={1}
+      height={compactCalendar && (calendarView === 'year' || calendarView === 'week') ? 'auto' : '100%'}
+      multiMonthMaxColumns={3}
+      multiMonthMinWidth={260}
+      slotLabelFormat={{ hour: '2-digit', minute: '2-digit', hour12: false }}
+      eventTimeFormat={{ hour: '2-digit', minute: '2-digit', hour12: false }}
+      scrollTime="08:00:00"
+      nowIndicator
+      expandRows
+      fixedWeekCount={false}
+      selectable
+      dateClick={(info) => { const date = calendarClickedDate(info.dateStr); void warnPastCreation(date).then((isPast) => { if (!isPast) setEventDialog({ open: true, event: null, date }) }) }}
+      dayCellContent={(info) => {
+        const items = (entriesByDay.get(calendarDayKey(info.date)) ?? []).map((entry) => {
+          const row = entry.extendedProps.row as EventRow | TaskRow
+          return { kind: entry.extendedProps.kind as CalendarTooltipItem['kind'], title: entry.title, affiliation: row.affiliation || '-', date: info.date, isOverdue: Boolean(entry.extendedProps.isOverdue) }
+        })
+        return <span className={items.length ? 'cursor-help' : undefined} onMouseEnter={(event) => { if (items.length) setCalendarTooltipAt(items, event.clientX, event.clientY) }} onMouseLeave={() => setCalendarTooltip(null)}>{info.dayNumberText}</span>
+      }}
+      eventClick={(info) => {
+        setCalendarTooltip(null)
+        if (info.event.extendedProps.kind === 'task') setTaskDialog({ open: true, task: info.event.extendedProps.row as TaskRow })
+        else setEventDialog({ open: true, event: info.event.extendedProps.row as EventRow, occurrenceStart: info.event.extendedProps.occurrenceStart as string | undefined })
+      }}
+      eventMouseEnter={showCalendarTooltip}
+      eventMouseLeave={() => setCalendarTooltip(null)}
+      eventClassNames={(info) => info.event.extendedProps.isOverdue ? 'calendar-overdue' : info.event.extendedProps.kind === 'task' ? (info.event.extendedProps.row as TaskRow).status === 'completed' ? 'calendar-task-completed' : 'calendar-task' : 'calendar-meeting'}
+      eventContent={(info) => {
+        const isTask = info.event.extendedProps.kind === 'task'
+        const task = isTask ? info.event.extendedProps.row as TaskRow : null
+        const Icon = isTask ? ListTodo : CalendarDays
+        return <div className="flex min-w-0 items-start gap-1 px-0.5"><Icon size={12} className="mt-0.5 shrink-0" aria-hidden="true" /><div className="min-w-0">{info.view.type.startsWith('timeGrid') && !info.event.allDay && <span className="block font-semibold tabular-nums">{info.timeText}</span>}<div className="fc-event-title truncate">{task?.status === 'completed' ? text('เสร็จแล้ว: ', 'Completed: ') : ''}{info.event.title}</div></div></div>
+      }}
+      events={calendarEntries}
+      headerToolbar={{ left: 'prev,next today', center: 'title', right: '' }}
+      dayMaxEvents
+      moreLinkContent={(info) => text(`+${info.num} เพิ่มเติม`, `+${info.num} more`)}
+    />
+  ), [calendarEntries, entriesByDay, calendarView, compactCalendar, language, text, updateCalendarRange, warnPastCreation, setCalendarTooltipAt, showCalendarTooltip])
 
   return (
     <main className="calendar-page-main mx-auto max-w-[1600px] p-4 sm:p-6 xl:flex xl:flex-col xl:p-3">
@@ -841,51 +895,7 @@ export function CalendarPage() {
                 <button key={view.value} type="button" aria-pressed={calendarView === view.value} onClick={() => setCalendarView(view.value)} className={`min-h-11 rounded-xl px-3 py-2 text-sm font-semibold transition ${calendarView === view.value ? 'bg-brand-700 text-white shadow-sm' : 'text-brand-800 hover:bg-white/80'}`}>{view.label}</button>
               )}
             </div>
-              <FullCalendar
-                ref={calendarRef}
-                plugins={[dayGridPlugin, interactionPlugin, timeGridPlugin, multiMonthPlugin, listPlugin, luxonPlugin]}
-                locale={language === 'th' ? thLocale : enGbLocale}
-                timeZone="Asia/Bangkok"
-                initialView={calendarViewType(calendarView, compactCalendar)}
-                datesSet={updateCalendarRange}
-                firstDay={1}
-                height={compactCalendar && (calendarView === 'year' || calendarView === 'week') ? 'auto' : '100%'}
-                multiMonthMaxColumns={3}
-                multiMonthMinWidth={260}
-                slotLabelFormat={{ hour: '2-digit', minute: '2-digit', hour12: false }}
-                eventTimeFormat={{ hour: '2-digit', minute: '2-digit', hour12: false }}
-                scrollTime="08:00:00"
-                nowIndicator
-                expandRows
-                fixedWeekCount={false}
-                selectable
-                dateClick={(info) => { const date = calendarClickedDate(info.dateStr); void warnPastCreation(date).then((isPast) => { if (!isPast) setEventDialog({ open: true, event: null, date }) }) }}
-                dayCellContent={(info) => {
-                  const items = calendarEntries.filter((entry) => calendarDayKey(entry.start) === calendarDayKey(info.date)).map((entry) => {
-                    const row = entry.extendedProps.row as EventRow | TaskRow
-                    return { kind: entry.extendedProps.kind as CalendarTooltipItem['kind'], title: entry.title, affiliation: row.affiliation || '-', date: info.date, isOverdue: Boolean(entry.extendedProps.isOverdue) }
-                  })
-                  return <span className={items.length ? 'cursor-help' : undefined} onMouseEnter={(event) => { if (items.length) setCalendarTooltipAt(items, event.clientX, event.clientY) }} onMouseLeave={() => setCalendarTooltip(null)}>{info.dayNumberText}</span>
-                }}
-                eventClick={(info) => {
-                  setCalendarTooltip(null)
-                  if (info.event.extendedProps.kind === 'task') setTaskDialog({ open: true, task: info.event.extendedProps.row as TaskRow })
-                  else setEventDialog({ open: true, event: info.event.extendedProps.row as EventRow, occurrenceStart: info.event.extendedProps.occurrenceStart as string | undefined })
-                }}
-                eventMouseEnter={showCalendarTooltip}
-                eventMouseLeave={() => setCalendarTooltip(null)}
-                eventClassNames={(info) => info.event.extendedProps.isOverdue ? 'calendar-overdue' : info.event.extendedProps.kind === 'task' ? (info.event.extendedProps.row as TaskRow).status === 'completed' ? 'calendar-task-completed' : 'calendar-task' : 'calendar-meeting'}
-                eventContent={(info) => {
-                  const isTask = info.event.extendedProps.kind === 'task'
-                  const task = isTask ? info.event.extendedProps.row as TaskRow : null
-                  const Icon = isTask ? ListTodo : CalendarDays
-                  return <div className="flex min-w-0 items-start gap-1 px-0.5"><Icon size={12} className="mt-0.5 shrink-0" aria-hidden="true" /><div className="min-w-0">{info.view.type.startsWith('timeGrid') && !info.event.allDay && <span className="block font-semibold tabular-nums">{info.timeText}</span>}<div className="fc-event-title truncate">{task?.status === 'completed' ? text('เสร็จแล้ว: ', 'Completed: ') : ''}{info.event.title}</div></div></div>
-                }}
-                events={calendarEntries}
-                headerToolbar={{ left: 'prev,next today', center: 'title', right: '' }}
-                dayMaxEvents
-                moreLinkContent={(info) => text(`+${info.num} เพิ่มเติม`, `+${info.num} more`)}
-              />
+              {calendar}
               {calendarTooltip && <div role="tooltip" className="pointer-events-none fixed z-50 max-h-[70vh] w-72 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-xl" style={{ left: calendarTooltip.x, top: calendarTooltip.y }}>
                 {calendarTooltip.items.map((item, index) => <section key={`${item.kind}-${item.title}-${index}`} className={index ? 'mt-3 border-t border-slate-100 pt-3' : undefined}>
                   <p className={`mb-2 text-xs font-bold ${item.kind === 'task' ? 'text-amber-700' : 'text-brand-700'}`}>{item.kind === 'task' ? text('งาน', 'Task') : text('การประชุม', 'Meeting')}</p>
