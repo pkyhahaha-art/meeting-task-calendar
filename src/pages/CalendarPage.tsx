@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import FullCalendar from '@fullcalendar/react'
-import type { EventHoveringArg } from '@fullcalendar/core'
+import type { DatesSetArg, EventHoveringArg } from '@fullcalendar/core'
 import dayGridPlugin from '@fullcalendar/daygrid'
 import interactionPlugin from '@fullcalendar/interaction'
+import timeGridPlugin from '@fullcalendar/timegrid'
+import multiMonthPlugin from '@fullcalendar/multimonth'
+import listPlugin from '@fullcalendar/list'
+import luxonPlugin from '@fullcalendar/luxon3'
 import thLocale from '@fullcalendar/core/locales/th'
 import enGbLocale from '@fullcalendar/core/locales/en-gb'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -22,7 +26,7 @@ import { bangkokDate, isPastBangkokDate, meetingRecurrenceRule, meetingReminderK
 import { appUrl } from '../lib/appUrl'
 import { canManageMeeting } from '../lib/meetingAccess'
 import { meetingSaveId, saveMeetingWithFollowUp, type MeetingSaveAttempt } from '../lib/meetingSave'
-import { expandEvent } from '../lib/recurrence'
+import { calendarClickedDate, calendarDayKey, calendarMeetingOccurrences, calendarViewType, readCalendarPages, type CalendarView } from '../lib/calendarView'
 import {
   generateContinuousReminderDates,
   isTaskOverdue,
@@ -86,12 +90,6 @@ async function confirmDeletion(title: string, text: string, confirmButtonText: s
   return result.isConfirmed
 }
 
-function calendarDayKey(date: Date | string) {
-  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(date))
-  const value = (type: Intl.DateTimeFormatPart['type']) => parts.find((part) => part.type === type)?.value
-  return `${value('year')}-${value('month')}-${value('day')}`
-}
-
 export function CalendarPage() {
   const { user, profile } = useAuth()
   const { language, text } = useLanguage()
@@ -114,22 +112,42 @@ export function CalendarPage() {
   const [openedTaskLink, setOpenedTaskLink] = useState<string | null>(null)
   const [calendarTooltip, setCalendarTooltip] = useState<CalendarTooltip | null>(null)
   const attemptedEmailAcknowledgement = useRef<string | null>(null)
+  const calendarRef = useRef<FullCalendar | null>(null)
+  const [calendarView, setCalendarView] = useState<CalendarView>('month')
+  const [compactCalendar, setCompactCalendar] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches)
+  const [calendarRange, setCalendarRange] = useState(() => {
+    const today = bangkokDate()
+    return { start: new Date(`${today.slice(0, 7)}-01T00:00:00+07:00`), end: new Date(`${today}T23:59:59.999+07:00`) }
+  })
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 640px)')
+    const resize = () => setCompactCalendar(media.matches)
+    media.addEventListener('change', resize)
+    return () => media.removeEventListener('change', resize)
+  }, [])
+
+  useEffect(() => {
+    const api = calendarRef.current?.getApi()
+    const view = calendarViewType(calendarView, compactCalendar)
+    if (api && api.view.type !== view) {
+      setCalendarTooltip(null)
+      api.changeView(view, api.getDate())
+    }
+  }, [calendarView, compactCalendar])
+
+  const updateCalendarRange = useCallback((info: DatesSetArg) => {
+    setCalendarRange((current) => current.start.getTime() === info.start.getTime() && current.end.getTime() === info.end.getTime()
+      ? current : { start: info.start, end: info.end })
+  }, [])
 
   const eventsQuery = useQuery({
     queryKey: ['events'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('events').select('*').eq('status', 'scheduled').is('deleted_at', null).order('start_datetime').returns<EventRow[]>()
-      if (error) throw error
-      return data
-    },
+    queryFn: () => readCalendarPages<EventRow>((offset) => supabase.from('events').select('*', { count: 'exact' }).eq('status', 'scheduled').is('deleted_at', null).order('start_datetime').order('id').range(offset, offset + 499).returns<EventRow[]>()),
   })
   const tasksQuery = useQuery({
     queryKey: ['tasks'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('tasks').select('*').is('deleted_at', null).order('due_date').order('due_time').returns<TaskRow[]>()
-      if (error) throw error
-      return data
-    },
+    queryFn: () => readCalendarPages<TaskRow>((offset) => supabase.from('tasks').select('*', { count: 'exact' }).is('deleted_at', null).order('due_date').order('due_time').order('id').range(offset, offset + 499).returns<TaskRow[]>()),
   })
   const connectedDevicesQuery = useQuery({
     queryKey: ['mobile-push-devices', user?.id],
@@ -138,11 +156,7 @@ export function CalendarPage() {
   })
   const exceptionsQuery = useQuery({
     queryKey: ['meeting-exceptions'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('event_occurrences').select('event_id,occurrence_key').neq('status', 'scheduled')
-      if (error) throw error
-      return data
-    },
+    queryFn: () => readCalendarPages<Pick<OccurrenceRow, 'event_id' | 'occurrence_key'>>((offset) => supabase.from('event_occurrences').select('event_id,occurrence_key', { count: 'exact' }).neq('status', 'scheduled').order('id').range(offset, offset + 499)),
   })
   const hasConnectedDevices = (connectedDevicesQuery.data?.length ?? 0) > 0
   const linkedEventId = useMemo(() => new URLSearchParams(locationSearch).get('event'), [locationSearch])
@@ -694,12 +708,12 @@ export function CalendarPage() {
   const eventRows = useMemo(() => (eventsQuery.data ?? []).filter((event) => `${event.title} ${event.location} ${event.affiliation} ${event.description}`.toLowerCase().includes(normalizedSearch)), [eventsQuery.data, normalizedSearch])
   const taskRows = useMemo(() => (tasksQuery.data ?? []).filter((task) => (showCompletedTasks || task.status !== 'completed') && `${task.title} ${task.affiliation} ${task.description}`.toLowerCase().includes(normalizedSearch)), [normalizedSearch, showCompletedTasks, tasksQuery.data])
   const cancelledAppointments = useMemo(() => new Set((exceptionsQuery.data ?? []).map((exception) => `${exception.event_id}:${new Date(exception.occurrence_key).getTime()}`)), [exceptionsQuery.data])
-  const occurrenceStart = new Date(); occurrenceStart.setFullYear(occurrenceStart.getFullYear() - 1)
-  const occurrenceEnd = new Date(); occurrenceEnd.setFullYear(occurrenceEnd.getFullYear() + 1)
-  const calendarEntries = [
-    ...(showMeetings ? eventRows.flatMap((event) => expandEvent(event, occurrenceStart, occurrenceEnd).filter((occurrence) => !cancelledAppointments.has(`${event.id}:${new Date(occurrence.start).getTime()}`)).map((occurrence) => {
+  const today = bangkokDate()
+  const { calendarEntries, summaryEntries } = useMemo(() => {
+    const entriesForRange = (rangeStart: Date, rangeEnd: Date) => [
+    ...(showMeetings ? eventRows.flatMap((event) => calendarMeetingOccurrences(event, rangeStart, rangeEnd).filter((occurrence) => !cancelledAppointments.has(`${event.id}:${new Date(occurrence.start).getTime()}`)).map((occurrence) => {
       const isOverdue = isPastBangkokDate(calendarDayKey(occurrence.start))
-      return { id: `event-${occurrence.key}`, title: event.title, start: occurrence.start, end: occurrence.end || undefined, allDay: event.all_day, backgroundColor: isOverdue ? '#fee2e2' : event.owner_user_id === user?.id ? '#edddf6' : '#f1e7fa', borderColor: 'transparent', textColor: isOverdue ? '#991b1b' : '#6b2170', extendedProps: { kind: 'event', row: event, isOverdue, occurrenceStart: occurrence.start } }
+      return { id: `event-${occurrence.key}`, title: event.title, start: event.all_day ? calendarDayKey(occurrence.start) : occurrence.start, end: occurrence.end ? event.all_day ? calendarDayKey(occurrence.end) : occurrence.end : undefined, allDay: event.all_day, backgroundColor: isOverdue ? '#fee2e2' : event.owner_user_id === user?.id ? '#edddf6' : '#f1e7fa', borderColor: 'transparent', textColor: isOverdue ? '#991b1b' : '#6b2170', extendedProps: { kind: 'event', row: event, isOverdue, occurrenceStart: occurrence.start } }
     })) : []),
     ...(showTasks ? taskRows.flatMap((task) => {
       if (task.recurrence_series_id) return []
@@ -716,10 +730,13 @@ export function CalendarPage() {
         extendedProps: { kind: 'task', row: task, isOverdue },
       }]
     }) : []),
-  ].filter((entry) => showOverdue || !entry.extendedProps.isOverdue)
-  const today = bangkokDate()
-  const todayEntries = calendarEntries.filter((entry) => calendarDayKey(entry.start) === today)
-  const upcomingEntries = calendarEntries.filter((entry) => calendarDayKey(entry.start) >= today)
+    ].filter((entry) => showOverdue || !entry.extendedProps.isOverdue)
+    const summaryStart = new Date(`${today}T00:00:00+07:00`); summaryStart.setUTCFullYear(summaryStart.getUTCFullYear() - 1)
+    const summaryEnd = new Date(`${today}T23:59:59.999+07:00`); summaryEnd.setUTCFullYear(summaryEnd.getUTCFullYear() + 1)
+    return { calendarEntries: entriesForRange(calendarRange.start, calendarRange.end), summaryEntries: entriesForRange(summaryStart, summaryEnd) }
+  }, [eventRows, taskRows, cancelledAppointments, calendarRange, showMeetings, showTasks, showCompletedTasks, showOverdue, user?.id, today])
+  const todayEntries = summaryEntries.filter((entry) => calendarDayKey(entry.start) === today)
+  const upcomingEntries = summaryEntries.filter((entry) => calendarDayKey(entry.start) >= today)
     .sort((first, second) => new Date(first.start).getTime() - new Date(second.start).getTime()).slice(0, 3)
   const recentDocuments = (recentDocumentsQuery.data ?? []).filter((document) => document.parent === 'event'
     ? eventsQuery.data?.some((event) => event.id === document.parentId)
@@ -818,17 +835,31 @@ export function CalendarPage() {
               </div>
             </div>
             {(eventsQuery.isError || tasksQuery.isError || profilesQuery.isError || exceptionsQuery.isError) && <p className="mb-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{text('โหลดข้อมูลไม่สำเร็จ กรุณาตรวจสอบว่าได้รัน migration ล่าสุดแล้ว', 'Could not load data. Check that the latest migrations have been applied.')}</p>}
-            <div className="calendar-fill relative xl:min-h-0 xl:flex-1">
+            <div className={`calendar-fill calendar-fill-${calendarView} relative xl:min-h-0 xl:flex-1`}>
+            <div className="calendar-view-switcher mb-3 grid grid-cols-4 gap-1 rounded-2xl border border-purple-100 bg-purple-50/80 p-1 xl:absolute xl:right-0 xl:top-0 xl:z-10 xl:mb-0 xl:w-72" role="group" aria-label={text('มุมมองปฏิทิน', 'Calendar view')}>
+              {([{ value: 'day', label: text('วัน', 'Day') }, { value: 'week', label: text('สัปดาห์', 'Week') }, { value: 'month', label: text('เดือน', 'Month') }, { value: 'year', label: text('ปี', 'Year') }] as const).map((view) =>
+                <button key={view.value} type="button" aria-pressed={calendarView === view.value} onClick={() => setCalendarView(view.value)} className={`min-h-11 rounded-xl px-3 py-2 text-sm font-semibold transition ${calendarView === view.value ? 'bg-brand-700 text-white shadow-sm' : 'text-brand-800 hover:bg-white/80'}`}>{view.label}</button>
+              )}
+            </div>
               <FullCalendar
-                plugins={[dayGridPlugin, interactionPlugin]}
+                ref={calendarRef}
+                plugins={[dayGridPlugin, interactionPlugin, timeGridPlugin, multiMonthPlugin, listPlugin, luxonPlugin]}
                 locale={language === 'th' ? thLocale : enGbLocale}
-                initialView="dayGridMonth"
+                timeZone="Asia/Bangkok"
+                initialView={calendarViewType(calendarView, compactCalendar)}
+                datesSet={updateCalendarRange}
                 firstDay={1}
-                height="100%"
+                height={compactCalendar && (calendarView === 'year' || calendarView === 'week') ? 'auto' : '100%'}
+                multiMonthMaxColumns={3}
+                multiMonthMinWidth={260}
+                slotLabelFormat={{ hour: '2-digit', minute: '2-digit', hour12: false }}
+                eventTimeFormat={{ hour: '2-digit', minute: '2-digit', hour12: false }}
+                scrollTime="08:00:00"
+                nowIndicator
                 expandRows
                 fixedWeekCount={false}
                 selectable
-                dateClick={(info) => { void warnPastCreation(info.dateStr).then((isPast) => { if (!isPast) setEventDialog({ open: true, event: null, date: info.dateStr }) }) }}
+                dateClick={(info) => { const date = calendarClickedDate(info.dateStr); void warnPastCreation(date).then((isPast) => { if (!isPast) setEventDialog({ open: true, event: null, date }) }) }}
                 dayCellContent={(info) => {
                   const items = calendarEntries.filter((entry) => calendarDayKey(entry.start) === calendarDayKey(info.date)).map((entry) => {
                     const row = entry.extendedProps.row as EventRow | TaskRow
@@ -848,7 +879,7 @@ export function CalendarPage() {
                   const isTask = info.event.extendedProps.kind === 'task'
                   const task = isTask ? info.event.extendedProps.row as TaskRow : null
                   const Icon = isTask ? ListTodo : CalendarDays
-                  return <div className="flex min-w-0 items-center gap-0.5 px-0.5"><Icon size={12} aria-hidden="true" /><div className="fc-event-title truncate">{task?.status === 'completed' ? text('เสร็จแล้ว: ', 'Completed: ') : ''}{info.event.title}</div></div>
+                  return <div className="flex min-w-0 items-start gap-1 px-0.5"><Icon size={12} className="mt-0.5 shrink-0" aria-hidden="true" /><div className="min-w-0">{info.view.type.startsWith('timeGrid') && !info.event.allDay && <span className="block font-semibold tabular-nums">{info.timeText}</span>}<div className="fc-event-title truncate">{task?.status === 'completed' ? text('เสร็จแล้ว: ', 'Completed: ') : ''}{info.event.title}</div></div></div>
                 }}
                 events={calendarEntries}
                 headerToolbar={{ left: 'prev,next today', center: 'title', right: '' }}

@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { MailWarning, UserPlus, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import Swal from 'sweetalert2'
 import { AuthLayout } from '../components/AuthLayout'
 import { Captcha } from '../components/Captcha'
 import { FormMessage } from '../components/FormMessage'
@@ -40,7 +41,12 @@ export function RegisterPage() {
     }
     if (error) { setMessage({ type: 'error', text: language === 'th' ? 'สมัครไม่สำเร็จ Gmail หรือรหัสพนักงานอาจถูกใช้งานแล้ว' : 'Registration failed. The Gmail or Employee ID may already be in use.' }); return }
     reset()
-    setMessage({ type: 'success', text: language === 'th' ? 'สมัครสำเร็จ กรุณาเปิด Gmail และกดลิงก์ยืนยันก่อนเข้าสู่ระบบ' : 'Registration submitted. Open Gmail and confirm your account before signing in.' })
+    const title = language === 'th' ? 'สมัครสำเร็จ' : 'Registration successful'
+    const text = language === 'th'
+      ? 'กรุณาเปิด Gmail และกดลิงก์ยืนยันบัญชีก่อนเข้าสู่ระบบ หากไม่พบอีเมล ให้ตรวจจดหมายขยะ (Spam) หรือถังขยะด้วย'
+      : 'Open Gmail and click the account confirmation link before signing in. If you cannot find the email, check Spam or Trash.'
+    setMessage({ type: 'success', text: `${title} ${text}` })
+    await Swal.fire({ icon: 'success', title, text, confirmButtonText: language === 'th' ? 'รับทราบ' : 'Got it' })
   }
 
   return (

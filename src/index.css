@@ -110,9 +110,21 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .calendar-page-main { height: calc(100vh - 7rem); overflow: hidden; }
   .calendar-fill { overflow: hidden; }
   .calendar-fill .fc { height: 100%; }
-  .calendar-fill .fc-scroller { overflow: hidden !important; }
+  .calendar-fill .fc .fc-toolbar.fc-header-toolbar { min-height: 54px; margin-bottom: 8px; padding-right: 19rem; }
+  .calendar-fill-month .fc-scroller { overflow: hidden !important; }
   .calendar-fill .fc-event { min-height: 13px; font-size: .58rem; }
 }
+@media (min-width: 1280px) and (max-height: 800px) {
+  .calendar-page-shell:has(.calendar-fill-month),
+  .calendar-page-content:has(.calendar-fill-month) { height: auto; overflow: visible; }
+  .calendar-page-main:has(.calendar-fill-month) { min-height: 45rem; overflow: visible; }
+}
+.calendar-fill-day .fc-event, .calendar-fill-week .fc-event { font-size: .8rem; line-height: 1.25; }
+.calendar-fill-day .fc-timegrid-event, .calendar-fill-week .fc-timegrid-event { min-height: 2rem; padding: 3px; }
+.calendar-fill-week .fc-list-event-title .fc-event-title { white-space: normal; overflow-wrap: anywhere; }
+.calendar-fill-week .fc-list-event-time { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.calendar-fill-year .fc-scroller { overflow-y: auto !important; }
+.calendar-fill-year .fc-multimonth { border-radius: 12px; }
 @media (max-width: 1279px) {
   .calendar-fill .fc { min-height: 34rem; }
 }
