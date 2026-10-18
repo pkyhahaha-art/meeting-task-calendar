@@ -292,6 +292,10 @@ export interface Database {
         Args: { target_event_id: string; target_event: Json; target_guest_emails: string[]; target_reminders: Json; target_new?: boolean }
         Returns: string
       }
+      task_creator_mobile_available: {
+        Args: { target_task_id: string }
+        Returns: boolean
+      }
       queue_creation_confirmation: {
         Args: { target_event_id?: string; target_task_id?: string }
         Returns: undefined

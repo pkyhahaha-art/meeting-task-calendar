@@ -13,6 +13,15 @@ function calendarPage() {
   const today = bangkokDate()
   let currentDay = today
   let userId = 'owner'
+  let role = 'user'
+  let status = 'active'
+  let routeSearch = ''
+  const queries = new Map<string, { queryKey: string[]; enabled?: boolean; queryFn: () => Promise<unknown> }>()
+  const queryErrors = new Set<string>()
+  const mutations: Record<string, unknown>[] = []
+  const rpcCalls: { name: string; args: unknown }[] = []
+  const mutationOptions: { mutationFn?: (args: Record<string, unknown>) => Promise<unknown> }[] = []
+  const writes: { table: string; values: unknown }[] = []
   let language = 'en'
   let text = (_: string, en: string) => en
   let calendarRenders = 0
@@ -29,9 +38,9 @@ function calendarPage() {
     { id: 'cancelled', title: 'Cancelled appointment', start_datetime: '2026-09-21T02:00:00Z', end_datetime: null, all_day: false, recurrence_rule: 'FREQ=YEARLY', owner_user_id: 'owner', affiliation: 'PEA' },
   ]
   const tasks = [
-    { id: 'timed', title: 'Timed task', due_date: today, due_time: '14:30:00', status: 'pending', recurrence_series_id: null },
-    { id: 'all-day', title: 'All-day task', due_date: today, due_time: null, status: 'completed', recurrence_series_id: null },
-    { id: 'series', title: 'Series template', due_date: today, due_time: null, status: 'pending', recurrence_series_id: 'series-1' },
+    { id: 'timed', title: 'Timed task', due_date: today, due_time: '14:30:00', status: 'pending', creator_user_id: 'owner', recurrence_series_id: null },
+    { id: 'all-day', title: 'All-day task', due_date: today, due_time: null, status: 'completed', creator_user_id: 'owner', recurrence_series_id: null },
+    { id: 'series', title: 'Series template', due_date: today, due_time: null, status: 'pending', creator_user_id: 'owner', recurrence_series_id: 'series-1' },
   ]
   const queryData: Record<string, unknown> = { events: meetings, tasks, 'meeting-exceptions': [{ event_id: 'cancelled', occurrence_key: '2030-09-21T02:00:00Z' }], 'mobile-push-devices': [], 'assignable-profiles': [] }
   class Calendar extends React.Component<Record<string, unknown>> {
@@ -44,16 +53,16 @@ function calendarPage() {
   const mocks: Record<string, unknown> = {
     react: React,
     '@fullcalendar/react': Calendar,
-    '@tanstack/react-query': { useQuery: ({ queryKey }: { queryKey: string[] }) => ({ data: queryData[queryKey[0]], isError: false, isLoading: false }), useMutation: () => ({ isPending: false, isError: false, mutateAsync: async () => {} }), useQueryClient: () => ({ invalidateQueries: async () => {} }) },
-    'react-router-dom': { useLocation: () => ({ search: '' }), useNavigate: () => () => {} },
-    '../auth/AuthProvider': { useAuth: () => ({ user: { id: userId }, profile: { role: 'user' } }) },
+    '@tanstack/react-query': { useQuery: (options: { queryKey: string[]; enabled?: boolean; queryFn: () => Promise<unknown> }) => { queries.set(options.queryKey[0], options); return { data: queryData[options.queryKey[0]], isError: queryErrors.has(options.queryKey[0]), isLoading: false } }, useMutation: (options: { mutationFn?: (args: Record<string, unknown>) => Promise<unknown> }) => { mutationOptions.push(options); return { isPending: false, isError: false, mutateAsync: async (args: Record<string, unknown>) => { mutations.push(args) } } }, useQueryClient: () => ({ invalidateQueries: async () => {} }) },
+    'react-router-dom': { useLocation: () => ({ search: routeSearch }), useNavigate: () => () => {} },
+    '../auth/AuthProvider': { useAuth: () => ({ user: { id: userId }, profile: { role, status } }) },
     '../i18n/LanguageProvider': { useLanguage: () => ({ language, text }) },
     '../components/ConfirmDialogProvider': { useConfirm: () => confirm },
     '../lib/eventForm': { ...require('../lib/eventForm'), bangkokDate: () => currentDay },
     '../lib/calendarView': { ...calendarView, calendarMeetingOccurrences: (...args: Parameters<typeof calendarView.calendarMeetingOccurrences>) => { occurrenceRanges.push({ start: args[1], end: args[2] }); return calendarView.calendarMeetingOccurrences(...args) } },
     '../components/EventDialog': { EventDialog: (props: Record<string, unknown>) => React.createElement('div', { ...props, 'data-testid': 'event-dialog' }) },
     '../components/TaskDialog': { TaskDialog: (props: Record<string, unknown>) => React.createElement('task-dialog', props) },
-    '../lib/supabase': { supabase: {} },
+    '../lib/supabase': { supabase: { rpc: async (name: string, args: unknown) => { rpcCalls.push({ name, args }); return { data: true, error: null } }, from: (table: string) => ({ update: (values: unknown) => { writes.push({ table, values }); return { eq: async () => ({ error: null }) } }, delete: () => ({ eq: async () => ({ error: null }) }), insert: async () => ({ error: null }) }) } },
     '../lib/mobilePush': { checkMeetingMobileRecipients: async () => false, getConnectedDevices: async () => [] },
   }
   vm.runInContext(ts.transpileModule(readFileSync(new URL('./CalendarPage.tsx', import.meta.url), 'utf8'),
@@ -65,14 +74,72 @@ function calendarPage() {
   const button = (label: string) => renderer.root.findAllByType('button').find((node) => node.children.includes(label))!
   const refresh = () => act(() => renderer.update(React.createElement(exports.CalendarPage!)))
   return {
-    renderer, calendar, button, changes, anchor, queryData, meetings, tasks, occurrenceRanges, confirmations,
+    renderer, calendar, button, changes, anchor, queryData, queries, queryErrors, mutations, rpcCalls, mutationOptions, writes, meetings, tasks, occurrenceRanges, confirmations,
     renders: () => calendarRenders, refresh,
     setLanguage: (next: string) => { language = next; text = (th, en) => next === 'th' ? th : en; refresh() },
     setUser: (next: string) => { userId = next; refresh() },
+    setRole: (next: string, nextStatus = 'active') => { role = next; status = nextStatus; refresh() },
+    setRoute: (next: string) => { routeSearch = next; refresh() },
     setToday: (next: string) => { currentDay = next; refresh() },
     resize: (compact: boolean) => act(() => { media.matches = compact; listeners.forEach((listener) => listener()) }),
   }
 }
+
+test('active Admin can edit another creator’s records without gaining completion or ordinary deletion controls', async () => {
+  const page = calendarPage()
+  try {
+    page.setUser('admin')
+    page.setRole('admin')
+    page.setRoute('?event=today')
+    const meeting = page.renderer.root.findByProps({ 'data-testid': 'event-dialog' })
+    assert.equal(meeting.props.canEdit, true)
+    assert.equal(meeting.props.canDelete, false)
+    assert.equal(meeting.props.onMoveOccurrence, undefined)
+    assert.equal(meeting.props.event.owner_user_id, 'owner')
+    await act(async () => meeting.props.onSave({ title: 'Admin edit' }, false, 'series'))
+    assert.equal(page.mutations.at(-1)?.event, page.meetings[0])
+    assert.equal(page.mutations.at(-1)?.notifyRecipients, false)
+    page.setRoute('?task=timed')
+    const task = page.renderer.root.findByType('task-dialog' as React.ElementType)
+    assert.equal(task.props.canEdit, true)
+    assert.equal(task.props.canDelete, false)
+    assert.equal(task.props.canComplete, false)
+    assert.equal(task.props.userId, 'admin')
+    assert.equal(task.props.task.creator_user_id, 'owner')
+    assert.equal(page.queries.get('task-creator-mobile')?.enabled, true)
+    await page.queries.get('task-creator-mobile')!.queryFn()
+    assert.equal(page.rpcCalls.at(-1)?.name, 'task_creator_mobile_available')
+    assert.equal((page.rpcCalls.at(-1)?.args as { target_task_id: string }).target_task_id, 'timed')
+    page.queryData['task-creator-mobile'] = true
+    page.refresh()
+    assert.equal(task.props.hasConnectedDevices, true)
+    page.queryErrors.add('task-creator-mobile')
+    page.refresh()
+    assert.equal(task.props.mobileConnectionError, true)
+    page.setRole('admin', 'disabled')
+    assert.equal(task.props.canEdit, false)
+    assert.equal(meeting.props.canEdit, false)
+    assert.equal(page.queries.get('task-creator-mobile')?.enabled, false)
+    page.setRole('user')
+    assert.equal(task.props.canEdit, false)
+  } finally { act(() => page.renderer.unmount()) }
+})
+
+test('editing a legacy recurring task preserves its rule because the form has no recurrence controls', async () => {
+  const page = calendarPage()
+  try {
+    const task = { id: 'legacy-root', title: 'Old series', creator_user_id: 'owner', recurrence_rule: 'FREQ=WEEKLY;INTERVAL=2', due_date: '2026-10-20', due_time: null, status: 'pending' }
+    const mutation = page.mutationOptions[1]
+    assert.ok(mutation?.mutationFn)
+    await mutation.mutationFn!({
+      task,
+      notifyRecipients: false,
+      draft: { title: 'Updated details', description: '', affiliation: '', dueDate: '2026-10-20', dueTime: '', internalUserIds: [], externalEmails: [], linkedEventId: '', reminderMode: 'single', reminderKeys: [], driveLinks: [], files: [], notifyEmail: false, notifyLine: false },
+    })
+    const saved = page.writes.find((write) => write.table === 'tasks' && (write.values as { title?: string }).title === 'Updated details')
+    assert.equal((saved?.values as { recurrence_rule: string }).recurrence_rule, 'FREQ=WEEKLY;INTERVAL=2')
+  } finally { act(() => page.renderer.unmount()) }
+})
 
 test('switcher changes all views, marks the selected choice, and keeps the viewed date on mobile resize', () => {
   const page = calendarPage()

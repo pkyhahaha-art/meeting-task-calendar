@@ -117,6 +117,7 @@ export function EventDialog({
   defaultAffiliation = '',
   occurrenceStart,
   canEdit,
+  canDelete = canEdit,
   canViewDeliveryStatus,
   hasConnectedDevices = false,
   checkMobileRecipients,
@@ -135,6 +136,7 @@ export function EventDialog({
   defaultAffiliation?: string
   occurrenceStart?: string
   canEdit: boolean
+  canDelete?: boolean
   busy: boolean
   hasConnectedDevices?: boolean
   checkMobileRecipients?: (emails: string[]) => Promise<boolean>
@@ -462,9 +464,9 @@ export function EventDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/35 p-0 sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="event-title">
       <section className="max-h-[95vh] w-full max-w-3xl overflow-y-auto rounded-t-2xl bg-white p-5 shadow-2xl sm:rounded-2xl sm:p-6">
-        <div className="mb-5 flex items-start justify-between">
-          <div className="flex gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
+        <div className="relative mb-5 flex flex-col gap-3 pr-12 sm:flex-row sm:items-start sm:justify-between sm:pr-0">
+          <div className="flex min-w-0 gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
               <CalendarClock size={22} />
             </span>
             <div>
@@ -473,18 +475,19 @@ export function EventDialog({
               </h2>
               {event && !canEdit && (
                 <p className="text-sm text-slate-500">
-                  {text('ดูได้อย่างเดียว เฉพาะเจ้าของเท่านั้นที่แก้ไขได้', 'View only. Only the owner can edit this meeting.')}
+                  {text('ดูได้อย่างเดียว ผู้สร้างหรือ Admin จึงแก้ไขรายการนี้ได้', 'View only. The creator or an Admin can edit this meeting.')}
                 </p>
               )}
+              {event && canEdit && !canDelete && <p className="mt-1 text-sm text-brand-700">{text('แก้ไขในฐานะ Admin โดยคงผู้สร้างเดิม · หากต้องการลบ ให้ใช้เมนู Admin พร้อมระบุเหตุผล', 'Editing as Admin; the original creator is retained. Use the Admin menu with a reason to delete.')}</p>}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             {event && (
-              <p className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+              <p className="break-words rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
                 {text('สร้างโดย', 'Created by')} {event.creator_name || text('ไม่ระบุชื่อ', 'Unknown')}
               </p>
             )}
-            <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label={text('ปิด', 'Close')}>
+            <button type="button" onClick={onClose} className="absolute right-0 top-0 flex min-h-11 min-w-11 items-center justify-center rounded-lg p-2 text-slate-500 hover:bg-slate-100 sm:static" aria-label={text('ปิด', 'Close')}>
               <X size={20} />
             </button>
           </div>
@@ -1196,7 +1199,7 @@ export function EventDialog({
           {hasPendingMove && <p role="status" aria-live="polite" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">{pendingMoveMessage}</p>}
 
           <div className="flex flex-wrap justify-between gap-2 border-t border-slate-100 pt-4">
-            {event && canEdit ? (
+            {event && canDelete ? (
               <button
                 type="button"
                 onClick={() => void onDelete(isOccurrenceEdit ? 'occurrence' : 'series').catch(() => setError(text('ลบนัดไม่ได้ กรุณาลองใหม่', 'Could not delete the appointment. Please try again.')))}

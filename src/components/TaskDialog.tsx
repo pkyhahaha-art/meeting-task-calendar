@@ -103,10 +103,12 @@ export function TaskDialog({
   userId,
   profiles,
   canEdit,
+  canDelete = canEdit,
   canComplete,
   canAcknowledge,
   canViewDeliveryStatus,
   hasConnectedDevices = false,
+  mobileConnectionError = false,
   busy,
   onClose,
   onSave,
@@ -125,10 +127,12 @@ export function TaskDialog({
   profiles: ProfileRow[]
   events: EventRow[]
   canEdit: boolean
+  canDelete?: boolean
   canComplete: boolean
   canAcknowledge: boolean
   canViewDeliveryStatus: boolean
   hasConnectedDevices?: boolean
+  mobileConnectionError?: boolean
   busy: boolean
   onClose: () => void
   onSave: (draft: TaskDraft, notifyRecipients: boolean) => Promise<void>
@@ -391,9 +395,9 @@ export function TaskDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/35 p-0 sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="task-title">
       <section className="max-h-[95vh] w-full max-w-3xl overflow-y-auto rounded-t-2xl bg-white p-5 shadow-2xl sm:rounded-2xl sm:p-6">
-        <div className="mb-5 flex items-start justify-between">
-          <div className="flex gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-700">
+        <div className="relative mb-5 flex flex-col gap-3 pr-12 sm:flex-row sm:items-start sm:justify-between sm:pr-0">
+          <div className="flex min-w-0 gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-700">
               <CheckCircle2 size={22} />
             </span>
             <div>
@@ -405,15 +409,16 @@ export function TaskDialog({
                   {text('ดูและดาวน์โหลดเอกสารได้ โดยแก้ไขรายละเอียดไม่ได้', 'You can view and download documents, but cannot edit the details.')}
                 </p>
               )}
+              {task && canEdit && !canDelete && <p className="mt-1 text-sm text-brand-700">{text('แก้ไขในฐานะ Admin โดยคงผู้สร้างเดิม · หากต้องการลบ ให้ใช้เมนู Admin พร้อมระบุเหตุผล', 'Editing as Admin; the original creator is retained. Use the Admin menu with a reason to delete.')}</p>}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             {task && (
-              <p className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+              <p className="break-words rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
                 {text('สร้างโดย', 'Created by')} {task.creator_name || text('ไม่ระบุชื่อ', 'Unknown')}
               </p>
             )}
-            <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label={text('ปิด', 'Close')}>
+            <button type="button" onClick={onClose} className="absolute right-0 top-0 flex min-h-11 min-w-11 items-center justify-center rounded-lg p-2 text-slate-500 hover:bg-slate-100 sm:static" aria-label={text('ปิด', 'Close')}>
               <X size={20} />
             </button>
           </div>
@@ -829,7 +834,9 @@ export function TaskDialog({
                 <label
                   className={`flex items-center gap-2 select-none ${hasConnectedDevices ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}
                   title={
-                    !hasConnectedDevices
+                    mobileConnectionError
+                      ? text('ตรวจสอบการเชื่อมต่อมือถือของผู้สร้างไม่ได้ กรุณาลองใหม่', 'Could not check the creator’s mobile connection. Please retry.')
+                      : !hasConnectedDevices
                       ? text('ยังไม่ได้เชื่อมต่อการแจ้งเตือนบนมือถือ กรุณาเชื่อมต่อในเมนู "เชื่อมต่อการแจ้งเตือนผ่านมือถือ"', 'Mobile notifications not connected. Please connect in Mobile Notifications menu.')
                       : ''
                   }
@@ -844,7 +851,7 @@ export function TaskDialog({
                   <span>{text('แจ้งเตือนผ่านมือถือ', 'Mobile notification')}</span>
                   {!hasConnectedDevices ? (
                     <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 border border-amber-200">
-                      {text('ยังไม่เชื่อมต่อ', 'Not connected')}
+                      {mobileConnectionError ? text('ตรวจสอบไม่ได้', 'Could not check') : text('ยังไม่เชื่อมต่อ', 'Not connected')}
                     </span>
                   ) : (
                     <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 border border-emerald-200">
@@ -1058,7 +1065,7 @@ export function TaskDialog({
 
           {error && <p className="form-error" role="alert">{error}</p>}
           <div className="flex flex-wrap justify-between gap-2 border-t border-slate-100 pt-4">
-            {task && canEdit ? (
+            {task && canDelete ? (
               <button type="button" onClick={onDelete} className="btn-secondary border-red-200 text-red-600" disabled={busy}>
                 <Trash2 size={17} />
                 {text('ย้ายไปถังขยะ', 'Move to trash')}

@@ -23,11 +23,29 @@ const details: EventDetails = {
   occurrenceReminders: [], occurrenceNotificationDeliveries: [],
 }
 const noop = async () => {}
-function dialog(connected: boolean, onSave: (draft: EventDraft) => Promise<void | { warning: string }> = noop, open = true, savedEvent: typeof event | null = event, checkMobileRecipients?: (emails: string[]) => Promise<boolean>) {
+function dialog(connected: boolean, onSave: (draft: EventDraft) => Promise<void | { warning: string }> = noop, open = true, savedEvent: typeof event | null = event, checkMobileRecipients?: (emails: string[]) => Promise<boolean>, canDelete = true) {
   return <LanguageProvider><EventDialog open={open} event={savedEvent} details={details}
-    hasConnectedDevices={connected} checkMobileRecipients={checkMobileRecipients} canEdit canViewDeliveryStatus={false} busy={false}
+    hasConnectedDevices={connected} checkMobileRecipients={checkMobileRecipients} canEdit canDelete={canDelete} canViewDeliveryStatus={false} busy={false}
     onClose={() => {}} onSave={onSave} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>
 }
+
+test('Admin editing enables meeting fields and quiet save while deletion remains in the Admin workflow', async () => {
+  let renderer!: ReactTestRenderer
+  let saved: EventDraft | undefined
+  const original = { ...event, owner_user_id: 'original-creator', creator_name: 'Original creator' }
+  try {
+    act(() => { renderer = create(dialog(true, async draft => { saved = draft }, true, original, undefined, false)) })
+    assert.ok(renderer.root.findAllByType('fieldset').every(node => !node.props.disabled))
+    assert.equal(renderer.root.findAllByType('button').some(node => node.children.includes('Delete')), false)
+    const title = renderer.root.findByProps({ id: 'title' })
+    act(() => title.props.onChange({ target: { value: 'Admin updated title' } }))
+    await act(async () => renderer.root.findByType(SaveActionMenu).props.onSave(false))
+    assert.equal(saved?.title, 'Admin updated title')
+    assert.equal(original.owner_user_id, 'original-creator')
+    assert.equal(original.creator_name, 'Original creator')
+    assert.equal(saved?.notifyLine, true)
+  } finally { if (renderer) act(() => renderer.unmount()) }
+})
 function checkbox(renderer: ReactTestRenderer, label: string) {
   return renderer.root.findAllByType('label').find((node) => node.findAll((child) =>
     child.children.some((text) => typeof text === 'string' && text.includes(label))).length > 0)!.findByType('input')

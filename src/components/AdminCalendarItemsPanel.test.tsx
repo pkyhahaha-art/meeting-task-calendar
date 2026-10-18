@@ -130,3 +130,14 @@ test('load failure blocks destructive actions and exposes reload', async () => {
     assert.equal(h.calls.filter(call => call.name === 'list').length, 2)
   } finally { h.unmount() }
 })
+
+test('Admin edit links open the original calendar form without requiring a deletion reason', async () => {
+  const h = await harness([item('task-1'), item('meeting-1', 'meeting'), { ...item('cancelled', 'meeting'), status: 'cancelled' }])
+  try {
+    const links = h.renderer.root.findAllByType('a')
+    assert.deepEqual(links.map(link => link.props.href), ['#/calendar?task=task-1', '#/calendar?event=meeting-1'])
+    assert.ok(links.every(link => link.props['aria-disabled'] === false))
+    assert.equal(h.button('ย้ายที่เลือก').props.disabled, true)
+    assert.equal(h.calls.some(call => call.name === 'trash' || call.name === 'cancel'), false)
+  } finally { h.unmount() }
+})

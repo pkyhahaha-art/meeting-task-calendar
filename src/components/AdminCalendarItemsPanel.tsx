@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarDays, Loader2, RefreshCw, Trash2 } from 'lucide-react'
+import { CalendarDays, Loader2, Pencil, RefreshCw, Trash2 } from 'lucide-react'
 import { useConfirm } from './ConfirmDialogProvider'
 import { AdminFilter, AdminPager, AdminStatus, adminDate } from './AdminReportControls'
 import { reportDateBounds, reportPageSize, type AdminProfile } from '../lib/adminReports'
@@ -103,11 +103,12 @@ export function AdminCalendarItemsPanel({ adminUserId, members }: { adminUserId:
         <div className="flex items-start gap-3"><label className="flex min-h-11 min-w-11 shrink-0 items-center justify-center"><input type="checkbox" className="h-5 w-5" aria-label={`เลือก ${item.title}`} disabled={blocked} checked={selected.includes(adminItemKey(item))} onChange={e => setSelected(current => e.target.checked ? [...current, adminItemKey(item)] : current.filter(key => key !== adminItemKey(item)))} /></label>
           <div className="min-w-0 flex-1"><h3 className="break-words font-semibold">{item.title}</h3><p className="mt-1 break-words text-sm text-slate-600">{item.creator_name || 'ไม่ระบุชื่อ'} · {item.creator_email}</p><div className="mt-2 flex flex-wrap gap-2"><span className="rounded-full bg-purple-50 px-2 py-1 text-xs font-semibold text-brand-700">{item.entity === 'task' ? isLegacyTaskSeries(item) ? 'Task ทำซ้ำเดิม' : 'Task' : isMeetingSeries(item) ? 'Meeting ทำซ้ำ' : 'Meeting'}</span><AdminStatus value={item.status} label={statusLabel[item.status] || item.status} /></div></div>
         </div>
-        <details className="rounded-xl bg-slate-50 p-3"><summary className="cursor-pointer text-sm font-semibold text-brand-700">ดูรายละเอียดก่อนลบ</summary>
+        <details className="rounded-xl bg-slate-50 p-3"><summary className="cursor-pointer text-sm font-semibold text-brand-700">ดูรายละเอียดรายการ</summary>
           <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">{[['หน่วยงาน / สังกัด', item.affiliation || '—'], ['สร้างเมื่อ', adminDate(item.created_at)],
             ...(item.entity === 'meeting' ? [['เริ่มประชุม', adminDate(item.start_datetime)], ['สิ้นสุด', adminDate(item.end_datetime)]] : [['ครบกำหนด', item.due_date ? adminDate(`${item.due_date}T${item.due_time || '00:00:00'}+07:00`) : '—']]), ['รหัสรายการ', item.id]].map(([label, value]) => <div key={label}><dt className="font-semibold text-slate-500">{label}</dt><dd className="mt-1 break-words">{value}</dd></div>)}</dl>
         </details>
         <div className="flex flex-wrap gap-2">{isMeetingSeries(item) && item.status === 'scheduled' && <button type="button" className="btn-secondary" disabled={blocked} onClick={() => { setSeries(item); setOccurrenceId(''); setMessage(null) }}><CalendarDays size={16} />เลือกวันเพื่อลบเฉพาะนัด</button>}
+          {(item.entity === 'task' || item.status === 'scheduled') && <a href={`#/calendar?${item.entity === 'task' ? 'task' : 'event'}=${encodeURIComponent(item.id)}`} className={`btn-secondary ${blocked ? 'pointer-events-none opacity-50' : ''}`} aria-disabled={blocked} tabIndex={blocked ? -1 : undefined} onClick={event => { if (blocked) event.preventDefault() }}><Pencil size={16} />เปิดแก้ไข</a>}
           <button type="button" className="btn-secondary text-red-700" disabled={blocked || !validReason} onClick={() => void trash([item])}><Trash2 size={16} />{isMeetingSeries(item) ? 'ลบทั้งชุด' : isLegacyTaskSeries(item) ? 'ลบงานนี้และงานถัดไปในชุดเดิม' : 'ย้ายรายการนี้เข้าถังขยะ'}</button>
         </div>
         {series?.id === item.id && item.entity === 'meeting' && <div className="space-y-3 rounded-xl border border-brand-200 bg-purple-50/40 p-4">

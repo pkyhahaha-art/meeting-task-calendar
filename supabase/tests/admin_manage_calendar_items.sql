@@ -139,18 +139,21 @@ begin
   begin perform public.admin_trash_calendar_items((select jsonb_agg(jsonb_build_object('entity','task','id',task_id)) from generate_series(1,101)),'Rollback reason');
     raise exception 'oversized batch accepted'; exception when invalid_parameter_value then null; end;
 
-  -- The internal flag alone does not turn ordinary Admin table writes into
-  -- creator edits, and the legacy owner-only occurrence RPC stays owner-only.
+  -- Admin content editing is now authorized; the internal flag alone still
+  -- cannot bypass the reason-protected Trash or owner-only occurrence RPC.
   perform set_config('app.admin_calendar_trash',admin_id::text,true);
-  update public.tasks set title='Unapproved Admin edit' where id=task_id;
+  update public.tasks set title=fixture_tag||' approved Admin edit' where id=task_id;
   get diagnostics count_value=row_count;
-  if count_value<>0 then raise exception 'Admin ordinary edit bypassed owner RLS'; end if;
-  update public.tasks set deleted_at=now(),status='cancelled' where id=task_id;
+  if count_value<>1 then raise exception 'Approved Admin Task edit failed'; end if;
+  begin
+    update public.tasks set deleted_at=now(),status='cancelled' where id=task_id;
+    get diagnostics count_value=row_count;
+    if count_value<>0 then raise exception 'client-set trash flag bypassed RLS'; end if;
+  exception when insufficient_privilege then null;
+  end;
+  update public.events set title=fixture_tag||' approved Admin edit' where id=meeting_id;
   get diagnostics count_value=row_count;
-  if count_value<>0 then raise exception 'client-set trash flag bypassed RLS'; end if;
-  update public.events set title='Unapproved Admin edit' where id=meeting_id;
-  get diagnostics count_value=row_count;
-  if count_value<>0 then raise exception 'Admin ordinary Meeting edit bypassed owner RLS'; end if;
+  if count_value<>1 then raise exception 'Approved Admin Meeting edit failed'; end if;
   begin perform public.cancel_meeting_occurrence(series_id,first_at); raise exception 'ordinary owner RPC gained Admin rights'; exception when insufficient_privilege then null; end;
   perform set_config('app.admin_calendar_trash','',true);
 

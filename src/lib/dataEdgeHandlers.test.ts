@@ -11,7 +11,7 @@ const timestamp = '2026-10-04T12:00:00.000Z'
 const token = 'fixture-token'
 const hash = createHash('sha256').update(token).digest('hex')
 
-function endpoint(files: string[], rows: Store, options: { profileError?: boolean; membershipError?: boolean; clock?: string; serverRowLimit?: number } = {}) {
+function endpoint(files: string[], rows: Store, options: { profileError?: boolean; membershipError?: boolean; clock?: string; serverRowLimit?: number; userId?: string } = {}) {
   let handler!: (request: Request) => Promise<Response>
   const writes: string[] = []
   let signed = 0
@@ -71,7 +71,7 @@ function endpoint(files: string[], rows: Store, options: { profileError?: boolea
   }
   const context = vm.createContext({
     createClient: (_url: string, _key: string, config?: unknown) => config
-      ? { auth: { getUser: async () => ({ data: { user: { id: 'creator' } }, error: null }) } } : admin,
+      ? { auth: { getUser: async () => ({ data: { user: { id: options.userId ?? 'creator' } }, error: null }) } } : admin,
     Deno: { env: { get: (key: string) => key === 'PUBLIC_APP_URL' ? 'https://fixture.invalid/calendar/' : 'fixture' }, serve: (serve: typeof handler) => { handler = serve } },
     Response, Request, URL, TextEncoder, crypto: webcrypto, Date: FixedDate, Promise, atob, btoa,
     console: { error: () => undefined },
@@ -217,8 +217,8 @@ function externalStore(status: string): Store {
     task_internal_recipients: [],
   }
 }
-function issueRequest() {
-  return new Request('https://fixture.invalid/', { method: 'POST', headers: { authorization: 'Bearer fixture-session', 'content-type': 'application/json' }, body: JSON.stringify({ action: 'issue', taskId: 'task-id' }) })
+function issueRequest(notificationType?: string) {
+  return new Request('https://fixture.invalid/', { method: 'POST', headers: { authorization: 'Bearer fixture-session', 'content-type': 'application/json' }, body: JSON.stringify({ action: 'issue', taskId: 'task-id', notificationType }) })
 }
 for (const status of ['disabled', 'pending_verification']) test('external issue endpoint rejects an authenticated ' + status + ' creator', async () => {
   const service = endpoint(externalFiles, externalStore(status))
@@ -234,6 +234,57 @@ test('external issue endpoint preserves issuance for the active Task creator', a
   const service = endpoint(externalFiles, externalStore('active'))
   assert.equal((await service.handler(issueRequest())).status, 200)
   assert.deepEqual(service.writes, ['external_task_tokens', 'notification_deliveries'])
+})
+
+function adminExternalStore(status = 'active', role = 'admin'): Store {
+  const rows = externalStore('active')
+  rows.profiles.push({ id: 'admin-actor', email: 'admin@gmail.com', status, role })
+  return rows
+}
+
+test('an active Admin issues Task update links to existing recipients while retaining the original creator', async () => {
+  const rows = adminExternalStore()
+  const service = endpoint(externalFiles, rows, { userId: 'admin-actor' })
+  assert.equal((await service.handler(issueRequest('task_updated'))).status, 200)
+  assert.equal(rows.tasks[0].creator_user_id, 'creator')
+  assert.deepEqual(rows.external_task_tokens.map((row) => row.external_email), ['guest@gmail.com'])
+  assert.deepEqual(rows.notification_deliveries.map((row) => [row.recipient_reference, row.template_key]), [['guest@gmail.com', 'task_updated']])
+  assert.deepEqual(service.writes, ['external_task_tokens', 'notification_deliveries'])
+})
+
+test('Admin link issuance deduplicates initial recipients against the original creator rather than the Admin', async () => {
+  const rows = adminExternalStore()
+  rows.task_external_recipients.push({ task_id: 'task-id', email: 'creator@gmail.com' })
+  const service = endpoint(externalFiles, rows, { userId: 'admin-actor' })
+  assert.equal((await service.handler(issueRequest())).status, 200)
+  assert.deepEqual(rows.notification_deliveries.map((row) => row.recipient_reference), ['guest@gmail.com'])
+})
+
+for (const [status, role] of [['active', 'employee'], ['disabled', 'admin'], ['pending_verification', 'admin']]) {
+  test('external issue endpoint rejects a noncreator ' + status + ' ' + role, async () => {
+    const service = endpoint(externalFiles, adminExternalStore(status, role), { userId: 'admin-actor' })
+    assert.equal((await service.handler(issueRequest('task_updated'))).status, 403)
+    assert.deepEqual(service.writes, [])
+  })
+}
+
+for (const state of ['completed', 'cancelled', 'trashed']) test('Admin link issuance still rejects a ' + state + ' Task', async () => {
+  const rows = adminExternalStore()
+  if (state === 'trashed') rows.tasks[0].deleted_at = timestamp
+  else rows.tasks[0].status = state
+  const service = endpoint(externalFiles, rows, { userId: 'admin-actor' })
+  assert.equal((await service.handler(issueRequest('task_updated'))).status, 403)
+  assert.deepEqual(service.writes, [])
+})
+
+test('Admin issue access does not permit completing Tasks through the external endpoint', async () => {
+  const service = endpoint(externalFiles, adminExternalStore(), { userId: 'admin-actor' })
+  const response = await service.handler(new Request('https://fixture.invalid/', {
+    method: 'POST', headers: { authorization: 'Bearer fixture-session', 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'complete', taskId: 'task-id' }),
+  }))
+  assert.equal(response.status, 403)
+  assert.deepEqual(service.writes, [])
 })
 
 function exportRequest(cursor = '1970-01-01T00:00:00.000Z', page?: string) {

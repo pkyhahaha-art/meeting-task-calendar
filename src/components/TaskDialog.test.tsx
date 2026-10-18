@@ -18,12 +18,41 @@ const details: TaskDetails = {
   externalRecipients: [], notificationDeliveries: [], reminders: [], reminderNotificationDeliveries: [],
 }
 const noop = async () => {}
-function dialog(connected: boolean, onSave: (draft: TaskDraft) => Promise<void> = noop, savedDetails = details, savedTask: typeof task | null = task) {
-  return <LanguageProvider><TaskDialog open task={savedTask} details={savedTask ? savedDetails : undefined} userId="creator"
-    profiles={[]} events={[]} canEdit canComplete canAcknowledge={false} canViewDeliveryStatus={false}
-    hasConnectedDevices={connected} busy={false} onClose={() => {}} onSave={onSave}
+function dialog(connected: boolean, onSave: (draft: TaskDraft) => Promise<void> = noop, savedDetails = details, savedTask: typeof task | null = task, asAdmin = false, mobileConnectionError = false) {
+  return <LanguageProvider><TaskDialog open task={savedTask} details={savedTask ? savedDetails : undefined} userId={asAdmin ? 'admin' : 'creator'}
+    profiles={[]} events={[]} canEdit canDelete={!asAdmin} canComplete={!asAdmin} canAcknowledge={false} canViewDeliveryStatus={false}
+    hasConnectedDevices={connected} mobileConnectionError={mobileConnectionError} busy={false} onClose={() => {}} onSave={onSave}
     onDelete={noop} onToggleComplete={noop} onAcknowledge={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>
 }
+
+test('Admin saves another creator’s task without changing its recipients or enabling completion and deletion', async () => {
+  let renderer!: ReactTestRenderer
+  let saved: TaskDraft | undefined
+  const originalFire = Swal.fire
+  Swal.fire = (async () => ({ isConfirmed: true, isDenied: false, isDismissed: false })) as typeof Swal.fire
+  try {
+    act(() => { renderer = create(dialog(true, async draft => { saved = draft }, details, task, true)) })
+    assert.ok(renderer.root.findAllByType('fieldset').every(node => !node.props.disabled))
+    assert.equal(renderer.root.findAllByType('button').some(node => node.children.includes('Move to trash') || node.children.includes('Mark task complete')), false)
+    const title = renderer.root.findByProps({ id: 'task-name' })
+    act(() => title.props.onChange({ target: { value: 'Admin task edit' } }))
+    await act(async () => { renderer.root.findAllByType('button').find(node => node.children.includes('Save'))!.props.onClick(); await new Promise(resolve => setImmediate(resolve)) })
+    assert.equal(saved?.title, 'Admin task edit')
+    assert.deepEqual(saved?.internalUserIds, ['creator'])
+    assert.equal(task.creator_user_id, 'creator')
+    assert.equal(saved?.notifyLine, true)
+  } finally { Swal.fire = originalFire; if (renderer) act(() => renderer.unmount()) }
+})
+
+test('failed creator mobile lookup retains the saved choice and reports uncertainty', () => {
+  let renderer!: ReactTestRenderer
+  try {
+    act(() => { renderer = create(dialog(false, noop, details, task, true, true)) })
+    assert.equal(mobileCheckbox(renderer).props.checked, true)
+    assert.equal(mobileCheckbox(renderer).props.disabled, true)
+    assert.ok(renderer.root.findAllByType('span').some(node => node.children.includes('Could not check')))
+  } finally { if (renderer) act(() => renderer.unmount()) }
+})
 function mobileCheckbox(renderer: ReactTestRenderer) {
   return renderer.root.findAllByType('label').find((node) => node.findAll((child) =>
     child.children.some((text) => typeof text === 'string' && text.includes('Mobile notification'))).length > 0)!.findByType('input')

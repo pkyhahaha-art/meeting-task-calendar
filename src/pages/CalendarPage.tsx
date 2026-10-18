@@ -210,6 +210,17 @@ export function CalendarPage() {
   const checkMobileRecipients = useCallback((emails: string[]) => checkMeetingMobileRecipients(emails, selectedEvent?.id), [selectedEvent?.id])
   const selectedEventOccurrenceStart = eventDialog.occurrenceStart
   const selectedTask = taskDialog.task
+  const isActiveAdmin = profile?.role === 'admin' && profile.status === 'active'
+  const editingAnotherTask = Boolean(isActiveAdmin && selectedTask && selectedTask.creator_user_id !== user?.id)
+  const taskCreatorMobileQuery = useQuery({
+    queryKey: ['task-creator-mobile', user?.id, selectedTask?.id],
+    enabled: editingAnotherTask,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('task_creator_mobile_available', { target_task_id: selectedTask!.id })
+      if (error) throw error
+      return data === true
+    },
+  })
   const canViewEventDeliveryStatus = Boolean(selectedEvent && (selectedEvent.owner_user_id === user?.id || profile?.role === 'admin'))
   const canViewTaskDeliveryStatus = Boolean(selectedTask && (selectedTask.creator_user_id === user?.id || profile?.role === 'admin'))
   const eventDetailsQuery = useQuery({
@@ -449,7 +460,7 @@ export function CalendarPage() {
     },
     onSuccess: async ({ warning }) => {
       setEventSaveWarning(warning)
-      await Promise.all([queryClient.invalidateQueries({ queryKey: ['events'] }), queryClient.invalidateQueries({ queryKey: ['event-details'] }), queryClient.invalidateQueries({ queryKey: ['meeting-exceptions'] }), queryClient.invalidateQueries({ queryKey: ['recent-documents'] }), queryClient.invalidateQueries({ queryKey: ['event-creation-stats'] })])
+      await Promise.all([queryClient.invalidateQueries({ queryKey: ['events'] }), queryClient.invalidateQueries({ queryKey: ['event-details'] }), queryClient.invalidateQueries({ queryKey: ['meeting-exceptions'] }), queryClient.invalidateQueries({ queryKey: ['recent-documents'] }), queryClient.invalidateQueries({ queryKey: ['event-creation-stats'] }), queryClient.invalidateQueries({ queryKey: ['admin-calendar-items'] })])
     },
   })
 
@@ -483,7 +494,9 @@ export function CalendarPage() {
         assignee_user_id: primaryInternal,
         external_assignee_email: primaryExternal,
         linked_event_id: draft.linkedEventId || null,
-        recurrence_rule: null,
+        // Task editing does not expose recurrence controls. Keep a legacy
+        // series rule intact instead of triggering its cancellation cleanup.
+        recurrence_rule: task?.recurrence_rule ?? null,
       }
       let taskId = task?.id
       let taskSaved = false
@@ -597,7 +610,7 @@ export function CalendarPage() {
     },
     onSuccess: async ({ warning }) => {
       setTaskSaveWarning(warning)
-      await Promise.all([queryClient.invalidateQueries({ queryKey: ['tasks'] }), queryClient.invalidateQueries({ queryKey: ['task-details'] }), queryClient.invalidateQueries({ queryKey: ['recent-documents'] }), queryClient.invalidateQueries({ queryKey: ['event-creation-stats'] })])
+      await Promise.all([queryClient.invalidateQueries({ queryKey: ['tasks'] }), queryClient.invalidateQueries({ queryKey: ['task-details'] }), queryClient.invalidateQueries({ queryKey: ['recent-documents'] }), queryClient.invalidateQueries({ queryKey: ['event-creation-stats'] }), queryClient.invalidateQueries({ queryKey: ['admin-calendar-items'] })])
     },
   })
 
@@ -780,8 +793,10 @@ export function CalendarPage() {
       isOverdue: Boolean(info.event.extendedProps.isOverdue),
     }], info.jsEvent.clientX, info.jsEvent.clientY)
   }, [setCalendarTooltipAt])
-  const canEditEvent = canManageMeeting(selectedEvent?.owner_user_id, user?.id)
-  const canEditTask = !selectedTask || selectedTask.creator_user_id === user?.id
+  const canEditEvent = canManageMeeting(selectedEvent?.owner_user_id, user?.id, isActiveAdmin)
+  const canEditTask = !selectedTask || selectedTask.creator_user_id === user?.id || isActiveAdmin
+  const canDeleteEvent = canManageMeeting(selectedEvent?.owner_user_id, user?.id)
+  const canDeleteTask = !selectedTask || selectedTask.creator_user_id === user?.id
   const canCompleteTask = Boolean(selectedTask && selectedTask.creator_user_id === user?.id)
   const canAcknowledgeTask = Boolean(selectedTask && selectedTask.creator_user_id !== user?.id && selectedTask.status === 'pending' && taskDetailsQuery.data?.internalRecipients.some((recipient) => recipient.user_id === user?.id && !recipient.acknowledged_at))
   const busy = eventMutation.isPending || taskMutation.isPending || deleteEventMutation.isPending || deleteTaskMutation.isPending || deleteEventAttachmentMutation.isPending || deleteTaskAttachmentMutation.isPending || toggleTaskMutation.isPending || acknowledgeTaskMutation.isPending
@@ -952,7 +967,7 @@ export function CalendarPage() {
       <EventDialog
         defaultAffiliation={profileAffiliation(profile)}
         open={eventDialog.open} event={selectedEvent} details={eventDetailsQuery.data} selectedDate={eventDialog.date} occurrenceStart={eventDialog.occurrenceStart}
-        canEdit={canEditEvent} canViewDeliveryStatus={canViewEventDeliveryStatus} hasConnectedDevices={hasConnectedDevices && (!selectedEvent || selectedEvent.owner_user_id === user?.id)} checkMobileRecipients={checkMobileRecipients} busy={busy || eventDetailsQuery.isLoading || appointmentMutation.isPending}
+        canEdit={canEditEvent} canDelete={canDeleteEvent} canViewDeliveryStatus={canViewEventDeliveryStatus} hasConnectedDevices={hasConnectedDevices && (!selectedEvent || selectedEvent.owner_user_id === user?.id)} checkMobileRecipients={checkMobileRecipients} busy={busy || eventDetailsQuery.isLoading || appointmentMutation.isPending}
         onClose={() => { pendingMeetingSave.current = null; setEventDialog({ open: false, event: null }) }}
         onSave={(draft, notifyRecipients, scope) => eventMutation.mutateAsync({ draft, event: selectedEvent, notifyRecipients, scope, occurrenceStart: selectedEventOccurrenceStart })}
         onDelete={async (scope) => {
@@ -961,7 +976,7 @@ export function CalendarPage() {
             if (await confirmDeletion('ลบเฉพาะนัดนี้?', 'นัดในวันอื่นของชุดทำซ้ำยังคงอยู่', 'ลบเฉพาะนัดนี้')) await appointmentMutation.mutateAsync({})
           } else if (await confirmDeletion('ย้าย Meeting ไปถังขยะ?', `Meeting “${selectedEvent.title}” จะไม่แสดงในปฏิทิน`, 'ย้ายไปถังขยะ')) await deleteEventMutation.mutateAsync(selectedEvent)
         }}
-        onMoveOccurrence={async (draft, date) => {
+        onMoveOccurrence={!canDeleteEvent ? undefined : async (draft, date) => {
           if (await confirm({ title: 'ย้ายนัดนี้?', message: `ยกเลิกเฉพาะนัดเดิม แล้วสร้างประชุมวันที่ ${date} แบบไม่ทำซ้ำ`, confirmLabel: 'ย้ายนัด' })) await appointmentMutation.mutateAsync({ draft, date })
         }}
         onDeleteAttachment={async (attachment) => { if (await confirmDeletion('ลบไฟล์แนบ?', `ลบ “${attachment.file_name}” ออกจาก Meeting นี้อย่างถาวร`, 'ลบไฟล์')) await deleteEventAttachmentMutation.mutateAsync(attachment) }}
@@ -971,8 +986,8 @@ export function CalendarPage() {
         defaultAffiliation={profileAffiliation(profile)}
         open={taskDialog.open} task={selectedTask} details={taskDetailsQuery.data} selectedDate={taskDialog.date}
         userId={user!.id} profiles={profilesQuery.data ?? []} events={eventsQuery.data ?? []}
-        canEdit={canEditTask} canComplete={canCompleteTask} canAcknowledge={canAcknowledgeTask} canViewDeliveryStatus={canViewTaskDeliveryStatus}
-        hasConnectedDevices={hasConnectedDevices} busy={busy || taskDetailsQuery.isLoading}
+        canEdit={canEditTask} canDelete={canDeleteTask} canComplete={canCompleteTask} canAcknowledge={canAcknowledgeTask} canViewDeliveryStatus={canViewTaskDeliveryStatus}
+        hasConnectedDevices={editingAnotherTask ? taskCreatorMobileQuery.data === true : hasConnectedDevices} mobileConnectionError={editingAnotherTask && taskCreatorMobileQuery.isError} busy={busy || taskDetailsQuery.isLoading || (editingAnotherTask && taskCreatorMobileQuery.isLoading)}
         onClose={() => setTaskDialog({ open: false, task: null })}
         onSave={async (draft, notifyRecipients) => { await taskMutation.mutateAsync({ draft, task: selectedTask, notifyRecipients }) }}
         onDelete={async () => { if (selectedTask && await confirmDeletion('ย้าย Task ไปถังขยะ?', `Task “${selectedTask.title}” จะไม่แสดงในรายการงาน`, 'ย้ายไปถังขยะ')) await deleteTaskMutation.mutateAsync(selectedTask) }}

@@ -26,7 +26,7 @@ export function meetingCreateArgs(payload: MeetingEventPayload) {
   }
 }
 
-export function canManageMeeting(ownerUserId: string | undefined, userId: string | undefined) {
+export function canManageMeeting(ownerUserId: string | undefined, userId: string | undefined, isActiveAdmin = false) {
   if (!userId) return false
-  return !ownerUserId || ownerUserId === userId
+  return !ownerUserId || ownerUserId === userId || isActiveAdmin
 }

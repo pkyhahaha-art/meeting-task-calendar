@@ -38,7 +38,7 @@ async function issueToken(request: Request) {
   const requester = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authorization } } })
   const { data: { user }, error: userError } = await requester.auth.getUser()
   if (userError || !user) return response({ error: 'เซสชันไม่ถูกต้อง' }, 401)
-  const { data: profile, error: profileError } = await admin.from('profiles').select('status').eq('id', user.id).maybeSingle()
+  const { data: profile, error: profileError } = await admin.from('profiles').select('status,role').eq('id', user.id).maybeSingle()
   if (profileError) throw profileError
   if (profile?.status !== 'active') return response({ error: 'บัญชีนี้ไม่สามารถใช้งานได้' }, 403)
   const body = await request.json()
@@ -50,7 +50,7 @@ async function issueToken(request: Request) {
   } catch { return response({ error: 'PUBLIC_APP_URL สำหรับลิงก์ Task ไม่ถูกต้อง' }, 503) }
   const { data: task, error: taskError } = await admin.from('tasks').select('*').eq('id', taskId).maybeSingle()
   if (taskError) throw taskError
-  if (!task || task.creator_user_id !== user.id || task.deleted_at || task.status !== 'pending') return response({ error: 'ไม่สามารถออกลิงก์สำหรับ Task นี้ได้' }, 403)
+  if (!task || (task.creator_user_id !== user.id && profile.role !== 'admin') || task.deleted_at || task.status !== 'pending') return response({ error: 'ไม่สามารถออกลิงก์สำหรับ Task นี้ได้' }, 403)
   const now = new Date().toISOString()
   const { data: recipients, error: recipientsError } = await admin.from('task_external_recipients').select('email').eq('task_id', task.id).order('email')
   if (recipientsError) throw recipientsError
