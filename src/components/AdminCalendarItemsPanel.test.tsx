@@ -47,7 +47,7 @@ async function harness(rows: AdminCalendarItem[], { count = rows.length, occurre
   const require = createRequire(import.meta.url)
   vm.runInContext(ts.transpileModule(readFileSync(new URL('./AdminCalendarItemsPanel.tsx', import.meta.url), 'utf8'),
     { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText,
-  vm.createContext({ exports, require: (name: string) => mocks[name] || require(name), console }))
+  vm.createContext({ exports, require: (name: string) => mocks[name] || (name.endsWith('.jpg') ? 'admin-mascot.jpg' : require(name)), console }))
   const Panel = exports.AdminCalendarItemsPanel!
   let renderer!: ReactTestRenderer
   await act(async () => { renderer = create(<QueryClientProvider client={client}><Panel adminUserId="admin" members={[]} /></QueryClientProvider>); await delay() })
@@ -139,5 +139,28 @@ test('Admin edit links open the original calendar form without requiring a delet
     assert.ok(links.every(link => link.props['aria-disabled'] === false))
     assert.equal(h.button('ย้ายที่เลือก').props.disabled, true)
     assert.equal(h.calls.some(call => call.name === 'trash' || call.name === 'cancel'), false)
+  } finally { h.unmount() }
+})
+
+test('table filters work together and a row delete targets only that record', async () => {
+  const h = await harness([item('A'), item('B', 'meeting')])
+  try {
+    const filters = h.renderer.root.findAllByType('select')
+    const dates = h.renderer.root.findAllByType('input').filter(node => node.props.type === 'date')
+    for (const [node, value] of [
+      [h.renderer.root.findAllByType('input').find(node => node.props.maxLength === 200)!, 'ประชุม'],
+      [filters[0], 'meeting'], [filters[1], 'creator'], [dates[0], '2026-10-01'], [dates[1], '2026-10-31'],
+    ] as const) {
+      await act(async () => { node.props.onChange({ target: { value } }); await delay() })
+    }
+    assert.deepEqual(JSON.parse(JSON.stringify(h.calls.filter(call => call.name === 'list').at(-1)!.args)), [
+      { entity: 'meeting', creator: 'creator', search: 'ประชุม', from: '2026-10-01', to: '2026-10-31' }, 0,
+    ])
+    const row = h.renderer.root.findAllByType('tr').find(node => node.findAllByType('h3').some(title => title.children.includes('รายการ B')))!
+    await h.changeReason()
+    await act(async () => { row.findAllByType('button').find(node => node.children.some(child => child === 'ย้ายรายการนี้เข้าถังขยะ'))!.props.onClick(); await delay() })
+    const targets = h.calls.find(call => call.name === 'trash')!.args[0] as AdminCalendarItem[]
+    assert.deepEqual(Array.from(targets, key), ['meeting:B'])
+    assert.equal(h.calls.some(call => call.name === 'cancel'), false)
   } finally { h.unmount() }
 })

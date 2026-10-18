@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { CalendarDays, Loader2, Pencil, RefreshCw, Trash2 } from 'lucide-react'
 import { useConfirm } from './ConfirmDialogProvider'
@@ -6,6 +6,7 @@ import { AdminFilter, AdminPager, AdminStatus, adminDate } from './AdminReportCo
 import { reportDateBounds, reportPageSize, type AdminProfile } from '../lib/adminReports'
 import { adminItemKey, cancelAdminMeetingOccurrence, loadAdminCalendarItems, loadAdminMeetingOccurrences, trashAdminCalendarItems,
   type AdminCalendarFilters, type AdminCalendarItem } from '../lib/adminCalendarItems'
+import adminMascot from '../../ภาพประกอบUI/02_Hand I-Pad.jpg'
 
 const initialFilters: AdminCalendarFilters = { entity: '', creator: '', search: '', from: '', to: '' }
 const statusLabel: Record<string, string> = { pending: 'ยังไม่เสร็จ', completed: 'เสร็จแล้ว', cancelled: 'ยกเลิกแล้ว', scheduled: 'ตามกำหนด' }
@@ -76,10 +77,14 @@ export function AdminCalendarItemsPanel({ adminUserId, members }: { adminUserId:
     } catch (error) { setMessage({ error: true, text: `ลบนัดไม่ได้: ${error instanceof Error ? error.message : 'กรุณาลองใหม่'}` }) }
     finally { saving.current = false; setWorking(false) }
   }
-  return <section className="card overflow-hidden" aria-labelledby="admin-items-title">
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-4">
-      <div><h2 id="admin-items-title" className="flex items-center gap-2 text-lg font-bold"><CalendarDays size={20} className="text-brand-600" />จัดการงานและประชุม</h2><p className="mt-1 text-sm text-slate-500">สำหรับ Admin ช่วยจัดการเมื่อผู้สร้างลบรายการไม่ได้</p></div>
-      <button type="button" className="btn-secondary" disabled={blocked || Boolean(dateError)} onClick={() => void items.refetch()}><RefreshCw size={16} />โหลดรายการใหม่</button>
+  return <section className="card overflow-hidden border-purple-100" aria-labelledby="admin-items-title">
+    <div className="flex items-center justify-between gap-4 border-b border-purple-100 bg-gradient-to-br from-purple-50 via-white to-amber-50 p-4 sm:p-6">
+      <div className="min-w-0 space-y-3">
+        <span className="inline-flex rounded-full border border-purple-100 bg-white px-3 py-1 text-xs font-bold tracking-wide text-brand-700">PEA · ADMIN</span>
+        <div><h2 id="admin-items-title" className="flex items-center gap-2 text-xl font-bold text-brand-800 sm:text-2xl"><CalendarDays size={22} className="shrink-0 text-brand-600" />จัดการงานและประชุม</h2><p className="mt-2 text-sm leading-relaxed text-slate-600">ค้นหา ตรวจสอบ และจัดการรายการของสมาชิก</p></div>
+        <button type="button" className="btn-secondary bg-white" disabled={blocked || Boolean(dateError)} onClick={() => void items.refetch()}><RefreshCw size={16} />โหลดรายการใหม่</button>
+      </div>
+      <div className="shrink-0 rounded-2xl border border-amber-200/70 bg-white p-1 shadow-sm sm:p-2"><img src={adminMascot} alt="" aria-hidden="true" width={1500} height={1500} className="h-20 w-20 rounded-xl object-contain sm:h-28 sm:w-28" /></div>
     </div>
     <div className="space-y-4 border-b border-slate-100 p-4">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -91,33 +96,48 @@ export function AdminCalendarItemsPanel({ adminUserId, members }: { adminUserId:
         <button type="button" className="btn-secondary self-end justify-self-start" disabled={working} onClick={() => { setFilters(initialFilters); setPage(0); setMessage(null) }}>ล้างตัวกรอง</button>
       </div>
       <p className="text-xs text-slate-500">กรองตามวันที่สร้าง เวลาไทย · ประชุมทำซ้ำแสดงชุดละ 1 รายการ · งานทำซ้ำเดิมจะรวมงานถัดไปที่ยังไม่เสร็จเมื่อย้ายเข้าถังขยะ · เก็บประวัติการส่งแจ้งเตือนเดิมไว้</p>
-      <div><label className="field-label" htmlFor="admin-trash-reason">เหตุผลที่ Admin ลบรายการ</label><textarea id="admin-trash-reason" className="field-input" rows={2} maxLength={500} disabled={working} value={reason} onChange={e => setReason(e.target.value)} placeholder="เช่น ผู้สร้างไม่สามารถลบรายการซ้ำได้" /><p className="mt-1 text-xs text-slate-500">กรอกเหตุผลก่อนลบ ระบบจะบันทึกผู้ดำเนินการและรายการที่ลบ</p></div>
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="rounded-2xl border border-amber-100 bg-amber-50/50 p-3 sm:p-4"><label className="field-label" htmlFor="admin-trash-reason">เหตุผลที่ Admin ลบรายการ</label><textarea id="admin-trash-reason" className="field-input bg-white" rows={2} maxLength={500} disabled={working} value={reason} onChange={e => setReason(e.target.value)} placeholder="เช่น ผู้สร้างไม่สามารถลบรายการซ้ำได้" /><p className="mt-1 text-xs text-slate-500">กรอกเหตุผลก่อนลบ ระบบจะบันทึกผู้ดำเนินการและรายการที่ลบ</p></div>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-purple-50/70 px-3 py-2">
         <label className="flex min-h-11 items-center gap-2 text-sm font-semibold"><input type="checkbox" disabled={blocked || items.isError || !rows.length} checked={Boolean(rows.length) && picked.length === rows.length} onChange={e => setSelected(e.target.checked ? rows.map(adminItemKey) : [])} />เลือกทั้งหมดในหน้านี้ ({rows.length})</label>
         <button type="button" className="btn-secondary text-red-700" disabled={blocked || items.isError || !picked.length || !validReason} onClick={() => void trash(picked)}>{working ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}ย้ายที่เลือกเข้าถังขยะ ({picked.length})</button>
       </div>
       {message && <p role={message.error ? 'alert' : 'status'} className={`rounded-xl p-3 text-sm ${message.error ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-800'}`}>{message.text}</p>}
     </div>
     {dateError ? <p role="alert" className="p-5 text-amber-800">{dateError}</p> : items.isPending ? <p role="status" className="p-5 text-slate-500">กำลังโหลดงานและประชุม…</p> : items.isError ? <p role="alert" className="p-5 text-red-700">โหลดรายการไม่ได้ กรุณาโหลดใหม่และตรวจสิทธิ์ Admin</p> : <>
-      <div className="divide-y divide-slate-100">{rows.map(item => <article key={adminItemKey(item)} className="space-y-3 p-4">
-        <div className="flex items-start gap-3"><label className="flex min-h-11 min-w-11 shrink-0 items-center justify-center"><input type="checkbox" className="h-5 w-5" aria-label={`เลือก ${item.title}`} disabled={blocked} checked={selected.includes(adminItemKey(item))} onChange={e => setSelected(current => e.target.checked ? [...current, adminItemKey(item)] : current.filter(key => key !== adminItemKey(item)))} /></label>
-          <div className="min-w-0 flex-1"><h3 className="break-words font-semibold">{item.title}</h3><p className="mt-1 break-words text-sm text-slate-600">{item.creator_name || 'ไม่ระบุชื่อ'} · {item.creator_email}</p><div className="mt-2 flex flex-wrap gap-2"><span className="rounded-full bg-purple-50 px-2 py-1 text-xs font-semibold text-brand-700">{item.entity === 'task' ? isLegacyTaskSeries(item) ? 'Task ทำซ้ำเดิม' : 'Task' : isMeetingSeries(item) ? 'Meeting ทำซ้ำ' : 'Meeting'}</span><AdminStatus value={item.status} label={statusLabel[item.status] || item.status} /></div></div>
-        </div>
-        <details className="rounded-xl bg-slate-50 p-3"><summary className="cursor-pointer text-sm font-semibold text-brand-700">ดูรายละเอียดรายการ</summary>
-          <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">{[['หน่วยงาน / สังกัด', item.affiliation || '—'], ['สร้างเมื่อ', adminDate(item.created_at)],
-            ...(item.entity === 'meeting' ? [['เริ่มประชุม', adminDate(item.start_datetime)], ['สิ้นสุด', adminDate(item.end_datetime)]] : [['ครบกำหนด', item.due_date ? adminDate(`${item.due_date}T${item.due_time || '00:00:00'}+07:00`) : '—']]), ['รหัสรายการ', item.id]].map(([label, value]) => <div key={label}><dt className="font-semibold text-slate-500">{label}</dt><dd className="mt-1 break-words">{value}</dd></div>)}</dl>
-        </details>
-        <div className="flex flex-wrap gap-2">{isMeetingSeries(item) && item.status === 'scheduled' && <button type="button" className="btn-secondary" disabled={blocked} onClick={() => { setSeries(item); setOccurrenceId(''); setMessage(null) }}><CalendarDays size={16} />เลือกวันเพื่อลบเฉพาะนัด</button>}
-          {(item.entity === 'task' || item.status === 'scheduled') && <a href={`#/calendar?${item.entity === 'task' ? 'task' : 'event'}=${encodeURIComponent(item.id)}`} className={`btn-secondary ${blocked ? 'pointer-events-none opacity-50' : ''}`} aria-disabled={blocked} tabIndex={blocked ? -1 : undefined} onClick={event => { if (blocked) event.preventDefault() }}><Pencil size={16} />เปิดแก้ไข</a>}
-          <button type="button" className="btn-secondary text-red-700" disabled={blocked || !validReason} onClick={() => void trash([item])}><Trash2 size={16} />{isMeetingSeries(item) ? 'ลบทั้งชุด' : isLegacyTaskSeries(item) ? 'ลบงานนี้และงานถัดไปในชุดเดิม' : 'ย้ายรายการนี้เข้าถังขยะ'}</button>
-        </div>
-        {series?.id === item.id && item.entity === 'meeting' && <div className="space-y-3 rounded-xl border border-brand-200 bg-purple-50/40 p-4">
+      {!rows.length ? <div className="p-8 text-center"><CalendarDays size={32} className="mx-auto mb-3 text-purple-300" /><p className="font-semibold text-slate-700">ไม่พบงานหรือประชุมตามตัวกรอง</p><p className="mt-1 text-sm text-slate-500">ลองเปลี่ยนคำค้นหรือช่วงวันที่สร้าง</p></div> : <div className="max-w-full overflow-x-auto">
+        <table className="block w-full text-left text-sm xl:table xl:table-fixed" aria-label="รายการงานและประชุมสำหรับ Admin">
+          <thead className="hidden border-b border-purple-200 bg-purple-50 text-xs font-bold text-brand-800 xl:table-header-group"><tr>
+            <th scope="col" className="w-[5%] px-2 py-4"><span className="sr-only">เลือก</span></th><th scope="col" className="w-[24%] px-3 py-4">รายการ / ประเภท</th><th scope="col" className="w-[18%] px-3 py-4">ผู้สร้าง</th><th scope="col" className="w-[12%] px-3 py-4">หน่วยงาน</th><th scope="col" className="w-[16%] px-3 py-4">วันประชุม / ครบกำหนด</th><th scope="col" className="w-[10%] px-3 py-4">สถานะ</th><th scope="col" className="w-[15%] px-3 py-4">จัดการ</th>
+          </tr></thead>
+          <tbody className="block xl:table-row-group">{rows.map(item => <Fragment key={adminItemKey(item)}>
+            <tr className={`grid grid-cols-[2.75rem_minmax(0,1fr)] gap-x-2 gap-y-3 border-b border-purple-100 p-4 transition-colors xl:table-row xl:p-0 ${selected.includes(adminItemKey(item)) ? 'bg-purple-50/80' : 'bg-white hover:bg-purple-50/30'}`}>
+              <td className="row-start-1 align-top xl:px-2 xl:py-4"><label className="flex min-h-11 min-w-11 items-center justify-center"><input type="checkbox" className="h-5 w-5 accent-purple-700" aria-label={`เลือก ${item.title}`} disabled={blocked} checked={selected.includes(adminItemKey(item))} onChange={e => setSelected(current => e.target.checked ? [...current, adminItemKey(item)] : current.filter(key => key !== adminItemKey(item)))} /></label></td>
+              <td className="min-w-0 row-start-1 align-top xl:px-3 xl:py-4">
+                <h3 className="break-words font-bold leading-relaxed text-slate-900">{item.title}</h3>
+                <div className="mt-2 flex flex-wrap gap-2"><span className="rounded-full bg-purple-100/70 px-2 py-1 text-xs font-semibold text-brand-700">{item.entity === 'task' ? isLegacyTaskSeries(item) ? 'Task ทำซ้ำเดิม' : 'Task' : isMeetingSeries(item) ? 'Meeting ทำซ้ำ' : 'Meeting'}</span><span className="xl:hidden"><AdminStatus value={item.status} label={statusLabel[item.status] || item.status} /></span></div>
+                <details className="mt-2 min-w-0"><summary className="min-h-11 cursor-pointer py-3 text-xs font-semibold text-brand-700 underline decoration-purple-200 underline-offset-4">ดูรายละเอียดรายการ</summary>
+                  <dl className="space-y-3 rounded-xl border border-purple-100 bg-white p-3 text-xs">{[['หน่วยงาน / สังกัด', item.affiliation || '—'], ['สร้างเมื่อ', adminDate(item.created_at)],
+                    ...(item.entity === 'meeting' ? [['เริ่มประชุม', adminDate(item.start_datetime)], ['สิ้นสุด', adminDate(item.end_datetime)]] : [['ครบกำหนด', item.due_date ? adminDate(`${item.due_date}T${item.due_time || '00:00:00'}+07:00`) : '—']]), ['รหัสรายการ', item.id]].map(([label, value]) => <div key={label}><dt className="font-semibold text-slate-500">{label}</dt><dd className="mt-1 break-words [overflow-wrap:anywhere]">{value}</dd></div>)}</dl>
+                </details>
+              </td>
+              <td className="col-span-2 grid min-w-0 grid-cols-[6rem_minmax(0,1fr)] gap-2 align-top xl:table-cell xl:px-3 xl:py-4"><span className="text-xs font-semibold text-slate-500 xl:hidden">ผู้สร้าง</span><div className="min-w-0"><p className="break-words font-medium text-slate-800">{item.creator_name || 'ไม่ระบุชื่อ'}</p><p className="mt-1 text-xs text-slate-500 [overflow-wrap:anywhere]">{item.creator_email}</p></div></td>
+              <td className="col-span-2 grid min-w-0 grid-cols-[6rem_minmax(0,1fr)] gap-2 align-top xl:table-cell xl:px-3 xl:py-4"><span className="text-xs font-semibold text-slate-500 xl:hidden">หน่วยงาน</span><span className="break-words text-slate-600">{item.affiliation || '—'}</span></td>
+              <td className="col-span-2 grid min-w-0 grid-cols-[6rem_minmax(0,1fr)] gap-2 align-top xl:table-cell xl:px-3 xl:py-4"><span className="text-xs font-semibold text-slate-500 xl:hidden">{item.entity === 'meeting' ? 'วันประชุม' : 'ครบกำหนด'}</span><div className="min-w-0 break-words text-xs leading-relaxed text-slate-600">{item.entity === 'meeting' ? <><p>{adminDate(item.start_datetime)}</p><p className="mt-1 text-slate-400">ถึง {adminDate(item.end_datetime)}</p></> : <p>{item.due_date ? adminDate(`${item.due_date}T${item.due_time || '00:00:00'}+07:00`) : '—'}</p>}</div></td>
+              <td className="hidden align-top px-3 py-4 xl:table-cell"><AdminStatus value={item.status} label={statusLabel[item.status] || item.status} /></td>
+              <td className="col-span-2 min-w-0 align-top xl:px-3 xl:py-4"><div className="flex flex-wrap gap-2 xl:flex-col xl:items-stretch">{isMeetingSeries(item) && item.status === 'scheduled' && <button type="button" className="btn-secondary min-h-11 text-xs" disabled={blocked} onClick={() => { setSeries(item); setOccurrenceId(''); setMessage(null) }}><CalendarDays size={16} className="shrink-0" />เลือกวันเพื่อลบเฉพาะนัด</button>}
+                {(item.entity === 'task' || item.status === 'scheduled') && <a href={`#/calendar?${item.entity === 'task' ? 'task' : 'event'}=${encodeURIComponent(item.id)}`} className={`btn-secondary min-h-11 text-xs ${blocked ? 'pointer-events-none opacity-50' : ''}`} aria-disabled={blocked} tabIndex={blocked ? -1 : undefined} onClick={event => { if (blocked) event.preventDefault() }}><Pencil size={16} className="shrink-0" />เปิดแก้ไข</a>}
+                <button type="button" className="btn-secondary min-h-11 text-xs text-red-700" disabled={blocked || !validReason} onClick={() => void trash([item])}><Trash2 size={16} className="shrink-0" />{isMeetingSeries(item) ? 'ลบทั้งชุด' : isLegacyTaskSeries(item) ? 'ลบงานนี้และงานถัดไปในชุดเดิม' : 'ย้ายรายการนี้เข้าถังขยะ'}</button>
+              </div></td>
+            </tr>
+            {series?.id === item.id && item.entity === 'meeting' && <tr className="block border-b border-purple-100 bg-purple-50/40 xl:table-row"><td colSpan={7} className="block p-4 xl:table-cell"><div className="space-y-3 rounded-xl border border-brand-200 bg-white p-4">
           <AdminFilter label="วันนัดที่ต้องการลบ (เฉพาะนัดที่ยังไม่เริ่ม)"><select className="field-input" disabled={working || occurrences.isFetching || occurrences.isError} value={occurrenceId} onChange={e => setOccurrenceId(e.target.value)}><option value="">เลือกวันนัด</option>{occurrences.data?.map(occurrence => <option key={occurrence.id} value={occurrence.id} disabled={new Date(occurrence.start_datetime).getTime() <= Date.now()}>{adminDate(occurrence.start_datetime)}{new Date(occurrence.start_datetime).getTime() <= Date.now() ? ' · ผ่านแล้ว' : ''}</option>)}</select></AdminFilter>
           {occurrences.isPending ? <p role="status" className="text-sm text-slate-500">กำลังโหลดวันนัด…</p> : occurrences.isError ? <p role="alert" className="text-sm text-red-700">โหลดวันนัดไม่ได้ <button type="button" className="font-semibold underline" disabled={working} onClick={() => void occurrences.refetch()}>ลองใหม่</button></p> : !occurrences.data?.length && <p className="text-sm text-slate-500">ไม่มีนัดที่ยังไม่ยกเลิก</p>}
           <p className="text-xs text-slate-600">ลบเฉพาะวันที่เลือก วันอื่นในชุดยังคงอยู่ นัดที่ผ่านแล้วใช้การลบทั้งชุดเมื่อจำเป็น</p>
           <button type="button" className="btn-secondary text-red-700" disabled={working || occurrences.isFetching || occurrences.isError || !futureOccurrence || !validReason} onClick={() => void cancelOccurrence()}><Trash2 size={16} />ลบเฉพาะนัดนี้</button>
-        </div>}
-      </article>)}</div>
+            </div></td></tr>}
+          </Fragment>)}</tbody>
+        </table>
+      </div>}
       <AdminPager count={items.data?.count || 0} page={page} busy={blocked} onPage={setPage} />
     </>}
   </section>
