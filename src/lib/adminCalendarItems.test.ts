@@ -6,14 +6,15 @@ import ts from 'typescript'
 import { reportDateBounds, reportPageSize } from './adminReports'
 
 function harness(result: { data: unknown; error: unknown } = { data: { rows: [], total_count: 0 }, error: null }) {
-  const calls: { name: string; args: Record<string, unknown> }[] = []
+  const calls: { name: string; args?: Record<string, unknown> }[] = []
   const context = vm.createContext({ reportDateBounds, reportPageSize, supabase: {
-    rpc: async (name: string, args: Record<string, unknown>) => { calls.push({ name, args }); return result },
+    rpc: async (name: string, args?: Record<string, unknown>) => { calls.push({ name, args }); return result },
   } })
   const source = readFileSync(new URL('./adminCalendarItems.ts', import.meta.url), 'utf8').replace(/^import .*\n/gm, '').replace(/export /g, '')
   vm.runInContext(ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText, context)
   return { calls, load: vm.runInContext('loadAdminCalendarItems', context), trash: vm.runInContext('trashAdminCalendarItems', context),
-    cancel: vm.runInContext('cancelAdminMeetingOccurrence', context), occurrences: vm.runInContext('loadAdminMeetingOccurrences', context) }
+    cancel: vm.runInContext('cancelAdminMeetingOccurrence', context), occurrences: vm.runInContext('loadAdminMeetingOccurrences', context),
+    previewAll: vm.runInContext('loadAdminCalendarTrashPreview', context), trashAll: vm.runInContext('trashAllAdminCalendarItems', context) }
 }
 const filters = { entity: 'meeting', creator: 'creator-A', search: '  นัด 100%  ', from: '2026-10-01', to: '2026-10-31' }
 
@@ -26,6 +27,47 @@ test('Admin items combine all filters with Bangkok exclusive end and exact empty
   } })
   await assert.rejects(h.load({ ...filters, from: '2026-11-01' }, 0), /วันเริ่มต้น/)
   assert.equal(h.calls.length, 1)
+})
+
+const allSnapshot = 'v1:' + 'a'.repeat(32)
+const allPreview = { taskCount: 101, meetingCount: 25, totalCount: 126, snapshot: allSnapshot }
+
+test('all-system preview calls its unfiltered RPC and validates complete counts and fingerprint', async () => {
+  const h = harness({ data: { task_count: 101, meeting_count: 25, total_count: 126, snapshot: allSnapshot }, error: null })
+  assert.deepEqual(JSON.parse(JSON.stringify(await h.previewAll())), allPreview)
+  assert.equal(h.calls[0].name, 'admin_calendar_trash_preview')
+  assert.equal(h.calls[0].args, undefined)
+  for (const data of [null, [], {}, { task_count: 1, meeting_count: 2, total_count: 4, snapshot: allSnapshot },
+    { task_count: -1, meeting_count: 2, total_count: 1, snapshot: allSnapshot },
+    { task_count: 0.5, meeting_count: 0.5, total_count: 1, snapshot: allSnapshot },
+    { task_count: 0, meeting_count: 0, total_count: 0, snapshot: 'invalid' }]) {
+    await assert.rejects(harness({ data, error: null }).previewAll())
+  }
+})
+
+test('all-system Trash submits only the reviewed snapshot, trimmed reason and exact phrase', async () => {
+  const h = harness({ data: { task_count: 101, meeting_count: 25, total_count: 126 }, error: null })
+  assert.deepEqual(JSON.parse(JSON.stringify(await h.trashAll(allPreview, '  ล้างข้อมูลทดสอบ  ', 'ลบทั้งหมด'))),
+    { taskCount: 101, meetingCount: 25, totalCount: 126 })
+  assert.deepEqual(JSON.parse(JSON.stringify(h.calls[0])), { name: 'admin_trash_all_calendar_items', args: {
+    target_snapshot: allSnapshot, target_reason: 'ล้างข้อมูลทดสอบ', target_confirmation: 'ลบทั้งหมด',
+  } })
+  for (const [preview, reason, phrase] of [[allPreview, ' ', 'ลบทั้งหมด'], [allPreview, 'x'.repeat(501), 'ลบทั้งหมด'],
+    [allPreview, 'reason', ' ลบทั้งหมด'], [allPreview, 'reason', 'ลบทั้งหมด '], [allPreview, 'reason', 'ลบ'],
+    [{ ...allPreview, snapshot: 'invalid' }, 'reason', 'ลบทั้งหมด'], [{ ...allPreview, totalCount: 125 }, 'reason', 'ลบทั้งหมด']] as const) {
+    await assert.rejects(h.trashAll(preview, reason, phrase))
+  }
+  assert.equal(h.calls.length, 1)
+})
+
+test('all-system Trash propagates stale/permission errors and rejects missing or mismatched completion counts', async () => {
+  const stale = harness({ data: null, error: new Error('Calendar items changed') })
+  await assert.rejects(stale.trashAll(allPreview, 'reason', 'ลบทั้งหมด'), /Calendar items changed/)
+  await assert.rejects(harness({ data: null, error: new Error('active Admin required') }).previewAll(), /active Admin/)
+  for (const data of [null, { task_count: 100, meeting_count: 25, total_count: 125 },
+    { task_count: 101, meeting_count: 25, total_count: 125 }]) {
+    await assert.rejects(harness({ data, error: null }).trashAll(allPreview, 'reason', 'ลบทั้งหมด'))
+  }
 })
 
 test('Admin trash deduplicates by entity and id, strips client metadata, and validates before calling privileged RPC', async () => {

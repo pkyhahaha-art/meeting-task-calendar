@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { CalendarDays, Loader2, Pencil, RefreshCw, Trash2 } from 'lucide-react'
 import { useConfirm } from './ConfirmDialogProvider'
+import { AdminTrashAllDialog } from './AdminTrashAllDialog'
 import { AdminFilter, AdminPager, AdminStatus, adminDate } from './AdminReportControls'
 import { reportDateBounds, reportPageSize, type AdminProfile } from '../lib/adminReports'
 import { adminItemKey, cancelAdminMeetingOccurrence, loadAdminCalendarItems, loadAdminMeetingOccurrences, trashAdminCalendarItems,
@@ -24,6 +25,9 @@ export function AdminCalendarItemsPanel({ adminUserId, members }: { adminUserId:
   const [occurrenceId, setOccurrenceId] = useState('')
   const [working, setWorking] = useState(false)
   const [message, setMessage] = useState<{ error: boolean; text: string } | null>(null)
+  const [trashAllAdminId, setTrashAllAdminId] = useState<string | null>(null)
+  const trashAllOpen = trashAllAdminId === adminUserId
+  const trashAllTrigger = useRef<HTMLButtonElement | null>(null)
   const saving = useRef(false)
   let dateError = ''
   try { reportDateBounds(filters) } catch (error) { dateError = error instanceof Error ? error.message : 'ช่วงวันที่ไม่ถูกต้อง' }
@@ -35,18 +39,25 @@ export function AdminCalendarItemsPanel({ adminUserId, members }: { adminUserId:
   const picked = rows.filter(item => selected.includes(adminItemKey(item)))
   const selectedOccurrence = occurrences.data?.find(item => item.id === occurrenceId)
   const futureOccurrence = Boolean(selectedOccurrence && new Date(selectedOccurrence.start_datetime).getTime() > Date.now())
-  const blocked = working || items.isFetching
+  const blocked = working || items.isFetching || trashAllOpen
   const validReason = Boolean(reason.trim()) && reason.trim().length <= 500
   useEffect(() => { setSelected([]); setSeries(null); setOccurrenceId('') }, [adminUserId, filters, page])
+  useEffect(() => { setTrashAllAdminId(null) }, [adminUserId])
+  useEffect(() => {
+    if (!trashAllOpen && trashAllTrigger.current && !working) {
+      trashAllTrigger.current.focus()
+      trashAllTrigger.current = null
+    }
+  }, [trashAllOpen, working])
   useEffect(() => {
     setSelected([])
     if (items.data) setPage(value => Math.min(value, Math.max(0, Math.ceil(items.data.count / reportPageSize) - 1)))
   }, [items.data])
   const updateFilters = (next: Partial<AdminCalendarFilters>) => { setFilters({ ...filters, ...next }); setPage(0); setMessage(null) }
-  const invalidate = async () => {
+  const invalidate = async (throwOnError = false) => {
     await Promise.all(['admin-calendar-items', 'admin-meeting-occurrences', 'admin-overview', 'admin-audit-report',
       'admin-delivery-report', 'events', 'tasks', 'event-details', 'task-details', 'meeting-exceptions',
-      'event-creation-stats', 'recent-documents'].map(key => queryClient.invalidateQueries({ queryKey: [key] })))
+      'event-creation-stats', 'recent-documents'].map(key => queryClient.invalidateQueries({ queryKey: [key] }, { throwOnError })))
   }
   const trash = async (targets: AdminCalendarItem[]) => {
     if (saving.current || !targets.length || !validReason) return
@@ -77,7 +88,16 @@ export function AdminCalendarItemsPanel({ adminUserId, members }: { adminUserId:
     } catch (error) { setMessage({ error: true, text: `ลบนัดไม่ได้: ${error instanceof Error ? error.message : 'กรุณาลองใหม่'}` }) }
     finally { saving.current = false; setWorking(false) }
   }
-  return <section className="card overflow-hidden border-purple-100" aria-labelledby="admin-items-title">
+  const allTrashed = async ({ taskCount, meetingCount, totalCount }: { taskCount: number; meetingCount: number; totalCount: number }) => {
+    setTrashAllAdminId(null); setSelected([]); setSeries(null); setOccurrenceId(''); setReason(''); setPage(0)
+    const result = `ย้าย Task ${taskCount.toLocaleString('th-TH')} และ Meeting ${meetingCount.toLocaleString('th-TH')} รวม ${totalCount.toLocaleString('th-TH')} รายการเข้าถังขยะแล้ว`
+    setMessage({ error: false, text: result })
+    saving.current = true; setWorking(true)
+    try { await invalidate(true) }
+    catch { setMessage({ error: true, text: `${result} แต่โหลดข้อมูลล่าสุดไม่สำเร็จ กรุณากดโหลดรายการใหม่` }) }
+    finally { saving.current = false; setWorking(false) }
+  }
+  return <><section className="card overflow-hidden border-purple-100" aria-labelledby="admin-items-title" aria-hidden={trashAllOpen || undefined}>
     <div className="flex items-center justify-between gap-4 border-b border-purple-100 bg-gradient-to-br from-purple-50 via-white to-amber-50 p-4 sm:p-6">
       <div className="min-w-0 space-y-3">
         <span className="inline-flex rounded-full border border-purple-100 bg-white px-3 py-1 text-xs font-bold tracking-wide text-brand-700">PEA · ADMIN</span>
@@ -140,5 +160,11 @@ export function AdminCalendarItemsPanel({ adminUserId, members }: { adminUserId:
       </div>}
       <AdminPager count={items.data?.count || 0} page={page} busy={blocked} onPage={setPage} />
     </>}
+    <div className="flex flex-wrap items-center justify-between gap-4 border-t border-rose-200 bg-rose-50/50 p-4 sm:p-5">
+      <div className="min-w-0"><h3 className="font-bold text-red-900">จัดการรายการทั้งระบบ</h3><p className="mt-1 text-xs leading-relaxed text-slate-600">สำหรับ Task และ Meeting ของสมาชิกทุกคน รวมทุกหน้า โดยไม่สนตัวกรอง ต้องตรวจจำนวนและยืนยันก่อนลบ</p></div>
+      <button type="button" className="btn-secondary border-red-200 text-red-700" disabled={working || trashAllOpen} onClick={event => { trashAllTrigger.current = event.currentTarget; setTrashAllAdminId(adminUserId) }}><Trash2 size={17} className="shrink-0" />ลบ Task และ Meeting ทั้งระบบ</button>
+    </div>
   </section>
+    {trashAllOpen && <AdminTrashAllDialog key={adminUserId} onClose={() => setTrashAllAdminId(null)} onDeleted={allTrashed} />}
+  </>
 }

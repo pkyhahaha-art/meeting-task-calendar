@@ -245,6 +245,8 @@ export interface Database {
       }
       admin_meeting_occurrences: { Args: { target_event_id: string }; Returns: Json }
       admin_trash_calendar_items: { Args: { target_items: Json; target_reason: string }; Returns: number }
+      admin_calendar_trash_preview: { Args: Record<PropertyKey, never>; Returns: Json }
+      admin_trash_all_calendar_items: { Args: { target_snapshot: string; target_reason: string; target_confirmation: string }; Returns: Json }
       admin_cancel_meeting_occurrence: { Args: { target_event_id: string; target_occurrence_start: string; target_reason: string }; Returns: string }
       meeting_mobile_recipients_available: { Args: { target_guest_emails: string[]; target_event_id?: string }; Returns: boolean }
       cancel_meeting_occurrence: { Args: { target_event_id: string; target_occurrence_start: string }; Returns: string }

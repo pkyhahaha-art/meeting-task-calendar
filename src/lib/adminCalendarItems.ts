@@ -12,6 +12,42 @@ export type AdminCalendarFilters = ReportDates & { entity: string; creator: stri
 export type AdminMeetingOccurrence = { id: string; occurrence_key: string; start_datetime: string; end_datetime: string | null }
 export const adminItemKey = (item: Pick<AdminCalendarItem, 'entity' | 'id'>) => `${item.entity}:${item.id}`
 
+export type AdminCalendarTrashCounts = { taskCount: number; meetingCount: number; totalCount: number }
+export type AdminCalendarTrashPreview = AdminCalendarTrashCounts & { snapshot: string }
+
+function trashCounts(value: unknown): AdminCalendarTrashCounts {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('ผลการตรวจรายการไม่ครบถ้วน กรุณาโหลดภาพรวมใหม่')
+  const row = value as Record<string, unknown>
+  const counts = [row.task_count, row.meeting_count, row.total_count]
+  if (!counts.every((count) => typeof count === 'number' && Number.isSafeInteger(count) && count >= 0)
+    || Number(row.task_count) + Number(row.meeting_count) !== row.total_count) throw new Error('จำนวนรายการไม่ถูกต้อง กรุณาโหลดภาพรวมใหม่')
+  return { taskCount: row.task_count as number, meetingCount: row.meeting_count as number, totalCount: row.total_count as number }
+}
+
+export async function loadAdminCalendarTrashPreview(): Promise<AdminCalendarTrashPreview> {
+  const { data, error } = await supabase.rpc('admin_calendar_trash_preview')
+  if (error) throw error
+  const counts = trashCounts(data)
+  const snapshot = (data as Record<string, unknown>).snapshot
+  if (typeof snapshot !== 'string' || !/^v1:[0-9a-f]{32}$/.test(snapshot)) throw new Error('ไม่พบภาพรวมรายการที่ยืนยันได้ กรุณาโหลดใหม่')
+  return { ...counts, snapshot }
+}
+
+export async function trashAllAdminCalendarItems(preview: AdminCalendarTrashPreview, reason: string, confirmation: string): Promise<AdminCalendarTrashCounts> {
+  const trimmed = reason.trim()
+  if (!trimmed || [...trimmed].length > 500) throw new Error('กรุณาระบุเหตุผลไม่เกิน 500 ตัวอักษร')
+  if (confirmation !== 'ลบทั้งหมด') throw new Error('กรุณาพิมพ์ “ลบทั้งหมด” ให้ตรงตามข้อความ')
+  if (!preview || typeof preview.snapshot !== 'string' || !/^v1:[0-9a-f]{32}$/.test(preview.snapshot)) throw new Error('กรุณาโหลดภาพรวมรายการใหม่')
+  trashCounts({ task_count: preview.taskCount, meeting_count: preview.meetingCount, total_count: preview.totalCount })
+  const { data, error } = await supabase.rpc('admin_trash_all_calendar_items', {
+    target_snapshot: preview.snapshot, target_reason: trimmed, target_confirmation: confirmation,
+  })
+  if (error) throw error
+  const counts = trashCounts(data)
+  if (counts.taskCount !== preview.taskCount || counts.meetingCount !== preview.meetingCount || counts.totalCount !== preview.totalCount) throw new Error('จำนวนรายการที่ตอบกลับไม่ตรงกับภาพรวม กรุณาโหลดข้อมูลใหม่ก่อนดำเนินการต่อ')
+  return counts
+}
+
 export async function loadAdminCalendarItems(filters: AdminCalendarFilters, page: number) {
   const { start, end } = reportDateBounds(filters)
   const { data, error } = await supabase.rpc('admin_calendar_items', {
