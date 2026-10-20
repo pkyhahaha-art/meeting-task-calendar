@@ -6,6 +6,7 @@ import vm from 'node:vm'
 import ts from 'typescript'
 import React from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
+import { passwordRecoveryUrl } from '../lib/authRouting'
 
 const session = (id: string) => ({ user: { id } })
 type Session = ReturnType<typeof session> | null
@@ -93,6 +94,25 @@ test('nested recovery credentials select their account before an existing sessio
     assert.equal(h.calls.includes('updateUser:account-A'), false)
     assert.ok(h.calls.includes('clean:/meeting-task-calendar/#/reset-password'))
   } finally { h.unmount() }
+})
+
+test('a recovery redirect without a route opens the reset form, validates tokens and rejects invalid links', async () => {
+  for (const token of ['token-B', 'invalid']) {
+    const url = new URL(passwordRecoveryUrl(`https://fixture.invalid/#access_token=${token}&refresh_token=fixture&type=recovery`)!)
+    const h = await harness({ hash: url.hash })
+    try {
+      assert.ok(h.calls.includes(`setSession:${token}`))
+      if (token === 'invalid') {
+        assert.equal(h.renderer.root.findAllByType('input').length, 0)
+        assert.equal(h.calls.includes('getSession'), false)
+      } else {
+        assert.equal(h.renderer.root.findAllByType('input').length, 2)
+        await h.submit()
+        assert.ok(h.calls.includes('updateUser:account-B'))
+        assert.equal(h.calls.includes('updateUser:account-A'), false)
+      }
+    } finally { h.unmount() }
+  }
 })
 
 test('invalid, incomplete and rejected recovery links never fall back to an existing account', async () => {
