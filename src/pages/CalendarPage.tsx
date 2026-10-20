@@ -13,6 +13,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CalendarCheck2, CalendarDays, CalendarPlus, CheckCircle2, Clock3, FileText, Link2, ListTodo, Search, Sparkles, Zap } from 'lucide-react'
 import Swal from 'sweetalert2'
 import bannerHero from '../../ภาพประกอบUI/PEA Calendar Banner 2D.png'
+import weekPlannerMascot from '../../ภาพประกอบUI/PEA Week Planner Mascot.png'
 import { useAuth } from '../auth/AuthProvider'
 import { profileAffiliation } from '../lib/organization'
 import { useConfirm } from '../components/ConfirmDialogProvider'
@@ -815,6 +816,7 @@ export function CalendarPage() {
       timeZone="Asia/Bangkok"
       initialView={calendarViewType(calendarView, compactCalendar)}
       slotEventOverlap={calendarView !== 'week'}
+      eventMaxStack={calendarView === 'week' ? 2 : undefined}
       datesSet={updateCalendarRange}
       firstDay={1}
       height={compactCalendar && (calendarView === 'year' || calendarView === 'week') ? 'auto' : '100%'}
@@ -847,7 +849,9 @@ export function CalendarPage() {
         const isTask = info.event.extendedProps.kind === 'task'
         const task = isTask ? info.event.extendedProps.row as TaskRow : null
         const Icon = isTask ? ListTodo : CalendarDays
-        return <div className="flex min-w-0 items-start gap-1 px-0.5"><Icon size={12} className="mt-0.5 shrink-0" aria-hidden="true" /><div className="min-w-0">{info.view.type.startsWith('timeGrid') && !info.event.allDay && <span className="block font-semibold tabular-nums">{info.timeText}</span>}<div className="fc-event-title truncate">{task?.status === 'completed' ? text('เสร็จแล้ว: ', 'Completed: ') : ''}{info.event.title}</div></div></div>
+        const title = `${task?.status === 'completed' ? text('เสร็จแล้ว: ', 'Completed: ') : ''}${info.event.title}`
+        if (info.view.type === 'timeGridWeek' && !info.event.allDay) return <div className="min-w-0 px-1 text-[11px] leading-tight"><span className="block truncate font-bold tabular-nums">{info.timeText.match(/^\d{1,2}:\d{2}/)?.[0] ?? info.timeText}</span><div className="fc-event-title">{title}</div></div>
+        return <div className="flex min-w-0 items-start gap-1 px-0.5"><Icon size={12} className="mt-0.5 shrink-0" aria-hidden="true" /><div className="min-w-0 flex-1">{info.view.type.startsWith('timeGrid') && !info.event.allDay && <span className="block truncate font-semibold tabular-nums">{info.timeText}</span>}<div className="fc-event-title truncate">{title}</div></div></div>
       }}
       events={calendarEntries}
       headerToolbar={{ left: 'prev,next today', center: 'title', right: '' }}
@@ -905,6 +909,10 @@ export function CalendarPage() {
               </div>
             </div>
             {(eventsQuery.isError || tasksQuery.isError || profilesQuery.isError || exceptionsQuery.isError) && <p className="mb-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{text('โหลดข้อมูลไม่สำเร็จ กรุณาตรวจสอบว่าได้รัน migration ล่าสุดแล้ว', 'Could not load data. Check that the latest migrations have been applied.')}</p>}
+            {calendarView === 'week' && !compactCalendar && <div className="mb-3 flex min-h-16 items-center gap-3 overflow-hidden rounded-2xl border border-purple-200 bg-gradient-to-r from-purple-50 via-white to-amber-50 px-3 py-1.5 shadow-sm xl:mb-2" role="note">
+              <img src={weekPlannerMascot} alt={text('มาสคอต PEA ถือแพลนเนอร์รายสัปดาห์', 'PEA mascot holding a weekly planner')} className="h-14 w-14 shrink-0 object-contain" />
+              <p className="text-xs leading-5 text-brand-900 sm:text-sm"><strong className="block">{text('มุมมองสัปดาห์', 'Week view')}</strong>{text('รายการที่เวลาใกล้กันจะแบ่งช่องภายในวันเดียวกัน กดรายการเพื่อดูรายละเอียด', 'Overlapping items share the same day in separate columns. Select an item for details.')}</p>
+            </div>}
             <div className={`calendar-fill calendar-fill-${calendarView} relative xl:min-h-0 xl:flex-1`}>
             <div className="calendar-view-switcher mb-3 grid grid-cols-4 gap-1 rounded-2xl border border-purple-100 bg-purple-50/80 p-1 xl:absolute xl:right-0 xl:top-0 xl:z-10 xl:mb-0 xl:w-72" role="group" aria-label={text('มุมมองปฏิทิน', 'Calendar view')}>
               {([{ value: 'day', label: text('วัน', 'Day') }, { value: 'week', label: text('สัปดาห์', 'Week') }, { value: 'month', label: text('เดือน', 'Month') }, { value: 'year', label: text('ปี', 'Year') }] as const).map((view) =>

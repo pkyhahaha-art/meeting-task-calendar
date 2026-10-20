@@ -146,11 +146,13 @@ test('switcher changes all views, marks the selected choice, and keeps the viewe
   try {
     assert.equal(page.button('Month').props['aria-pressed'], true)
     assert.equal(page.calendar().props.slotEventOverlap, true)
+    assert.equal(page.calendar().props.eventMaxStack, undefined)
     for (const [label, view] of [['Day', 'timeGridDay'], ['Week', 'timeGridWeek'], ['Year', 'multiMonthYear']] as const) {
       act(() => page.button(label).props.onClick())
       assert.equal(page.changes.at(-1)?.view, view)
       assert.equal(page.button(label).props['aria-pressed'], true)
       assert.equal(page.calendar().props.slotEventOverlap, label !== 'Week')
+      assert.equal(page.calendar().props.eventMaxStack, label === 'Week' ? 2 : undefined)
     }
     act(() => page.button('Week').props.onClick())
     page.resize(true)

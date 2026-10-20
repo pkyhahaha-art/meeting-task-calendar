@@ -121,11 +121,22 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 }
 .calendar-fill-day .fc-event, .calendar-fill-week .fc-event { font-size: .8rem; line-height: 1.25; }
 .calendar-fill-day .fc-timegrid-event, .calendar-fill-week .fc-timegrid-event { min-height: 2rem; padding: 3px; }
-.calendar-fill-week .fc-timegrid-event { margin-inline-end: 3px; }
+.calendar-fill-week .fc-timegrid-event { box-sizing: border-box; max-width: calc(100% - 3px); margin-inline-end: 3px; overflow: hidden; }
+.calendar-fill-week .fc-timegrid-event .fc-event-main { min-width: 0; overflow: hidden; }
+.calendar-fill-week .fc-timegrid-event .fc-event-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; white-space: normal; }
+.calendar-fill-week .fc-timegrid-more-link { border: 1px solid #d9b5e2; border-radius: 7px; background: #fff; color: #5a0e59; font-size: .68rem; font-weight: 700; }
+.calendar-fill-day .fc .fc-timegrid .fc-daygrid-day-frame,
+.calendar-fill-week .fc .fc-timegrid .fc-daygrid-day-frame { min-height: 1.75rem; }
+.calendar-fill-day .fc .fc-timegrid .fc-daygrid-day-events,
+.calendar-fill-week .fc .fc-timegrid .fc-daygrid-day-events { min-height: 1.5rem; margin-bottom: 0; }
+.calendar-fill-day .fc-timegrid-axis-cushion,
+.calendar-fill-week .fc-timegrid-axis-cushion { white-space: nowrap; font-size: .75rem; }
 .calendar-fill-week .fc-list-event-title .fc-event-title { white-space: normal; overflow-wrap: anywhere; }
 .calendar-fill-week .fc-list-event-time { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .calendar-fill-year .fc-scroller { overflow-y: auto !important; }
 .calendar-fill-year .fc-multimonth { border-radius: 12px; }
+.calendar-fill-week .fc-view-harness { overflow-x: auto; }
+.calendar-fill-week .fc-timegrid .fc-scrollgrid { min-width: 960px; }
 @media (max-width: 1279px) {
   .calendar-fill .fc { min-height: 34rem; }
 }
@@ -135,6 +146,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .fc .fc-toolbar { align-items: flex-start; gap: .75rem; }
   .fc .fc-toolbar-title { font-size: 1rem; }
   .fc .fc-button { padding: .35rem .55rem; }
-  .fc .fc-daygrid-day-frame { min-height: 4.25rem; }
+  .calendar-fill-month .fc .fc-daygrid-day-frame,
+  .calendar-fill-year .fc .fc-daygrid-day-frame { min-height: 4.25rem; }
   .fc .fc-day-today .fc-daygrid-day-number { width: 1.65rem; height: 1.65rem; }
 }
