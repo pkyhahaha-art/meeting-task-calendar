@@ -125,8 +125,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .calendar-fill-week .fc-timegrid-event .fc-event-main { min-width: 0; overflow: hidden; }
 .calendar-fill-week .fc-timegrid-event .fc-event-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; white-space: normal; }
 .calendar-fill-week .fc-timegrid-more-link { border: 1px solid #d9b5e2; border-radius: 7px; background: #fff; color: #5a0e59; font-size: .68rem; font-weight: 700; }
-.calendar-fill-day .fc .fc-timegrid .fc-daygrid-day-frame,
-.calendar-fill-week .fc .fc-timegrid .fc-daygrid-day-frame { min-height: 1.75rem; }
+.calendar-fill-day .fc .fc-timegrid .fc-daygrid-day-frame { min-height: 1.75rem; }
+.calendar-fill-week .fc .fc-timegrid .fc-daygrid-day-frame { min-height: 1.75rem !important; }
 .calendar-fill-day .fc .fc-timegrid .fc-daygrid-day-events,
 .calendar-fill-week .fc .fc-timegrid .fc-daygrid-day-events { min-height: 1.5rem; margin-bottom: 0; }
 .calendar-fill-week .fc .fc-timegrid .fc-col-header-cell-cushion { padding: 3px 2px; font-size: .9rem; line-height: 1.2; }
