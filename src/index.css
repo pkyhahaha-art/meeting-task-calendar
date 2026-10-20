@@ -129,6 +129,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .calendar-fill-week .fc .fc-timegrid .fc-daygrid-day-frame { min-height: 1.75rem; }
 .calendar-fill-day .fc .fc-timegrid .fc-daygrid-day-events,
 .calendar-fill-week .fc .fc-timegrid .fc-daygrid-day-events { min-height: 1.5rem; margin-bottom: 0; }
+.calendar-fill-week .fc .fc-timegrid .fc-col-header-cell-cushion { padding: 3px 2px; font-size: .9rem; line-height: 1.2; }
 .calendar-fill-day .fc-timegrid-axis-cushion,
 .calendar-fill-week .fc-timegrid-axis-cushion { white-space: nowrap; font-size: .75rem; }
 .calendar-fill-week .fc-list-event-title .fc-event-title { white-space: normal; overflow-wrap: anywhere; }
