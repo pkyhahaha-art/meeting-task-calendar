@@ -121,6 +121,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 }
 .calendar-fill-day .fc-event, .calendar-fill-week .fc-event { font-size: .8rem; line-height: 1.25; }
 .calendar-fill-day .fc-timegrid-event, .calendar-fill-week .fc-timegrid-event { min-height: 2rem; padding: 3px; }
+.calendar-fill-week .fc-timegrid-event { margin-inline-end: 3px; }
 .calendar-fill-week .fc-list-event-title .fc-event-title { white-space: normal; overflow-wrap: anywhere; }
 .calendar-fill-week .fc-list-event-time { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .calendar-fill-year .fc-scroller { overflow-y: auto !important; }

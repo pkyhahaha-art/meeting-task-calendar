@@ -814,6 +814,7 @@ export function CalendarPage() {
       locale={language === 'th' ? thLocale : enGbLocale}
       timeZone="Asia/Bangkok"
       initialView={calendarViewType(calendarView, compactCalendar)}
+      slotEventOverlap={calendarView !== 'week'}
       datesSet={updateCalendarRange}
       firstDay={1}
       height={compactCalendar && (calendarView === 'year' || calendarView === 'week') ? 'auto' : '100%'}
