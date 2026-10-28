@@ -24,6 +24,74 @@ const details: EventDetails = {
 }
 const noop = async () => {}
 
+test('employee attendees do not appear in external fields; editing external email preserves the employee', async () => {
+  let renderer!: ReactTestRenderer
+  let saved: EventDraft | undefined
+  const employee = { id: 'employee', full_name: 'Employee', email: 'employee@gmail.com', status: 'active' } as Database['public']['Tables']['profiles']['Row']
+  const attendees = { ...details, guestEmails: ['employee@gmail.com', 'outside@gmail.com'], occurrenceGuestEmails: ['employee@gmail.com', 'outside@gmail.com'] }
+  try {
+    act(() => { renderer = create(<LanguageProvider><EventDialog open event={event} details={attendees} profiles={[employee]} canEdit canViewDeliveryStatus={false} busy={false}
+      onClose={() => {}} onSave={async draft => { saved = draft }} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>) })
+    const external = renderer.root.findAllByType('input').filter(input => input.props.type === 'email')
+    assert.deepEqual(external.map(input => input.props.value), ['outside@gmail.com'])
+    act(() => external[0].props.onChange({ target: { value: 'changed@gmail.com' } }))
+    await act(async () => { await renderer.root.findByType(SaveActionMenu).props.onSave(false) })
+    assert.ok(saved?.guestEmails.includes('employee@gmail.com'))
+    assert.ok(saved?.guestEmails.includes('changed@gmail.com'))
+    act(() => renderer.root.findAllByProps({ role: 'tab' }).find(node => node.children.includes('Employees'))!.props.onClick())
+    assert.equal(renderer.root.findAllByProps({ role: 'tabpanel' })[0].findByType('input').props.checked, true)
+  } finally { if (renderer) act(() => renderer.unmount()) }
+})
+
+test('an invited member pressing join sees the invitation message without another join request', async () => {
+  const originalFire = Swal.fire
+  let shown = '', calls = 0
+  let renderer!: ReactTestRenderer
+  Swal.fire = (async (options: { title?: string }) => { shown = options.title ?? ''; return { isConfirmed: true } }) as typeof Swal.fire
+  try {
+    const invited = { ...details, guestEmails: ['member@gmail.com'], occurrenceGuestEmails: ['member@gmail.com'] }
+    act(() => { renderer = create(<LanguageProvider><EventDialog open event={{ ...event, owner_user_id: 'owner' }} details={invited} currentUserEmail="member@gmail.com"
+      currentUserId="member" onCheckJoinTime={async () => Date.parse('2029-01-01T00:00:00Z')} onJoin={async () => { calls++; return true }}
+      canEdit={false} canViewDeliveryStatus={false} busy={false} onClose={() => {}} onSave={noop} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>) })
+    await act(async () => { renderer.root.findAllByType('button').find(button => button.children.includes('Join this meeting'))!.props.onClick(); await new Promise(resolve => setImmediate(resolve)) })
+    assert.equal(shown, 'You have already been invited to this meeting.')
+    assert.equal(calls, 0)
+  } finally { Swal.fire = originalFire; if (renderer) act(() => renderer.unmount()) }
+})
+
+test('an occurrence attendee can expand to the series and the default scope is series', async () => {
+  const fire = Swal.fire, update = Swal.update
+  let scope = ''
+  let renderer!: ReactTestRenderer
+  let step = 0
+  Swal.update = (() => {}) as typeof Swal.update
+  Swal.fire = (async (options: { inputValue?: string; preConfirm?: (scope: string) => Promise<unknown> }) => {
+    step++
+    if (step === 1) return { isConfirmed: true }
+    if (step === 2) { assert.equal(options.inputValue, 'series'); const value = await options.preConfirm!('series'); return { isConfirmed: true, value } }
+    return { isConfirmed: false }
+  }) as typeof Swal.fire
+  try {
+    const invited = { ...details, occurrenceGuestEmails: ['member@gmail.com'] }
+    act(() => { renderer = create(<LanguageProvider><EventDialog open event={{ ...event, owner_user_id: 'owner', recurrence_rule: 'FREQ=WEEKLY;BYDAY=WE' }} details={invited}
+      occurrenceStart={event.start_datetime} currentUserEmail="member@gmail.com" currentUserId="member" onCheckJoinTime={async () => Date.parse('2029-01-01T00:00:00Z')}
+      onJoin={async selected => { scope = selected; return true }} canEdit={false} canViewDeliveryStatus={false} busy={false}
+      onClose={() => {}} onSave={noop} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>) })
+    await act(async () => { renderer.root.findAllByType('button').find(button => button.children.includes('Join this meeting'))!.props.onClick(); await new Promise(resolve => setImmediate(resolve)) })
+    assert.equal(scope, 'series')
+  } finally { Swal.fire = fire; Swal.update = update; if (renderer) act(() => renderer.unmount()) }
+})
+
+test('external fields wait until employee profiles are available', () => {
+  let renderer!: ReactTestRenderer
+  try {
+    act(() => { renderer = create(<LanguageProvider><EventDialog open event={event} details={{ ...details, guestEmails: ['member@gmail.com'] }} profilesAvailable={false}
+      canEdit canViewDeliveryStatus={false} busy={false} onClose={() => {}} onSave={noop} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>) })
+    assert.equal(renderer.root.findAllByType('input').filter(input => input.props.type === 'email').length, 0)
+    assert.ok(renderer.root.findAllByProps({ role: 'status' }).some(node => node.children.join('').includes('Employee list')))
+  } finally { if (renderer) act(() => renderer.unmount()) }
+})
+
 test('refreshed attendance checks the current occurrence immediately and keeps organizer edits', () => {
   const employee = { id: 'member', full_name: 'Member', email: 'member@gmail.com', status: 'active' } as Database['public']['Tables']['profiles']['Row']
   const saved = { ...event, owner_user_id: 'owner', recurrence_rule: 'FREQ=WEEKLY;BYDAY=MO' }
