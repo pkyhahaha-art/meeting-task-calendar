@@ -572,8 +572,12 @@ export function TaskDialog({
                             set('internalUserIds', event.target.checked ? [...draft.internalUserIds, profile.id] : draft.internalUserIds.filter((id) => id !== profile.id))
                           }
                         />
-                        <span className="min-w-0 flex-1 truncate">
-                          {profile.full_name} — {profile.email}
+                         <span className="min-w-0 flex-1 break-words">
+                           <span className="block font-medium text-slate-800">{profile.full_name}</span>
+                           <span className="block text-xs text-slate-600">
+                             {[profile.organization_unit, profile.department].filter(Boolean).join(' · ') || text('ยังไม่ระบุหน่วยงาน/แผนก', 'Organization/department not specified')}
+                           </span>
+                           <span className="block text-xs text-slate-500">{profile.email}</span>
                         </span>
                         {details?.internalRecipients.find((recipient) => recipient.user_id === profile.id)?.acknowledged_at && (
                           <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">{text('รับทราบแล้ว', 'Acknowledged')}</span>

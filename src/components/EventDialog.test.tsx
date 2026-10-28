@@ -59,6 +59,23 @@ test('reopening a saved meeting retains both channels after its scheduled remind
   act(() => renderer.unmount())
 })
 
+test('employee attendee tab shows affiliation and selecting an employee preserves the guest email contract', async () => {
+  let renderer!: ReactTestRenderer
+  let saved: EventDraft | undefined
+  const employee = { id: 'employee-1', full_name: 'PEA Employee', email: 'employee@gmail.com', organization_unit: 'กบง.', department: 'ผสอ.', status: 'active' } as Database['public']['Tables']['profiles']['Row']
+  act(() => { renderer = create(<LanguageProvider><EventDialog open event={event} details={details} profiles={[employee]} canEdit canViewDeliveryStatus={false} busy={false} onClose={() => {}} onSave={async (draft) => { saved = draft }} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>) })
+  try {
+    const employeeTab = renderer.root.findAllByProps({ role: 'tab' }).find((node) => node.children.includes('Employees'))!
+    act(() => employeeTab.props.onClick())
+    assert.ok(renderer.root.findAllByType('span').some((node) => node.children.includes('กบง. · ผสอ.')))
+    const employeeCheckbox = renderer.root.findAllByProps({ role: 'tabpanel' }).find((node) => node.findAllByType('input').some((input) => input.props.type === 'checkbox'))?.findByType('input')
+    assert.ok(employeeCheckbox)
+    act(() => employeeCheckbox!.props.onChange({ target: { checked: true } }))
+    await act(async () => renderer.root.findByType(SaveActionMenu).props.onSave(false))
+    assert.ok(saved?.guestEmails.includes('employee@gmail.com'))
+  } finally { act(() => renderer.unmount()) }
+})
+
 test('a saved meeting with an incomplete follow-up passes its warning to the save menu', async () => {
   let renderer!: ReactTestRenderer
   const warning = 'Meeting saved; the mobile message has not been confirmed.'

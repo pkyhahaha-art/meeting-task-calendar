@@ -619,6 +619,19 @@ export function CalendarPage() {
     mutationFn: async (event: EventRow) => { const { error } = await supabase.from('events').update({ deleted_at: new Date().toISOString() }).eq('id', event.id); if (error) throw error },
     onSuccess: async () => { await Promise.all([queryClient.invalidateQueries({ queryKey: ['events'] }), queryClient.invalidateQueries({ queryKey: ['event-creation-stats'] })]); setEventDialog({ open: false, event: null }) },
   })
+  const joinMeetingMutation = useMutation({
+    mutationFn: async (scope: 'occurrence' | 'series') => {
+      if (!selectedEvent || !user) throw new Error('ไม่พบการประชุมหรือบัญชีผู้ใช้')
+      const { data, error } = await supabase.rpc('join_meeting_as_attendee', {
+        target_event_id: selectedEvent.id,
+        target_occurrence_start: selectedEventOccurrenceStart ?? selectedEvent.start_datetime,
+        target_scope: scope,
+      })
+      if (error) throw error
+      return data === true
+    },
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['event-details', selectedEvent?.id] }) },
+  })
   const appointmentMutation = useMutation({
     mutationFn: async ({ draft, date }: { draft?: EventDraft; date?: string }) => {
       if (!selectedEvent || !selectedEventOccurrenceStart) throw new Error('ไม่พบนัดที่เลือก')
@@ -975,6 +988,7 @@ export function CalendarPage() {
 
       <EventDialog
         defaultAffiliation={profileAffiliation(profile)}
+        profiles={profilesQuery.data ?? []} currentUserEmail={user?.email} currentUserId={user?.id} onJoin={(scope) => joinMeetingMutation.mutateAsync(scope)}
         open={eventDialog.open} event={selectedEvent} details={eventDetailsQuery.data} selectedDate={eventDialog.date} occurrenceStart={eventDialog.occurrenceStart}
         canEdit={canEditEvent} canDelete={canDeleteEvent} canViewDeliveryStatus={canViewEventDeliveryStatus} hasConnectedDevices={hasConnectedDevices && (!selectedEvent || selectedEvent.owner_user_id === user?.id)} checkMobileRecipients={checkMobileRecipients} busy={busy || eventDetailsQuery.isLoading || appointmentMutation.isPending}
         onClose={() => { pendingMeetingSave.current = null; setEventDialog({ open: false, event: null }) }}
