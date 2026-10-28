@@ -250,6 +250,7 @@ export interface Database {
       admin_cancel_meeting_occurrence: { Args: { target_event_id: string; target_occurrence_start: string; target_reason: string }; Returns: string }
       meeting_mobile_recipients_available: { Args: { target_guest_emails: string[]; target_event_id?: string }; Returns: boolean }
       join_meeting_as_attendee: { Args: { target_event_id: string; target_occurrence_start: string; target_scope: 'occurrence' | 'series' }; Returns: boolean }
+      meeting_join_server_time: { Args: Record<PropertyKey, never>; Returns: string }
       cancel_meeting_occurrence: { Args: { target_event_id: string; target_occurrence_start: string }; Returns: string }
       detach_meeting_occurrence: {
         Args: { target_event_id: string; target_occurrence_start: string; target_new_start: string; target_description: string; target_location: string; target_guest_emails: string[] }

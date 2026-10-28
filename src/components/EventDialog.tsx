@@ -126,6 +126,7 @@ export function EventDialog({
   currentUserEmail,
   currentUserId,
   onJoin,
+  onCheckJoinTime,
   busy,
   onClose,
   onSave,
@@ -149,6 +150,7 @@ export function EventDialog({
   currentUserEmail?: string
   currentUserId?: string
   onJoin?: (scope: 'occurrence' | 'series') => Promise<boolean>
+  onCheckJoinTime?: () => Promise<number>
   onClose: () => void
   onSave: (draft: EventDraft, notifyRecipients: boolean, scope: 'series' | 'occurrence') => Promise<void | { warning: string }>
   onDelete: (scope?: 'series' | 'occurrence') => Promise<void>
@@ -168,6 +170,7 @@ export function EventDialog({
   const [moveDate, setMoveDate] = useState('')
   const fileInput = useRef<HTMLInputElement>(null)
   const initializedDraft = useRef<string | null>(null)
+  const checkingJoin = useRef(false)
   const affiliationEdited = useRef(false)
   const guestEmailsKey = parseGuestEmails(draft.guestEmails).sort().join(',')
   const mobileAvailable = hasConnectedDevices || guestHasMobile
@@ -179,9 +182,26 @@ export function EventDialog({
   const joinedOccurrence = Boolean(joinedEmail && details?.occurrenceGuestEmails.some((email) => email.toLowerCase() === joinedEmail))
 
   const joinMeeting = async () => {
-    if (!event || !onJoin) return
+    if (!event || !onJoin || !onCheckJoinTime || checkingJoin.current) return
+    const start = new Date(occurrenceStart ?? event.start_datetime).getTime()
+    const expiredMessage = text('ไม่สามารถเข้าร่วมการประชุมได้ เนื่องจากเลยเวลานัดหมายแล้ว', 'You cannot join this meeting because its scheduled start time has passed.')
+    let serverTime: number
+    checkingJoin.current = true
+    try { serverTime = await onCheckJoinTime() }
+    catch {
+      await Swal.fire({ icon: 'error', text: text('ตรวจสอบเวลาประชุมไม่สำเร็จ กรุณาลองใหม่', 'Could not check the meeting time. Please try again.') })
+      return
+    } finally { checkingJoin.current = false }
+    if (!Number.isFinite(serverTime)) {
+      await Swal.fire({ icon: 'error', text: text('ตรวจสอบเวลาประชุมไม่สำเร็จ กรุณาลองใหม่', 'Could not check the meeting time. Please try again.') })
+      return
+    }
+    if (start <= serverTime) {
+      await Swal.fire({ icon: 'warning', text: expiredMessage })
+      return
+    }
     const recurring = Boolean(event.recurrence_rule)
-    const mascotUrl = `${import.meta.env.BASE_URL}brand/pea-typing-mascot.png`
+    const mascotUrl = `${import.meta.env?.BASE_URL ?? '/'}brand/pea-typing-mascot.png`
     const result = await Swal.fire({
       title: text('เข้าร่วมประชุมนี้?', 'Join this meeting?'),
       text: text('ยืนยันการเข้าร่วมเพื่อรับการแจ้งเตือนตามที่ตั้งไว้', 'Confirm attendance to receive configured reminders.'),
@@ -200,7 +220,8 @@ export function EventDialog({
         Swal.update({ footer: `<div role="status" class="space-y-2 text-center"><img src="${mascotUrl}" alt="PEA" class="mx-auto h-28 w-28 object-contain" /><p>${text('มาสคอต PEA กำลังยืนยันข้อมูล...', 'PEA is confirming your attendance...')}</p></div>` })
         try { return await onJoin(recurring && scope === 'series' ? 'series' : 'occurrence') }
         catch (reason) {
-          Swal.showValidationMessage(reason instanceof Error ? reason.message : text('เข้าร่วมไม่สำเร็จ กรุณาลองใหม่', 'Could not join. Please try again.'))
+          const message = reason && typeof reason === 'object' && 'message' in reason && typeof reason.message === 'string' ? reason.message : ''
+          Swal.showValidationMessage(message === 'meeting_join_start_passed' ? expiredMessage : message || text('เข้าร่วมไม่สำเร็จ กรุณาลองใหม่', 'Could not join. Please try again.'))
           return false
         }
       },

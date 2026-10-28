@@ -989,6 +989,7 @@ export function CalendarPage() {
       <EventDialog
         defaultAffiliation={profileAffiliation(profile)}
         profiles={profilesQuery.data ?? []} currentUserEmail={user?.email} currentUserId={user?.id} onJoin={(scope) => joinMeetingMutation.mutateAsync(scope)}
+        onCheckJoinTime={async () => { const { data, error } = await supabase.rpc('meeting_join_server_time'); if (error || !data) throw error ?? new Error('Server time unavailable'); return new Date(data).getTime() }}
         open={eventDialog.open} event={selectedEvent} details={eventDetailsQuery.data} selectedDate={eventDialog.date} occurrenceStart={eventDialog.occurrenceStart}
         canEdit={canEditEvent} canDelete={canDeleteEvent} canViewDeliveryStatus={canViewEventDeliveryStatus} hasConnectedDevices={hasConnectedDevices && (!selectedEvent || selectedEvent.owner_user_id === user?.id)} checkMobileRecipients={checkMobileRecipients} busy={busy || eventDetailsQuery.isLoading || appointmentMutation.isPending}
         onClose={() => { pendingMeetingSave.current = null; setEventDialog({ open: false, event: null }) }}

@@ -23,6 +23,103 @@ const details: EventDetails = {
   occurrenceReminders: [], occurrenceNotificationDeliveries: [],
 }
 const noop = async () => {}
+
+test('a past meeting displays the requested Thai message without joining', async () => {
+  const originalFire = Swal.fire
+  const originalGetItem = localStorage.getItem
+  let shown = ''
+  let joins = 0
+  let renderer!: ReactTestRenderer
+  localStorage.getItem = () => 'th'
+  Swal.fire = (async (options: { text?: string }) => { shown = options.text ?? ''; return { isConfirmed: false } }) as typeof Swal.fire
+  try {
+    act(() => { renderer = create(<LanguageProvider><EventDialog open event={{ ...event, owner_user_id: 'owner', start_datetime: '2000-01-01T00:00:00Z' }} details={details}
+      currentUserId="member" onCheckJoinTime={async () => Date.now()} onJoin={async () => { joins++; return true }} canEdit={false} canViewDeliveryStatus={false} busy={false}
+      onClose={() => {}} onSave={noop} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>) })
+    await act(async () => { renderer.root.findAllByType('button').find((button) => button.children.includes('เข้าร่วมประชุมนี้'))!.props.onClick(); await new Promise(resolve => setImmediate(resolve)) })
+    assert.equal(shown, 'ไม่สามารถเข้าร่วมการประชุมได้ เนื่องจากเลยเวลานัดหมายแล้ว')
+    assert.equal(joins, 0)
+  } finally { localStorage.getItem = originalGetItem; Swal.fire = originalFire; if (renderer) act(() => renderer.unmount()) }
+})
+
+test('join checks the selected appointment start and reports an expired meeting immediately', async () => {
+  const originalFire = Swal.fire
+  const originalNow = Date.now
+  const alerts: Array<{ text?: string; input?: string }> = []
+  let joins = 0
+  let renderer!: ReactTestRenderer
+  Date.now = () => Date.parse('2030-10-07T02:00:00Z')
+  Swal.fire = (async (options: unknown) => { alerts.push(options as { text?: string }); return { isConfirmed: false } }) as typeof Swal.fire
+  const recurring = { ...event, owner_user_id: 'owner', recurrence_rule: 'FREQ=WEEKLY;BYDAY=MO' }
+  const view = (occurrenceStart: string) => <LanguageProvider><EventDialog open event={recurring} details={details} occurrenceStart={occurrenceStart}
+    currentUserId="member" onCheckJoinTime={async () => Date.now()} onJoin={async () => { joins++; return true }} canEdit={false} canViewDeliveryStatus={false} busy={false}
+    onClose={() => {}} onSave={noop} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>
+  const clickJoin = async () => { await act(async () => { renderer.root.findAllByType('button').find((button) => button.children.includes('Join this meeting'))!.props.onClick(); await new Promise(resolve => setImmediate(resolve)) }) }
+  try {
+    act(() => { renderer = create(view('2030-10-07T02:00:00Z')) })
+    await clickJoin()
+    assert.match(alerts[0].text!, /scheduled start time has passed/)
+    assert.equal(joins, 0)
+    act(() => renderer.update(view('2030-10-14T02:00:00Z')))
+    await clickJoin()
+    assert.equal(alerts[1].input, 'radio')
+    assert.equal(joins, 0)
+  } finally { Swal.fire = originalFire; Date.now = originalNow; if (renderer) act(() => renderer.unmount()) }
+})
+
+test('server rejection after the meeting starts shows the expired explanation during confirmation', async () => {
+  const originalFire = Swal.fire, originalUpdate = Swal.update, originalValidation = Swal.showValidationMessage, originalNow = Date.now
+  let now = Date.parse('2030-10-07T01:59:59Z')
+  let validation = ''
+  let renderer!: ReactTestRenderer
+  Date.now = () => now
+  Swal.update = (() => {}) as typeof Swal.update
+  Swal.showValidationMessage = ((message: string) => { validation = message }) as typeof Swal.showValidationMessage
+  Swal.fire = (async (options: { preConfirm: (scope: string) => Promise<unknown> }) => {
+    now += 1000
+    await options.preConfirm('occurrence')
+    return { isConfirmed: false }
+  }) as typeof Swal.fire
+  try {
+    act(() => { renderer = create(<LanguageProvider><EventDialog open event={{ ...event, owner_user_id: 'owner', start_datetime: '2030-10-07T02:00:00Z' }} details={details}
+      currentUserId="member" onCheckJoinTime={async () => now} onJoin={async () => { throw { message: 'meeting_join_start_passed' } }} canEdit={false} canViewDeliveryStatus={false} busy={false}
+      onClose={() => {}} onSave={noop} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>) })
+    await act(async () => { renderer.root.findAllByType('button').find((button) => button.children.includes('Join this meeting'))!.props.onClick(); await new Promise(resolve => setImmediate(resolve)) })
+    assert.match(validation, /scheduled start time has passed/)
+  } finally { Swal.fire = originalFire; Swal.update = originalUpdate; Swal.showValidationMessage = originalValidation; Date.now = originalNow; if (renderer) act(() => renderer.unmount()) }
+})
+
+test('a server-confirmed expired meeting is reported even when the device clock is behind', async () => {
+  const originalFire = Swal.fire, originalUpdate = Swal.update, originalValidation = Swal.showValidationMessage, originalNow = Date.now
+  let validation = ''
+  let renderer!: ReactTestRenderer
+  Date.now = () => Date.parse('2030-10-07T01:00:00Z')
+  Swal.update = (() => {}) as typeof Swal.update
+  Swal.showValidationMessage = ((message: string) => { validation = message }) as typeof Swal.showValidationMessage
+  Swal.fire = (async (options: { preConfirm: (scope: string) => Promise<unknown> }) => { await options.preConfirm('occurrence'); return { isConfirmed: false } }) as typeof Swal.fire
+  try {
+    act(() => { renderer = create(<LanguageProvider><EventDialog open event={{ ...event, owner_user_id: 'owner', start_datetime: '2030-10-07T02:00:00Z' }} details={details}
+      currentUserId="member" onCheckJoinTime={async () => Date.now()} onJoin={async () => { throw { message: 'meeting_join_start_passed' } }} canEdit={false} canViewDeliveryStatus={false} busy={false}
+      onClose={() => {}} onSave={noop} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>) })
+    await act(async () => { renderer.root.findAllByType('button').find((button) => button.children.includes('Join this meeting'))!.props.onClick(); await new Promise(resolve => setImmediate(resolve)) })
+    assert.match(validation, /scheduled start time has passed/)
+  } finally { Swal.fire = originalFire; Swal.update = originalUpdate; Swal.showValidationMessage = originalValidation; Date.now = originalNow; if (renderer) act(() => renderer.unmount()) }
+})
+
+test('a fast device clock does not prevent joining a future meeting on server time', async () => {
+  const originalFire = Swal.fire, originalNow = Date.now
+  let options: { input?: string; text?: string } = {}
+  let renderer!: ReactTestRenderer
+  Date.now = () => Date.parse('2030-10-08T00:00:00Z')
+  Swal.fire = (async (value: unknown) => { options = value as typeof options; return { isConfirmed: false } }) as typeof Swal.fire
+  try {
+    act(() => { renderer = create(<LanguageProvider><EventDialog open event={{ ...event, owner_user_id: 'owner', start_datetime: '2030-10-07T02:00:00Z' }} details={details}
+      currentUserId="member" onCheckJoinTime={async () => Date.parse('2030-10-07T01:00:00Z')} onJoin={async () => true} canEdit={false} canViewDeliveryStatus={false} busy={false}
+      onClose={() => {}} onSave={noop} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>) })
+    await act(async () => { renderer.root.findAllByType('button').find((button) => button.children.includes('Join this meeting'))!.props.onClick(); await new Promise(resolve => setImmediate(resolve)) })
+    assert.match(options.text!, /Confirm attendance/)
+  } finally { Swal.fire = originalFire; Date.now = originalNow; if (renderer) act(() => renderer.unmount()) }
+})
 function dialog(connected: boolean, onSave: (draft: EventDraft) => Promise<void | { warning: string }> = noop, open = true, savedEvent: typeof event | null = event, checkMobileRecipients?: (emails: string[]) => Promise<boolean>, canDelete = true) {
   return <LanguageProvider><EventDialog open={open} event={savedEvent} details={details}
     hasConnectedDevices={connected} checkMobileRecipients={checkMobileRecipients} canEdit canDelete={canDelete} canViewDeliveryStatus={false} busy={false}

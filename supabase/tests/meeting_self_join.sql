@@ -3,10 +3,15 @@ begin;
 do $$
 declare
   owner_id uuid := gen_random_uuid(); member_id uuid := gen_random_uuid();
-  meeting_id uuid; first_at timestamptz := now() + interval '14 days';
+  meeting_id uuid; past_meeting uuid; first_at timestamptz := now() + interval '14 days';
   first_occurrence uuid; next_at timestamptz; next_occurrence uuid;
   member_email text := 'rollback-' || member_id::text || '@gmail.com';
 begin
+  if not has_function_privilege('authenticated','public.meeting_join_server_time()','execute')
+    or has_function_privilege('anon','public.meeting_join_server_time()','execute')
+    or public.meeting_join_server_time() <> now() then
+    raise exception 'server time function privilege or time mismatch';
+  end if;
   insert into auth.users(id,email,email_confirmed_at,raw_user_meta_data) values
     (owner_id,'rollback-' || owner_id::text || '@gmail.com',now(),'{}'::jsonb),
     (member_id,member_email,now(),'{}'::jsonb);
@@ -49,6 +54,27 @@ begin
     perform public.join_meeting_as_attendee(meeting_id,next_at,'occurrence');
     raise exception 'organizer exclusion was ignored';
   exception when insufficient_privilege then null;
+  end;
+  insert into public.events(owner_user_id,title,start_datetime,end_datetime,suppress_guest_notifications)
+    values(owner_id,'Past self-join rollback',now(),now()+interval '1 hour',true) returning id into past_meeting;
+  begin
+    perform public.join_meeting_as_attendee(past_meeting, now(), 'occurrence');
+    raise exception 'past meeting joined';
+  exception when invalid_parameter_value then
+    if sqlerrm <> 'meeting_join_start_passed' then raise; end if;
+  end;
+  begin
+    perform public.join_meeting_as_attendee(past_meeting, now()+interval '1 minute', 'occurrence');
+    raise exception 'mismatched meeting joined';
+  exception when invalid_parameter_value then
+    if sqlerrm <> 'a future scheduled Meeting is required' then raise; end if;
+  end;
+  update public.event_occurrences set start_datetime=now() where id=next_occurrence;
+  begin
+    perform public.join_meeting_as_attendee(meeting_id,now(),'series');
+    raise exception 'past occurrence joined';
+  exception when invalid_parameter_value then
+    if sqlerrm <> 'meeting_join_start_passed' then raise; end if;
   end;
 end;
 $$;
