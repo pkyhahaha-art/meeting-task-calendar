@@ -24,6 +24,66 @@ const details: EventDetails = {
 }
 const noop = async () => {}
 
+test('refreshed attendance checks the current occurrence immediately and keeps organizer edits', () => {
+  const employee = { id: 'member', full_name: 'Member', email: 'member@gmail.com', status: 'active' } as Database['public']['Tables']['profiles']['Row']
+  const saved = { ...event, owner_user_id: 'owner', recurrence_rule: 'FREQ=WEEKLY;BYDAY=MO' }
+  let renderer!: ReactTestRenderer
+  const view = (canEdit: boolean, current: EventDetails) => <LanguageProvider><EventDialog open event={saved} details={current}
+    occurrenceStart="2030-10-07T02:00:00Z" profiles={[employee]} currentUserId={canEdit ? 'owner' : 'member'} canEdit={canEdit}
+    canViewDeliveryStatus={false} busy={false} onClose={() => {}} onSave={noop} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>
+  const openEmployees = () => act(() => renderer.root.findAllByProps({ role: 'tab' }).find(node => node.children.includes('Employees'))!.props.onClick())
+  const memberCheckbox = () => renderer.root.findAllByProps({ role: 'tabpanel' }).find(node => node.findAllByType('input').some(input => input.props.type === 'checkbox'))!.findByType('input')
+  try {
+    act(() => { renderer = create(view(false, details)) })
+    openEmployees()
+    assert.equal(memberCheckbox().props.checked, false)
+    const joined = { ...details, occurrenceGuestEmails: [employee.email] }
+    act(() => renderer.update(view(false, joined)))
+    assert.equal(memberCheckbox().props.checked, true)
+    act(() => renderer.update(view(false, details)))
+    assert.equal(memberCheckbox().props.checked, false)
+    act(() => renderer.update(view(true, details)))
+    act(() => renderer.root.findByProps({ id: 'title' }).props.onChange({ target: { value: 'Unsaved title' } }))
+    act(() => memberCheckbox().props.onChange({ target: { checked: true } }))
+    act(() => renderer.update(view(true, { ...details, guestEmails: ['other@gmail.com'], occurrenceGuestEmails: ['other@gmail.com'] })))
+    assert.equal(memberCheckbox().props.checked, true)
+    assert.equal(renderer.root.findByProps({ id: 'title' }).props.value, 'Unsaved title')
+    act(() => renderer.unmount())
+    act(() => { renderer = create(view(true, { ...details, occurrenceId: 'earlier-occurrence', guestEmails: [employee.email],
+      guestJoinFrom: { [employee.email]: '2030-10-14T02:00:00Z' }, hasOccurrenceChanges: true })) })
+    openEmployees()
+    assert.equal(memberCheckbox().props.checked, false)
+  } finally { if (renderer) act(() => renderer.unmount()) }
+})
+
+test('join uses one native radio scope and the PEA pending presentation', async () => {
+  const originalFire = Swal.fire, originalUpdate = Swal.update, originalValidation = Swal.showValidationMessage
+  const submissions: string[] = []
+  const pending: string[] = []
+  let configured: { input?: string; inputOptions?: Record<string, string>; customClass?: { popup?: string }; preConfirm: (value: string) => Promise<unknown> } | undefined
+  let renderer!: ReactTestRenderer
+  Swal.update = ((options: { footer?: string }) => { if (options.footer) pending.push(options.footer) }) as typeof Swal.update
+  Swal.showValidationMessage = (() => {}) as typeof Swal.showValidationMessage
+  Swal.fire = (async (options: unknown) => { configured = options as typeof configured; return { isConfirmed: false } }) as typeof Swal.fire
+  try {
+    act(() => { renderer = create(<LanguageProvider><EventDialog open event={{ ...event, owner_user_id: 'owner', recurrence_rule: 'FREQ=WEEKLY;BYDAY=MO' }} details={details}
+      currentUserId="member" onCheckJoinTime={async () => Date.parse('2029-01-01T00:00:00Z')} onJoin={async scope => { submissions.push(scope); return true }} canEdit={false}
+      canViewDeliveryStatus={false} busy={false} onClose={() => {}} onSave={noop} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>) })
+    await act(async () => { renderer.root.findAllByType('button').find(button => button.children.includes('Join this meeting'))!.props.onClick(); await new Promise(resolve => setImmediate(resolve)) })
+    assert.equal(configured?.input, 'radio')
+    assert.deepEqual(Object.keys(configured!.inputOptions!), ['occurrence', 'series'])
+    assert.equal(configured?.customClass?.popup, 'pea-join-dialog')
+    await configured!.preConfirm('occurrence,series')
+    assert.deepEqual(submissions, [])
+    await configured!.preConfirm('series')
+    assert.deepEqual(submissions, ['series'])
+    assert.match(pending[0], /Pending/)
+    assert.match(pending[0], /pea-pending-clock/)
+    assert.match(pending[0], /pea-typing-mascot-v2\.png/)
+    assert.doesNotMatch(pending[0], /มาสคอต PEA|PEA is confirming/)
+  } finally { Swal.fire = originalFire; Swal.update = originalUpdate; Swal.showValidationMessage = originalValidation; if (renderer) act(() => renderer.unmount()) }
+})
+
 test('a past meeting displays the requested Thai message without joining', async () => {
   const originalFire = Swal.fire
   const originalGetItem = localStorage.getItem

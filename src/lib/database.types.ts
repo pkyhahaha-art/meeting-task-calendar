@@ -98,8 +98,8 @@ export interface Database {
         Relationships: []
       }
       event_guests: {
-        Row: { id: string; event_id: string; occurrence_id: string | null; email: string; revoked_at: string | null; acknowledged_at: string | null; created_at: string }
-        Insert: { id?: string; event_id: string; occurrence_id?: string | null; email: string; revoked_at?: string | null }
+        Row: { id: string; event_id: string; occurrence_id: string | null; email: string; revoked_at: string | null; acknowledged_at: string | null; created_at: string; self_join_from: string | null }
+        Insert: { id?: string; event_id: string; occurrence_id?: string | null; email: string; revoked_at?: string | null; self_join_from?: string | null }
         Update: Partial<Database['public']['Tables']['event_guests']['Insert']>
         Relationships: []
       }

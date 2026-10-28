@@ -284,7 +284,8 @@ export function CalendarPage() {
       if (notificationDeliveries.error) throw notificationDeliveries.error
       const excludedEmails = new Set(exclusions.map((exclusion) => exclusion.email.toLowerCase()))
       const effectiveGuests = [
-        ...guests.data.filter((guest) => !excludedEmails.has(guest.email.toLowerCase())),
+        ...guests.data.filter((guest) => !excludedEmails.has(guest.email.toLowerCase())
+          && (!guest.self_join_from || new Date(selectedEventOccurrenceStart ?? selectedEvent!.start_datetime).getTime() >= new Date(guest.self_join_from).getTime())),
         ...addedOccurrenceGuests,
       ]
       const occurrenceAttachments = attachments.data.filter((file) => !file.occurrence_id || file.occurrence_id === occurrence?.id)
@@ -303,8 +304,10 @@ export function CalendarPage() {
       const occurrenceOverride = overridePayload && typeof overridePayload === 'object' && !Array.isArray(overridePayload)
         ? { description: typeof overridePayload.description === 'string' ? overridePayload.description : undefined, location: typeof overridePayload.location === 'string' ? overridePayload.location : undefined }
         : null
-      const hasOccurrenceChanges = Boolean(occurrenceOverride?.description !== undefined || occurrenceOverride?.location !== undefined || addedOccurrenceGuests.length || exclusions.length || occurrenceAttachments.some((file) => file.scope === 'occurrence'))
-      return { guestEmails: guests.data.map((guest) => guest.email), occurrenceGuestEmails: effectiveGuests.map((guest) => guest.email), guestAcknowledgements: Object.fromEntries(effectiveGuests.map((guest) => [guest.email.toLowerCase(), guest.acknowledged_at])), reminderKeys: keys, attachments: attachmentViews, occurrenceId: occurrence?.id ?? null, occurrenceOverride, hasOccurrenceChanges, occurrenceReminders: selectedReminders, occurrenceNotificationDeliveries: notificationDeliveries.data.filter((delivery) => delivery.reminder_id && selectedReminderIds.has(delivery.reminder_id)), notificationDeliveries: notificationDeliveries.data.filter((delivery) => !delivery.reminder_id) }
+      const cutoffChangesAttendance = guests.data.some((guest) => guest.self_join_from
+        && new Date(selectedEventOccurrenceStart ?? selectedEvent!.start_datetime).getTime() < new Date(guest.self_join_from).getTime())
+      const hasOccurrenceChanges = Boolean(cutoffChangesAttendance || occurrenceOverride?.description !== undefined || occurrenceOverride?.location !== undefined || addedOccurrenceGuests.length || exclusions.length || occurrenceAttachments.some((file) => file.scope === 'occurrence'))
+      return { guestEmails: guests.data.map((guest) => guest.email), guestJoinFrom: Object.fromEntries(guests.data.filter((guest) => guest.self_join_from).map((guest) => [guest.email.toLowerCase(), guest.self_join_from!])), occurrenceGuestEmails: effectiveGuests.map((guest) => guest.email), guestAcknowledgements: Object.fromEntries(effectiveGuests.map((guest) => [guest.email.toLowerCase(), guest.acknowledged_at])), reminderKeys: keys, attachments: attachmentViews, occurrenceId: occurrence?.id ?? null, occurrenceOverride, hasOccurrenceChanges, occurrenceReminders: selectedReminders, occurrenceNotificationDeliveries: notificationDeliveries.data.filter((delivery) => delivery.reminder_id && selectedReminderIds.has(delivery.reminder_id)), notificationDeliveries: notificationDeliveries.data.filter((delivery) => !delivery.reminder_id) }
     },
   })
 

@@ -159,3 +159,44 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .calendar-fill-year .fc .fc-daygrid-day-frame { min-height: 4.25rem; }
   .fc .fc-day-today .fc-daygrid-day-number { width: 1.65rem; height: 1.65rem; }
 }
+/* Attendance confirmation keeps native, mutually exclusive radios. */
+.swal2-popup.pea-join-dialog { overflow: clip !important; }
+.pea-join-dialog .swal2-radio {
+  display: grid !important;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
+  min-width: 0;
+  gap: 0.75rem;
+  margin: 1.25rem 0 0;
+  padding: 0;
+  background: transparent;
+}
+.pea-join-dialog .swal2-radio label {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 3rem;
+  margin: 0;
+  padding: 0.75rem;
+  border: 1px solid #e9d5ff;
+  border-radius: 0.875rem;
+  background: #faf5ff;
+  color: #6b2170;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+.pea-join-dialog .swal2-radio input { accent-color: #8a168d; margin: 0; }
+.pea-join-dialog .swal2-radio label:has(input:checked) { border-color: #8a168d; background: #f3e8ff; box-shadow: 0 0 0 1px #8a168d; }
+.pea-join-dialog .swal2-radio label:has(input:focus-visible) { outline: 2px solid #b45309; outline-offset: 3px; }
+.pea-join-pending { display: grid; justify-items: center; gap: 0.5rem; color: #6b2170; font-weight: 700; }
+.pea-join-pending-mascot { width: 9rem; height: 9rem; object-fit: contain; }
+.pea-join-pending p { display: inline-flex; align-items: center; gap: 0.5rem; }
+.pea-pending-clock { position: relative; display: inline-block; width: 1.3rem; height: 1.3rem; border: 2px solid #8a168d; border-radius: 50%; }
+.pea-pending-clock::before, .pea-pending-clock::after { content: ''; position: absolute; left: calc(50% - 1px); bottom: 50%; width: 2px; border-radius: 2px; transform-origin: bottom; background: #8a168d; }
+.pea-pending-clock::before { height: 35%; animation: pea-clock-turn 2s linear infinite; }
+.pea-pending-clock::after { height: 25%; background: #c28a20; animation: pea-clock-turn 12s linear infinite; }
+@keyframes pea-clock-turn { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .pea-pending-clock::before, .pea-pending-clock::after { animation: none; } }

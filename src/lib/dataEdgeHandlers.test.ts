@@ -128,6 +128,30 @@ test('guest endpoint refuses a scoped guest token for another appointment', asyn
   assert.equal(service.signed(), 0)
 })
 
+for (const action of ['read', 'document', 'acknowledge']) test('future-only series membership denies unscoped historical tokens: ' + action, async () => {
+  const rows = guestStore()
+  rows.guest_tokens[0].occurrence_id = null
+  rows.event_guests[0].self_join_from = '2026-10-07T02:00:00Z'
+  const service = endpoint(['supabase/functions/guest-event/index.ts'], rows)
+  const request = action === 'acknowledge'
+    ? new Request('https://fixture.invalid/', { method: 'POST', body: JSON.stringify({ token, action: 'acknowledge' }) })
+    : new Request('https://fixture.invalid/?token=' + token + (action === 'document' ? '&attachment_id=file-id' : ''))
+  assert.equal((await service.handler(request)).status, 404)
+  assert.equal(service.signed(), 0)
+  assert.deepEqual(service.writes, [])
+})
+
+test('legacy unrestricted series tokens and scoped future-member tokens retain access', async () => {
+  for (const futureMember of [false, true]) {
+    const rows = guestStore()
+    rows.current_guests = [{ email: 'guest@gmail.com' }]
+    if (futureMember) rows.event_guests[0].self_join_from = '2026-10-07T02:00:00Z'
+    else rows.guest_tokens[0].occurrence_id = null
+    const service = endpoint(['supabase/functions/guest-event/index.ts'], rows)
+    assert.equal((await service.handler(new Request('https://fixture.invalid/?token=' + token))).status, 200)
+  }
+})
+
 function cancellationGuestStore(): Store {
   const rows = guestStore()
   rows.current_guests = [{ email: 'guest@gmail.com' }]

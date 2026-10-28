@@ -42,6 +42,7 @@ type AttachmentView = AttachmentRow & { signedUrl: string }
 export type OccurrenceReminder = Pick<Database['public']['Tables']['reminders']['Row'], 'id' | 'scheduled_at' | 'channel_email' | 'channel_line' | 'status'>
 export type EventDetails = {
   guestEmails: string[]
+  guestJoinFrom?: Record<string, string>
   occurrenceGuestEmails: string[]
   guestAcknowledgements: Record<string, string | null>
   reminderKeys: ReminderKey[]
@@ -172,14 +173,20 @@ export function EventDialog({
   const initializedDraft = useRef<string | null>(null)
   const checkingJoin = useRef(false)
   const affiliationEdited = useRef(false)
+  const guestEmailsEdited = useRef(false)
   const guestEmailsKey = parseGuestEmails(draft.guestEmails).sort().join(',')
   const mobileAvailable = hasConnectedDevices || guestHasMobile
   const mobileTooltip = text('สามารถเลือกได้เมื่อผู้สร้างประชุมหรือผู้เข้าร่วมเชื่อมต่อการแจ้งเตือนผ่านมือถือแล้ว', 'Available when the organizer or an attendee has paired a phone for notifications.')
   const activeProfiles = profiles.filter((profile) => profile.status === 'active')
-  const selectedEmails = new Set(parseGuestEmails(draft.guestEmails).map((email) => email.toLowerCase()))
+  // Members view current attendance, while editors retain their unsaved draft.
+  const displayedGuestEmails = !canEdit && details ? details.occurrenceGuestEmails : draft.guestEmails
+  const selectedEmails = new Set(parseGuestEmails(displayedGuestEmails).map((email) => email.toLowerCase()))
   const joinedEmail = currentUserEmail?.trim().toLowerCase()
-  const joinedSeries = Boolean(joinedEmail && details?.guestEmails.some((email) => email.toLowerCase() === joinedEmail))
+  const joinedFrom = joinedEmail ? details?.guestJoinFrom?.[joinedEmail] : undefined
+  const joinedSeries = Boolean(joinedEmail && details?.guestEmails.some((email) => email.toLowerCase() === joinedEmail)
+    && (!joinedFrom || new Date(occurrenceStart ?? event?.start_datetime ?? '').getTime() >= new Date(joinedFrom).getTime()))
   const joinedOccurrence = Boolean(joinedEmail && details?.occurrenceGuestEmails.some((email) => email.toLowerCase() === joinedEmail))
+  const joinedViewedAppointment = occurrenceStart ? joinedOccurrence : joinedSeries
 
   const joinMeeting = async () => {
     if (!event || !onJoin || !onCheckJoinTime || checkingJoin.current) return
@@ -201,13 +208,16 @@ export function EventDialog({
       return
     }
     const recurring = Boolean(event.recurrence_rule)
-    const mascotUrl = `${import.meta.env?.BASE_URL ?? '/'}brand/pea-typing-mascot.png`
+    const mascotUrl = `${import.meta.env?.BASE_URL ?? '/'}brand/pea-typing-mascot-v2.png`
     const result = await Swal.fire({
+      customClass: { popup: 'pea-join-dialog' },
       title: text('เข้าร่วมประชุมนี้?', 'Join this meeting?'),
-      text: text('ยืนยันการเข้าร่วมเพื่อรับการแจ้งเตือนตามที่ตั้งไว้', 'Confirm attendance to receive configured reminders.'),
+      text: recurring
+        ? text('เลือกเฉพาะนัดนี้ หรือทั้งชุดตั้งแต่นัดนี้เป็นต้นไป โดยไม่เพิ่มชื่อย้อนหลัง', 'Choose this occurrence or this and future occurrences, without joining past appointments.')
+        : text('ยืนยันการเข้าร่วมเพื่อรับการแจ้งเตือนตามที่ตั้งไว้', 'Confirm attendance to receive configured reminders.'),
       input: recurring ? 'radio' : undefined,
       inputOptions: recurring ? {
-        occurrence: text('เฉพาะนัดที่กด', 'Only this occurrence'),
+        occurrence: text('เฉพาะนัดนี้', 'Only this occurrence'),
         series: text('ทั้งชุด', 'The whole series'),
       } : undefined,
       inputValue: recurring ? 'occurrence' : undefined,
@@ -217,9 +227,14 @@ export function EventDialog({
       showLoaderOnConfirm: true,
       allowOutsideClick: () => !Swal.isLoading(),
       preConfirm: async (scope) => {
-        Swal.update({ footer: `<div role="status" class="space-y-2 text-center"><img src="${mascotUrl}" alt="PEA" class="mx-auto h-28 w-28 object-contain" /><p>${text('มาสคอต PEA กำลังยืนยันข้อมูล...', 'PEA is confirming your attendance...')}</p></div>` })
+        if (recurring && scope !== 'occurrence' && scope !== 'series') {
+          Swal.showValidationMessage(text('กรุณาเลือกหนึ่งตัวเลือก', 'Please select one option.'))
+          return false
+        }
+        Swal.update({ footer: `<div role="status" aria-live="polite" class="pea-join-pending"><img src="${mascotUrl}" alt="" class="pea-join-pending-mascot" /><p><span class="pea-pending-clock" aria-hidden="true"></span>Pending<span class="pea-pending-dots" aria-hidden="true">…</span></p></div>` })
         try { return await onJoin(recurring && scope === 'series' ? 'series' : 'occurrence') }
         catch (reason) {
+          Swal.update({ footer: '' })
           const message = reason && typeof reason === 'object' && 'message' in reason && typeof reason.message === 'string' ? reason.message : ''
           Swal.showValidationMessage(message === 'meeting_join_start_passed' ? expiredMessage : message || text('เข้าร่วมไม่สำเร็จ กรุณาลองใหม่', 'Could not join. Please try again.'))
           return false
@@ -251,6 +266,7 @@ export function EventDialog({
     if (initializedDraft.current === key) return
     initializedDraft.current = key
     affiliationEdited.current = false
+    guestEmailsEdited.current = false
     setError('')
     setMoveDate('')
     const useOccurrenceValues = Boolean(event && occurrenceStart && details?.hasOccurrenceChanges)
@@ -295,6 +311,13 @@ export function EventDialog({
     }
   }, [open, event, defaultAffiliation])
 
+  useEffect(() => {
+    if (!open || !event || !details || guestEmailsEdited.current) return
+    const emails = editScope === 'occurrence' && occurrenceStart ? details.occurrenceGuestEmails : details.guestEmails
+    const next = emails.length ? emails : ['']
+    setDraft((current) => current.guestEmails.join('\n') === next.join('\n') ? current : { ...current, guestEmails: next })
+  }, [open, event, details, editScope, occurrenceStart])
+
   if (!open) return null
 
   if (event && !details) {
@@ -308,7 +331,10 @@ export function EventDialog({
     )
   }
 
-  const set = <K extends keyof EventDraft>(key: K, value: EventDraft[K]) => setDraft((current) => ({ ...current, [key]: value }))
+  const set = <K extends keyof EventDraft>(key: K, value: EventDraft[K]) => {
+    if (key === 'guestEmails') guestEmailsEdited.current = true
+    setDraft((current) => ({ ...current, [key]: value }))
+  }
   const setGuestEmail = (index: number, value: string) => set('guestEmails', draft.guestEmails.map((email, itemIndex) => (itemIndex === index ? value : email)))
   const toggleReminder = (key: ReminderKey) => set('reminderKeys', draft.reminderKeys.includes(key) ? draft.reminderKeys.filter((item) => item !== key) : [...draft.reminderKeys, key])
 
@@ -320,6 +346,7 @@ export function EventDialog({
 
   const changeEditScope = (scope: 'series' | 'occurrence') => {
     if (!event) return
+    guestEmailsEdited.current = false
     setEditScope(scope)
     setMoveDate('')
     setDraft((current) =>
@@ -945,7 +972,7 @@ export function EventDialog({
                 </label>)}
                 {!activeProfiles.length && <p className="p-2 text-sm text-slate-500">{text('ยังไม่มีพนักงานในระบบ', 'No employees available.')}</p>}
               </div> : <div role="tabpanel" className="space-y-2">
-                {draft.guestEmails.map((email, index) => (
+                {displayedGuestEmails.map((email, index) => (
                   <div key={index} className="flex items-center gap-2">
                     <input
                       type="email"
@@ -1289,7 +1316,7 @@ export function EventDialog({
             )}
             <div className="ml-auto flex flex-wrap gap-2">
               {event && event.owner_user_id !== currentUserId && onJoin && details && (!joinedSeries || (event.recurrence_rule && !joinedOccurrence)) && <button type="button" className="btn-primary" disabled={busy} onClick={() => void joinMeeting()}><UserPlus size={17} />{text('เข้าร่วมประชุมนี้', 'Join this meeting')}</button>}
-              {event && event.owner_user_id !== currentUserId && joinedSeries && <span className="inline-flex items-center rounded-xl bg-green-50 px-3 py-2 text-sm font-semibold text-green-800">{text('คุณเข้าร่วมแล้ว', 'You joined')}</span>}
+              {event && event.owner_user_id !== currentUserId && joinedViewedAppointment && <span className="inline-flex items-center rounded-xl bg-green-50 px-3 py-2 text-sm font-semibold text-green-800">{joinedSeries ? text('คุณเข้าร่วมแล้ว', 'You joined') : text('คุณเข้าร่วมนัดนี้แล้ว', 'You joined this occurrence')}</span>}
               <button type="button" onClick={onClose} className="btn-secondary">
                 {canEdit ? text('ยกเลิก', 'Cancel') : text('ปิด', 'Close')}
               </button>

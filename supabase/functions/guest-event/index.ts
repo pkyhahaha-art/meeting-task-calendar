@@ -38,6 +38,9 @@ Deno.serve(async (request) => {
       .eq('id', tokenRow.guest_id).is('revoked_at', null).maybeSingle()
     if (guestError) throw guestError
     if (!guest) return json({ error: 'สิทธิ์เข้าถึงถูกยกเลิกแล้ว' }, 404)
+    // A future-scoped series subscription never authorizes the historical
+    // base Meeting represented by an unscoped token.
+    if (guest.self_join_from && !tokenRow.occurrence_id) return json({ error: 'สิทธิ์เข้าถึงนัดหมายนี้ถูกยกเลิกแล้ว' }, 404)
     if (guest.occurrence_id && guest.occurrence_id !== tokenRow.occurrence_id) return json({ error: 'สิทธิ์เข้าถึงนัดหมายนี้ถูกยกเลิกแล้ว' }, 404)
 
     const occurrenceRequest = tokenRow.occurrence_id
