@@ -263,7 +263,14 @@ export function CalendarPage() {
         if (error) throw error
         return data
       })()
-      const [guests, reminders, attachments, notificationDeliveries, occurrence, addedOccurrenceGuests, exclusions, selectedReminders] = await Promise.all([
+      const occurrenceAcknowledgements = (async () => {
+        const occurrence = await selectedOccurrence
+        if (!occurrence) return []
+        const { data, error } = await supabase.from('event_occurrence_acknowledgements').select('email,acknowledged_at').eq('event_id', eventId).eq('occurrence_id', occurrence.id)
+        if (error) throw error
+        return data
+      })()
+      const [guests, reminders, attachments, notificationDeliveries, occurrence, addedOccurrenceGuests, exclusions, selectedReminders, scopedAcknowledgements] = await Promise.all([
         supabase.from('event_guests').select('*').eq('event_id', eventId).is('occurrence_id', null).is('revoked_at', null).returns<GuestRow[]>(),
         (() => {
           const templates = supabase.from('reminders').select('*').eq('event_id', eventId).is('occurrence_id', null)
@@ -277,15 +284,24 @@ export function CalendarPage() {
         occurrenceGuests,
         occurrenceExclusions,
         occurrenceReminders,
+        occurrenceAcknowledgements,
       ])
       if (guests.error) throw guests.error
       if (reminders.error) throw reminders.error
       if (attachments.error) throw attachments.error
       if (notificationDeliveries.error) throw notificationDeliveries.error
       const excludedEmails = new Set(exclusions.map((exclusion) => exclusion.email.toLowerCase()))
+      const viewedStart = new Date(selectedEventOccurrenceStart ?? selectedEvent!.start_datetime).getTime()
+      const guestHistory = (guest: GuestRow): Array<{ from: string | null; until: string }> =>
+        Array.isArray(guest.attendance_history) ? guest.attendance_history.flatMap((range) =>
+          range && typeof range === 'object' && !Array.isArray(range) && (range.from === null || typeof range.from === 'string') && typeof range.until === 'string'
+            ? [{ from: range.from, until: range.until }] : []) : []
+      const memberInOccurrence = (guest: GuestRow) =>
+        ((!guest.self_join_from || viewedStart >= new Date(guest.self_join_from).getTime())
+          && (!guest.self_join_until || viewedStart <= new Date(guest.self_join_until).getTime()))
+        || guestHistory(guest).some((range) => (!range.from || viewedStart >= new Date(range.from).getTime()) && viewedStart <= new Date(range.until).getTime())
       const effectiveGuests = [
-        ...guests.data.filter((guest) => !excludedEmails.has(guest.email.toLowerCase())
-          && (!guest.self_join_from || new Date(selectedEventOccurrenceStart ?? selectedEvent!.start_datetime).getTime() >= new Date(guest.self_join_from).getTime())),
+        ...guests.data.filter((guest) => !excludedEmails.has(guest.email.toLowerCase()) && memberInOccurrence(guest)),
         ...addedOccurrenceGuests,
       ]
       const occurrenceAttachments = attachments.data.filter((file) => !file.occurrence_id || file.occurrence_id === occurrence?.id)
@@ -304,10 +320,10 @@ export function CalendarPage() {
       const occurrenceOverride = overridePayload && typeof overridePayload === 'object' && !Array.isArray(overridePayload)
         ? { description: typeof overridePayload.description === 'string' ? overridePayload.description : undefined, location: typeof overridePayload.location === 'string' ? overridePayload.location : undefined }
         : null
-      const cutoffChangesAttendance = guests.data.some((guest) => guest.self_join_from
-        && new Date(selectedEventOccurrenceStart ?? selectedEvent!.start_datetime).getTime() < new Date(guest.self_join_from).getTime())
+      const cutoffChangesAttendance = guests.data.some((guest) => !memberInOccurrence(guest))
       const hasOccurrenceChanges = Boolean(cutoffChangesAttendance || occurrenceOverride?.description !== undefined || occurrenceOverride?.location !== undefined || addedOccurrenceGuests.length || exclusions.length || occurrenceAttachments.some((file) => file.scope === 'occurrence'))
-      return { guestEmails: guests.data.map((guest) => guest.email), guestJoinFrom: Object.fromEntries(guests.data.filter((guest) => guest.self_join_from).map((guest) => [guest.email.toLowerCase(), guest.self_join_from!])), occurrenceGuestEmails: effectiveGuests.map((guest) => guest.email), guestAcknowledgements: Object.fromEntries(effectiveGuests.map((guest) => [guest.email.toLowerCase(), guest.acknowledged_at])), reminderKeys: keys, attachments: attachmentViews, occurrenceId: occurrence?.id ?? null, occurrenceOverride, hasOccurrenceChanges, occurrenceReminders: selectedReminders, occurrenceNotificationDeliveries: notificationDeliveries.data.filter((delivery) => delivery.reminder_id && selectedReminderIds.has(delivery.reminder_id)), notificationDeliveries: notificationDeliveries.data.filter((delivery) => !delivery.reminder_id) }
+      const acknowledgementByEmail = new Map(scopedAcknowledgements.map((row) => [row.email.toLowerCase(), row.acknowledged_at]))
+      return { guestEmails: guests.data.map((guest) => guest.email), guestJoinFrom: Object.fromEntries(guests.data.filter((guest) => guest.self_join_from).map((guest) => [guest.email.toLowerCase(), guest.self_join_from!])), guestJoinUntil: Object.fromEntries(guests.data.filter((guest) => guest.self_join_until).map((guest) => [guest.email.toLowerCase(), guest.self_join_until!])), guestJoinHistory: Object.fromEntries(guests.data.map((guest) => [guest.email.toLowerCase(), guestHistory(guest)])), occurrenceGuestEmails: effectiveGuests.map((guest) => guest.email), guestAcknowledgements: Object.fromEntries(effectiveGuests.map((guest) => [guest.email.toLowerCase(), acknowledgementByEmail.get(guest.email.toLowerCase()) ?? ((guest.self_join_from || guest.self_join_until || guestHistory(guest).length) ? null : guest.acknowledged_at)])), reminderKeys: keys, attachments: attachmentViews, occurrenceId: occurrence?.id ?? null, occurrenceOverride, hasOccurrenceChanges, occurrenceReminders: selectedReminders, occurrenceNotificationDeliveries: notificationDeliveries.data.filter((delivery) => delivery.reminder_id && selectedReminderIds.has(delivery.reminder_id)), notificationDeliveries: notificationDeliveries.data.filter((delivery) => !delivery.reminder_id) }
     },
   })
 
@@ -629,6 +645,17 @@ export function CalendarPage() {
         target_event_id: selectedEvent.id,
         target_occurrence_start: selectedEventOccurrenceStart ?? selectedEvent.start_datetime,
         target_scope: scope,
+      })
+      if (error) throw error
+      return data === true
+    },
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['event-details', selectedEvent?.id] }) },
+  })
+  const changeAttendanceMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedEvent || !user || !selectedEventOccurrenceStart) throw new Error('ไม่พบนัดหมายที่เลือก')
+      const { data, error } = await supabase.rpc('change_meeting_attendance_to_occurrence', {
+        target_event_id: selectedEvent.id, target_occurrence_start: selectedEventOccurrenceStart,
       })
       if (error) throw error
       return data === true
@@ -992,6 +1019,7 @@ export function CalendarPage() {
       <EventDialog
         defaultAffiliation={profileAffiliation(profile)}
         profiles={profilesQuery.data ?? []} profilesAvailable={Boolean(profilesQuery.data)} currentUserEmail={user?.email} currentUserId={user?.id} onJoin={(scope) => joinMeetingMutation.mutateAsync(scope)}
+        onChangeToOccurrence={() => changeAttendanceMutation.mutateAsync()}
         onCheckJoinTime={async () => { const { data, error } = await supabase.rpc('meeting_join_server_time'); if (error || !data) throw error ?? new Error('Server time unavailable'); return new Date(data).getTime() }}
         open={eventDialog.open} event={selectedEvent} details={eventDetailsQuery.data} selectedDate={eventDialog.date} occurrenceStart={eventDialog.occurrenceStart}
         canEdit={canEditEvent} canDelete={canDeleteEvent} canViewDeliveryStatus={canViewEventDeliveryStatus} hasConnectedDevices={hasConnectedDevices && (!selectedEvent || selectedEvent.owner_user_id === user?.id)} checkMobileRecipients={checkMobileRecipients} busy={busy || eventDetailsQuery.isLoading || appointmentMutation.isPending}

@@ -12,6 +12,7 @@ type Options = {
   channel?: 'push' | 'email'; readError?: string; retry?: boolean
   actionPayload?: boolean
   uppercaseGuest?: boolean; missingGuestRow?: boolean
+  limitedGuest?: boolean
   overdue?: boolean; expiredRound?: boolean; rescheduled?: boolean; cancelledReminder?: boolean; missingReminder?: boolean
 }
 
@@ -44,6 +45,7 @@ function service(options: Options = {}) {
   const messages: unknown[] = []
   const emails: Array<{ subject: string; htmlContent: string }> = []
   let signings = 0
+  const acknowledgementTokens: Array<Record<string, unknown>> = []
   const guestScopes: unknown[] = []
   const queried: string[] = []
   const db = {
@@ -52,12 +54,13 @@ function service(options: Options = {}) {
         guestScopes.push(args?.target_occurrence_id)
         return { data: options.removed ? [] : [{ user_id: recipient }], error: options.readError === name ? { message: 'Temporary lookup error' } : null }
       }
-      if (name === 'occurrence_guest_emails') return { data: options.removed ? [] : [{ email: 'recipient@example.test' }], error: null }
+      if (name === 'occurrence_guest_emails') return { data: options.removed ? [] : [{ email: 'recipient@example.test' }], error: options.readError === name ? { message: 'Temporary lookup error' } : null }
       return { data: 0, error: null }
     },
     from(table: string) {
       queried.push(table)
       let update: Record<string, unknown> | null = null
+      let selection = ''
       const filters: Record<string, unknown> = {}
       const result = () => {
         if (options.readError === table && !update) return { data: null, error: { message: 'Temporary lookup error' } }
@@ -86,12 +89,13 @@ function service(options: Options = {}) {
             description: 'Private agenda', affiliation: 'ฝ่ายแผนงาน', location: 'ห้อง 7',
             start_datetime: options.actionPayload ? '2026-10-02T02:00:00Z' : '2099-01-01T00:00:00Z', end_datetime: '2026-10-02T03:00:00Z',
             status: options.status ?? 'scheduled', deleted_at: options.deleted ? '2026-10-04T00:00:00Z' : null,
+            recurrence_rule: options.legacyFirst ? 'FREQ=WEEKLY' : null,
           }
           : table === 'event_occurrences' ? options.missingOccurrence ? null : {
             id: 'occurrence-1', start_datetime: '2026-10-03T02:00:00Z', end_datetime: '2026-10-03T03:00:00Z',
             status: options.cancelledOccurrence ? 'cancelled' : 'scheduled', override_payload: options.actionPayload ? { description: 'Occurrence agenda', location: 'ห้อง 8' } : {},
           }
-          : table === 'event_guests' ? options.missingGuestRow ? [] : options.actionPayload ? [{ id: 'guest-1',
+          : table === 'event_guests' ? selection.includes('self_join_from') ? [{ email: 'recipient@example.test', self_join_from: options.limitedGuest ? '2099-01-01' : null, self_join_until: null, attendance_history: [] }] : options.missingGuestRow ? [] : options.actionPayload ? [{ id: 'guest-1',
             email: options.uppercaseGuest ? ' RECIPIENT@EXAMPLE.TEST ' : 'recipient@example.test', occurrence_id: options.scoped ? 'occurrence-1' : null }] : { id: 'guest-1' }
           : table === 'attachments' ? options.actionPayload ? [
             { id: 'file-1', file_name: 'วาระ.pdf', storage_path: 'owner/event/agenda.pdf', occurrence_id: options.scoped ? 'occurrence-1' : null },
@@ -102,9 +106,9 @@ function service(options: Options = {}) {
         return { data, error: null }
       }
       const query = {
-        select() { return query }, eq(key: string, value: unknown) { filters[key] = value; return query },
+        select(columns?: string) { selection = columns ?? ''; return query }, eq(key: string, value: unknown) { filters[key] = value; return query },
         in() { return query }, is() { return query }, lte() { return query }, or() { return query }, order() { return query }, limit() { return query },
-        insert() { return query },
+        insert(value?: Record<string, unknown>) { if (table === 'email_acknowledgement_tokens' && value) acknowledgementTokens.push(value); return query },
         update(value: Record<string, unknown>) { update = value; return query },
         async maybeSingle() { return result() },
         then(resolve: (value: ReturnType<typeof result>) => unknown) { return Promise.resolve(result()).then(resolve) },
@@ -131,7 +135,7 @@ function service(options: Options = {}) {
   })
   return {
     async run() { const response = await handler(new Request('https://worker.example', { method: 'POST', headers: { authorization: 'Bearer unit-config' } })); return { response, body: await response.json() } },
-    state: () => ({ status, errorCode, errorMessage, messages, guestScopes, queried, emails, signings }),
+    state: () => ({ status, errorCode, errorMessage, messages, guestScopes, queried, emails, signings, acknowledgementTokens }),
   }
 }
 
@@ -233,6 +237,49 @@ test('the Push eligibility guard does not change the existing email sending path
   assert.equal(server.state().status, 'sent')
   assert.deepEqual(server.state().messages, ['email'])
   assert.equal(server.state().queried.includes('profiles'), false)
+})
+
+test('queued and retry meeting guest emails recheck scope, including legacy first reminders', async () => {
+  for (const retry of [false, true]) for (const options of [{ scoped: true }, { legacyFirst: true }, {}]) {
+    const denied = service({ meeting: true, channel: 'email', recipient: 'guest', removed: true, retry, ...options })
+    await denied.run()
+    assert.equal(denied.state().status, 'skipped')
+    assert.equal(denied.state().errorCode, 'meeting_recipient_unavailable')
+    assert.equal(denied.state().messages.length, 0)
+    assert.ok(!denied.state().queried.includes('email_acknowledgement_tokens'))
+    const allowed = service({ meeting: true, channel: 'email', recipient: 'guest', retry, ...options })
+    await allowed.run()
+    assert.equal(allowed.state().status, 'sent', String(allowed.state().errorMessage))
+  }
+})
+
+test('scoped meeting guests receive only occurrence-specific acknowledgement tokens', async () => {
+  const scoped = service({ meeting: true, channel: 'email', recipient: 'guest', scoped: true, limitedGuest: true })
+  await scoped.run()
+  assert.equal(scoped.state().status, 'sent', String(scoped.state().errorMessage))
+  assert.equal(scoped.state().acknowledgementTokens.length, 1)
+  assert.equal(scoped.state().acknowledgementTokens[0].occurrence_id, 'occurrence-1')
+  const legacyFirst = service({ meeting: true, channel: 'email', recipient: 'guest', legacyFirst: true, limitedGuest: true })
+  await legacyFirst.run()
+  assert.equal(legacyFirst.state().status, 'sent', String(legacyFirst.state().errorMessage))
+  assert.equal(legacyFirst.state().acknowledgementTokens[0].occurrence_id, 'occurrence-1')
+  const missingScope = service({ meeting: true, channel: 'email', recipient: 'guest', limitedGuest: true })
+  await missingScope.run()
+  assert.equal(missingScope.state().status, 'sent', String(missingScope.state().errorMessage))
+  assert.equal(missingScope.state().acknowledgementTokens.length, 0)
+  const unrestricted = service({ meeting: true, channel: 'email', recipient: 'guest' })
+  await unrestricted.run()
+  assert.equal(unrestricted.state().status, 'sent', String(unrestricted.state().errorMessage))
+  assert.ok(unrestricted.state().queried.includes('email_acknowledgement_tokens'))
+  assert.equal(unrestricted.state().acknowledgementTokens[0].occurrence_id, undefined)
+})
+
+test('a guest eligibility lookup failure retries without sending an email', async () => {
+  const server = service({ meeting: true, channel: 'email', recipient: 'guest', scoped: true, readError: 'occurrence_guest_emails' })
+  await server.run()
+  assert.equal(server.state().status, 'retry')
+  assert.equal(server.state().errorCode, 'network_error')
+  assert.equal(server.state().emails.length, 0)
 })
 
 test('appointment cancellation/move reaches only current devices with a concise heading and safe meeting details', async () => {

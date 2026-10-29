@@ -47,7 +47,7 @@ test('an invited member pressing join sees the invitation message without anothe
   const originalFire = Swal.fire
   let shown = '', calls = 0
   let renderer!: ReactTestRenderer
-  Swal.fire = (async (options: { title?: string }) => { shown = options.title ?? ''; return { isConfirmed: true } }) as typeof Swal.fire
+  Swal.fire = (async (options: { title?: string; showCancelButton?: boolean; confirmButtonText?: string }) => { shown = options.title ?? ''; assert.equal(options.showCancelButton, false); assert.equal(options.confirmButtonText, 'Close'); return { isConfirmed: true } }) as typeof Swal.fire
   try {
     const invited = { ...details, guestEmails: ['member@gmail.com'], occurrenceGuestEmails: ['member@gmail.com'] }
     act(() => { renderer = create(<LanguageProvider><EventDialog open event={{ ...event, owner_user_id: 'owner' }} details={invited} currentUserEmail="member@gmail.com"
@@ -59,16 +59,15 @@ test('an invited member pressing join sees the invitation message without anothe
   } finally { Swal.fire = originalFire; if (renderer) act(() => renderer.unmount()) }
 })
 
-test('an occurrence attendee can expand to the series and the default scope is series', async () => {
+test('an occurrence attendee can expand to the series directly from the invitation notice', async () => {
   const fire = Swal.fire, update = Swal.update
   let scope = ''
   let renderer!: ReactTestRenderer
   let step = 0
   Swal.update = (() => {}) as typeof Swal.update
-  Swal.fire = (async (options: { inputValue?: string; preConfirm?: (scope: string) => Promise<unknown> }) => {
+  Swal.fire = (async (options: { confirmButtonText?: string; text?: string; preConfirm?: () => Promise<unknown> }) => {
     step++
-    if (step === 1) return { isConfirmed: true }
-    if (step === 2) { assert.equal(options.inputValue, 'series'); const value = await options.preConfirm!('series'); return { isConfirmed: true, value } }
+    if (step === 1) { assert.equal(options.confirmButtonText, 'The whole series'); assert.match(options.text!, /future occurrences/); const value = await options.preConfirm!(); return { isConfirmed: true, value } }
     return { isConfirmed: false }
   }) as typeof Swal.fire
   try {
@@ -80,6 +79,99 @@ test('an occurrence attendee can expand to the series and the default scope is s
     await act(async () => { renderer.root.findAllByType('button').find(button => button.children.includes('Join this meeting'))!.props.onClick(); await new Promise(resolve => setImmediate(resolve)) })
     assert.equal(scope, 'series')
   } finally { Swal.fire = fire; Swal.update = update; if (renderer) act(() => renderer.unmount()) }
+})
+
+test('a series attendee can switch to this occurrence with clear consequences', async () => {
+  const fire = Swal.fire, update = Swal.update
+  let calls = 0, normalJoins = 0, step = 0
+  let renderer!: ReactTestRenderer
+  Swal.update = (() => {}) as typeof Swal.update
+  Swal.fire = (async (options: { confirmButtonText?: string; text?: string; preConfirm?: () => Promise<unknown> }) => {
+    step++
+    if (step === 1) { assert.equal(options.confirmButtonText, 'Only this occurrence'); assert.match(options.text!, /other future occurrences will be cancelled/); const value = await options.preConfirm!(); return { isConfirmed: true, value } }
+    return { isConfirmed: false }
+  }) as typeof Swal.fire
+  try {
+    const invited = { ...details, guestEmails: ['member@gmail.com'], occurrenceGuestEmails: ['member@gmail.com'] }
+    act(() => { renderer = create(<LanguageProvider><EventDialog open event={{ ...event, owner_user_id: 'owner', recurrence_rule: 'FREQ=WEEKLY;BYDAY=WE' }} details={invited}
+      occurrenceStart={event.start_datetime} currentUserEmail="member@gmail.com" currentUserId="member" onCheckJoinTime={async () => Date.parse('2029-01-01T00:00:00Z')}
+      onJoin={async () => { normalJoins++; return true }} onChangeToOccurrence={async () => { calls++; return true }} canEdit={false} canViewDeliveryStatus={false} busy={false}
+      onClose={() => {}} onSave={noop} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>) })
+    await act(async () => { renderer.root.findAllByType('button').find(button => button.children.includes('Join this meeting'))!.props.onClick(); await new Promise(resolve => setImmediate(resolve)) })
+    assert.equal(calls, 1)
+    assert.equal(normalJoins, 0)
+  } finally { Swal.fire = fire; Swal.update = update; if (renderer) act(() => renderer.unmount()) }
+})
+
+test('cancelling a series-to-occurrence switch never changes attendance', async () => {
+  const fire = Swal.fire
+  let calls = 0
+  let renderer!: ReactTestRenderer
+  Swal.fire = (async () => ({ isConfirmed: false })) as typeof Swal.fire
+  try {
+    const invited = { ...details, guestEmails: ['member@gmail.com'], occurrenceGuestEmails: ['member@gmail.com'] }
+    act(() => { renderer = create(<LanguageProvider><EventDialog open event={{ ...event, owner_user_id: 'owner', recurrence_rule: 'FREQ=WEEKLY;BYDAY=WE' }} details={invited}
+      occurrenceStart={event.start_datetime} currentUserEmail="member@gmail.com" currentUserId="member" onCheckJoinTime={async () => Date.parse('2029-01-01T00:00:00Z')}
+      onJoin={async () => { calls++; return true }} onChangeToOccurrence={async () => { calls++; return true }} canEdit={false} canViewDeliveryStatus={false} busy={false}
+      onClose={() => {}} onSave={noop} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>) })
+    await act(async () => { renderer.root.findAllByType('button').find(button => button.children.includes('Join this meeting'))!.props.onClick(); await new Promise(resolve => setImmediate(resolve)) })
+    assert.equal(calls, 0)
+  } finally { Swal.fire = fire; if (renderer) act(() => renderer.unmount()) }
+})
+
+test('a failed scope change keeps the confirmation open and shows the server error', async () => {
+  const fire = Swal.fire, update = Swal.update, validation = Swal.showValidationMessage
+  let error = '', calls = 0, step = 0
+  let renderer!: ReactTestRenderer
+  Swal.update = (() => {}) as typeof Swal.update
+  Swal.showValidationMessage = ((message: string) => { error = message }) as typeof Swal.showValidationMessage
+  Swal.fire = (async (options: { preConfirm?: () => Promise<unknown> }) => {
+    step++
+    assert.equal(await options.preConfirm!(), false)
+    return { isConfirmed: false }
+  }) as typeof Swal.fire
+  try {
+    const invited = { ...details, guestEmails: ['member@gmail.com'], occurrenceGuestEmails: ['member@gmail.com'] }
+    act(() => { renderer = create(<LanguageProvider><EventDialog open event={{ ...event, owner_user_id: 'owner', recurrence_rule: 'FREQ=WEEKLY;BYDAY=WE' }} details={invited}
+      occurrenceStart={event.start_datetime} currentUserEmail="member@gmail.com" currentUserId="member" onCheckJoinTime={async () => Date.parse('2029-01-01T00:00:00Z')}
+      onJoin={async () => true} onChangeToOccurrence={async () => { calls++; throw { message: 'network failure' } }} canEdit={false} canViewDeliveryStatus={false} busy={false}
+      onClose={() => {}} onSave={noop} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>) })
+    await act(async () => { renderer.root.findAllByType('button').find(button => button.children.includes('Join this meeting'))!.props.onClick(); await new Promise(resolve => setImmediate(resolve)) })
+    assert.equal(calls, 1)
+    assert.equal(step, 1)
+    assert.equal(error, 'network failure')
+  } finally { Swal.fire = fire; Swal.update = update; Swal.showValidationMessage = validation; if (renderer) act(() => renderer.unmount()) }
+})
+
+test('a stopped series is shown as occurrence-only at its inclusive final date', async () => {
+  const fire = Swal.fire
+  let label = ''
+  let renderer!: ReactTestRenderer
+  Swal.fire = (async (options: { confirmButtonText?: string }) => { label = options.confirmButtonText ?? ''; return { isConfirmed: false } }) as typeof Swal.fire
+  try {
+    const invited = { ...details, guestEmails: ['member@gmail.com'], guestJoinUntil: { 'member@gmail.com': event.start_datetime }, occurrenceGuestEmails: ['member@gmail.com'] }
+    act(() => { renderer = create(<LanguageProvider><EventDialog open event={{ ...event, owner_user_id: 'owner', recurrence_rule: 'FREQ=WEEKLY;BYDAY=WE' }} details={invited}
+      occurrenceStart={event.start_datetime} currentUserEmail="member@gmail.com" currentUserId="member" onCheckJoinTime={async () => Date.parse('2029-01-01T00:00:00Z')}
+      onJoin={async () => true} canEdit={false} canViewDeliveryStatus={false} busy={false} onClose={() => {}} onSave={noop} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>) })
+    await act(async () => { renderer.root.findAllByType('button').find(button => button.children.includes('Join this meeting'))!.props.onClick(); await new Promise(resolve => setImmediate(resolve)) })
+    assert.equal(label, 'The whole series')
+  } finally { Swal.fire = fire; if (renderer) act(() => renderer.unmount()) }
+})
+
+test('a prior attendance interval still displays series membership after rejoining later', async () => {
+  const fire = Swal.fire
+  let label = ''
+  let renderer!: ReactTestRenderer
+  Swal.fire = (async (options: { confirmButtonText?: string }) => { label = options.confirmButtonText ?? ''; return { isConfirmed: false } }) as typeof Swal.fire
+  try {
+    const invited = { ...details, guestEmails: ['member@gmail.com'], guestJoinFrom: { 'member@gmail.com': '2030-10-21T02:00:00Z' },
+      guestJoinHistory: { 'member@gmail.com': [{ from: '2030-10-01T02:00:00Z', until: '2030-10-14T02:00:00Z' }] }, occurrenceGuestEmails: ['member@gmail.com'] }
+    act(() => { renderer = create(<LanguageProvider><EventDialog open event={{ ...event, owner_user_id: 'owner', recurrence_rule: 'FREQ=WEEKLY;BYDAY=WE' }} details={invited}
+      occurrenceStart="2030-10-07T02:00:00Z" currentUserEmail="member@gmail.com" currentUserId="member" onCheckJoinTime={async () => Date.parse('2029-01-01T00:00:00Z')}
+      onJoin={async () => true} onChangeToOccurrence={async () => true} canEdit={false} canViewDeliveryStatus={false} busy={false} onClose={() => {}} onSave={noop} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>) })
+    await act(async () => { renderer.root.findAllByType('button').find(button => button.children.includes('Join this meeting'))!.props.onClick(); await new Promise(resolve => setImmediate(resolve)) })
+    assert.equal(label, 'Only this occurrence')
+  } finally { Swal.fire = fire; if (renderer) act(() => renderer.unmount()) }
 })
 
 test('external fields wait until employee profiles are available', () => {

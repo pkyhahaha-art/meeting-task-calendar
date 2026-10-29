@@ -43,6 +43,8 @@ export type OccurrenceReminder = Pick<Database['public']['Tables']['reminders'][
 export type EventDetails = {
   guestEmails: string[]
   guestJoinFrom?: Record<string, string>
+  guestJoinUntil?: Record<string, string>
+  guestJoinHistory?: Record<string, Array<{ from: string | null; until: string }>>
   occurrenceGuestEmails: string[]
   guestAcknowledgements: Record<string, string | null>
   reminderKeys: ReminderKey[]
@@ -128,6 +130,7 @@ export function EventDialog({
   currentUserEmail,
   currentUserId,
   onJoin,
+  onChangeToOccurrence,
   onCheckJoinTime,
   busy,
   onClose,
@@ -153,6 +156,7 @@ export function EventDialog({
   currentUserEmail?: string
   currentUserId?: string
   onJoin?: (scope: 'occurrence' | 'series') => Promise<boolean>
+  onChangeToOccurrence?: () => Promise<boolean>
   onCheckJoinTime?: () => Promise<number>
   onClose: () => void
   onSave: (draft: EventDraft, notifyRecipients: boolean, scope: 'series' | 'occurrence') => Promise<void | { warning: string }>
@@ -187,14 +191,18 @@ export function EventDialog({
   const selectedEmails = new Set(parseGuestEmails(displayedGuestEmails).map((email) => email.toLowerCase()))
   const joinedEmail = currentUserEmail?.trim().toLowerCase()
   const joinedFrom = joinedEmail ? details?.guestJoinFrom?.[joinedEmail] : undefined
+  const joinedUntil = joinedEmail ? details?.guestJoinUntil?.[joinedEmail] : undefined
+  const joinedHistory = joinedEmail ? details?.guestJoinHistory?.[joinedEmail] ?? [] : []
+  const viewedStart = new Date(occurrenceStart ?? event?.start_datetime ?? '').getTime()
   const joinedSeries = Boolean(joinedEmail && details?.guestEmails.some((email) => email.toLowerCase() === joinedEmail)
-    && (!joinedFrom || new Date(occurrenceStart ?? event?.start_datetime ?? '').getTime() >= new Date(joinedFrom).getTime()))
+    && (((!joinedFrom || viewedStart >= new Date(joinedFrom).getTime())
+      && (!joinedUntil || viewedStart < new Date(joinedUntil).getTime()))
+      || joinedHistory.some((range) => (!range.from || viewedStart >= new Date(range.from).getTime()) && viewedStart < new Date(range.until).getTime())))
   const joinedOccurrence = Boolean(joinedEmail && details?.occurrenceGuestEmails.some((email) => email.toLowerCase() === joinedEmail))
   const joinedViewedAppointment = occurrenceStart ? joinedOccurrence : joinedSeries
 
   const joinMeeting = async () => {
     if (!event || !onJoin || !onCheckJoinTime || checkingJoin.current) return
-    let expanding = false
     const start = new Date(occurrenceStart ?? event.start_datetime).getTime()
     const expiredMessage = text('ไม่สามารถเข้าร่วมการประชุมได้ เนื่องจากเลยเวลานัดหมายแล้ว', 'You cannot join this meeting because its scheduled start time has passed.')
     let serverTime: number
@@ -213,12 +221,34 @@ export function EventDialog({
       return
     }
     if (joinedViewedAppointment) {
-      const canExpand = Boolean(event.recurrence_rule && !joinedSeries)
+      const recurring = Boolean(event.recurrence_rule)
+      const switchingToOccurrence = recurring && joinedSeries
+      const mascotUrl = `${import.meta.env?.BASE_URL ?? '/'}brand/pea-typing-mascot-v2.png`
       const notice = await Swal.fire({ icon: 'info', title: text('คุณได้ถูกเชิญเข้าร่วมประชุมนี้แล้ว', 'You have already been invited to this meeting.'),
-        showCancelButton: canExpand, confirmButtonText: canExpand ? text('เข้าร่วมทั้งชุดต่อ', 'Join the series') : text('ตกลง', 'OK'),
-        cancelButtonText: text('ปิด', 'Close') })
-      if (!canExpand || !notice.isConfirmed) return
-      expanding = true
+        text: recurring ? (switchingToOccurrence
+          ? text('คุณต้องการเปลี่ยนเป็นเข้าร่วมเฉพาะนัดนี้หรือไม่? การเข้าร่วมนัดอื่นที่ยังไม่ถึงจะถูกยกเลิก', 'Switch to this occurrence only? Your attendance at other future occurrences will be cancelled.')
+          : text('คุณต้องการเปลี่ยนเป็นเข้าร่วมประชุมทั้งชุดตั้งแต่นัดนี้เป็นต้นไปหรือไม่?', 'Switch to this and future occurrences?')) : undefined,
+        showCancelButton: recurring,
+        confirmButtonText: recurring ? (switchingToOccurrence ? text('เฉพาะนัดนี้', 'Only this occurrence') : text('ทั้งชุด', 'The whole series')) : text('ปิด', 'Close'),
+        cancelButtonText: text('ปิด', 'Close'),
+        showLoaderOnConfirm: recurring,
+        allowOutsideClick: () => !Swal.isLoading(),
+        preConfirm: recurring ? async () => {
+          Swal.update({ footer: `<div role="status" aria-live="polite" class="pea-join-pending"><img src="${mascotUrl}" alt="" class="pea-join-pending-mascot" /><p><span class="pea-pending-clock" aria-hidden="true"></span>Pending<span class="pea-pending-dots" aria-hidden="true">…</span></p></div>` })
+          try {
+            if (switchingToOccurrence && !onChangeToOccurrence) throw new Error(text('ไม่สามารถเปลี่ยนขอบเขตได้ กรุณาลองใหม่', 'Could not change attendance. Please try again.'))
+            const changed = switchingToOccurrence ? await onChangeToOccurrence!() : await onJoin('series')
+            return { changed }
+          } catch (reason) {
+            Swal.update({ footer: '' })
+            const message = reason && typeof reason === 'object' && 'message' in reason && typeof reason.message === 'string' ? reason.message : ''
+            Swal.showValidationMessage(message === 'meeting_join_start_passed' ? expiredMessage : message || text('เปลี่ยนการเข้าร่วมไม่สำเร็จ กรุณาลองใหม่', 'Could not change attendance. Please try again.'))
+            return false
+          }
+        } : undefined,
+      })
+      if (recurring && notice.isConfirmed) await Swal.fire({ icon: 'success', title: notice.value?.changed ? text('เปลี่ยนการเข้าร่วมแล้ว', 'Attendance changed') : text('การเข้าร่วมเป็นปัจจุบันแล้ว', 'Attendance is already up to date'), timer: 1800, showConfirmButton: false })
+      return
     }
     const recurring = Boolean(event.recurrence_rule)
     const mascotUrl = `${import.meta.env?.BASE_URL ?? '/'}brand/pea-typing-mascot-v2.png`
@@ -233,7 +263,7 @@ export function EventDialog({
         occurrence: text('เฉพาะนัดนี้', 'Only this occurrence'),
         series: text('ทั้งชุด', 'The whole series'),
       } : undefined,
-      inputValue: recurring ? (expanding ? 'series' : 'occurrence') : undefined,
+      inputValue: recurring ? 'occurrence' : undefined,
       showCancelButton: true,
       confirmButtonText: text('ยืนยันเข้าร่วม', 'Confirm attendance'),
       cancelButtonText: text('ยกเลิก', 'Cancel'),

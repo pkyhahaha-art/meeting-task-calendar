@@ -62,7 +62,15 @@ function endpoint(files: string[], rows: Store, options: { profileError?: boolea
   }
   const admin = {
     from: (table: string) => new Query(table),
-    rpc: async () => ({ data: rows.current_guests || [], error: options.membershipError ? { message: 'fixture access lookup failed' } : null }),
+    rpc: async (name: string, args: Row) => {
+      if (name === 'record_occurrence_acknowledgement') {
+        if (!(rows.current_guests || []).some((guest) => guest.email === args.target_email)) return { data: null, error: null }
+        writes.push('event_occurrence_acknowledgements')
+        ;(rows.event_occurrence_acknowledgements ||= []).push({ event_id: args.target_event_id, occurrence_id: args.target_occurrence_id, email: args.target_email, acknowledged_at: timestamp })
+        return { data: timestamp, error: null }
+      }
+      return { data: rows.current_guests || [], error: options.membershipError ? { message: 'fixture access lookup failed' } : null }
+    },
     storage: { from: () => ({ createSignedUrl: async () => { signed++; return { data: { signedUrl: 'https://fixture.invalid/private' }, error: null } } }) },
   }
   class FixedDate extends Date {
@@ -114,6 +122,29 @@ test('guest endpoint still reads and signs documents for a current appointment g
   assert.equal(service.signed(), 1)
 })
 
+test('guest acknowledgement is recorded only for the selected occurrence', async () => {
+  const rows = guestStore(); rows.current_guests = [{ email: 'guest@gmail.com' }]
+  const service = endpoint(['supabase/functions/guest-event/index.ts'], rows)
+  const response = await service.handler(new Request('https://fixture.invalid/', { method: 'POST', body: JSON.stringify({ token, action: 'acknowledge' }) }))
+  assert.equal(response.status, 200)
+  assert.equal(rows.event_guests[0].acknowledged_at, undefined)
+  assert.equal(rows.event_occurrence_acknowledgements[0].occurrence_id, 'occurrence-id')
+  const read = await service.handler(new Request('https://fixture.invalid/?token=' + token))
+  assert.equal((await read.json()).event.acknowledged_at, timestamp)
+})
+
+test('guest link preserves legacy series acknowledgement until attendance scope changes', async () => {
+  const rows = guestStore(); rows.current_guests = [{ email: 'guest@gmail.com' }]
+  rows.event_guests[0].acknowledged_at = timestamp
+  let service = endpoint(['supabase/functions/guest-event/index.ts'], rows)
+  let response = await service.handler(new Request('https://fixture.invalid/?token=' + token))
+  assert.equal((await response.json()).event.acknowledged_at, timestamp)
+  rows.event_guests[0].self_join_from = '2026-10-07T02:00:00Z'
+  service = endpoint(['supabase/functions/guest-event/index.ts'], rows)
+  response = await service.handler(new Request('https://fixture.invalid/?token=' + token))
+  assert.equal((await response.json()).event.acknowledged_at, null)
+})
+
 test('guest endpoint fails closed when current membership cannot be checked', async () => {
   const service = endpoint(['supabase/functions/guest-event/index.ts'], guestStore(), { membershipError: true })
   const response = await service.handler(new Request('https://fixture.invalid/?token=' + token))
@@ -150,6 +181,53 @@ test('legacy unrestricted series tokens and scoped future-member tokens retain a
     const service = endpoint(['supabase/functions/guest-event/index.ts'], rows)
     assert.equal((await service.handler(new Request('https://fixture.invalid/?token=' + token))).status, 200)
   }
+})
+
+for (const action of ['read', 'document', 'acknowledge']) test('unscoped legacy token retains historical access after scope changes: ' + action, async () => {
+  const rows = guestStore()
+  rows.guest_tokens[0].occurrence_id = null
+  rows.events[0].start_datetime = '2026-10-01T02:00:00Z'
+  rows.event_guests[0].self_join_from = '2026-10-20T02:00:00Z'
+  rows.event_guests[0].attendance_history = [{ from: null, until: '2026-10-07T02:00:00Z' }]
+  rows.event_occurrences[0].occurrence_key = rows.events[0].start_datetime
+  rows.current_guests = [{ email: 'guest@gmail.com' }]
+  rows.attachments[0].occurrence_id = null
+  const service = endpoint(['supabase/functions/guest-event/index.ts'], rows)
+  const request = action === 'acknowledge'
+    ? new Request('https://fixture.invalid/', { method: 'POST', body: JSON.stringify({ token, action: 'acknowledge' }) })
+    : new Request('https://fixture.invalid/?token=' + token + (action === 'document' ? '&attachment_id=file-id' : ''))
+  assert.equal((await service.handler(request)).status, action === 'document' ? 302 : 200)
+})
+
+for (const [label, tamper] of [
+  ['an owner exclusion', (rows: Store) => { rows.current_guests = [] }],
+  ['a cancelled original appointment', (rows: Store) => { rows.event_occurrences[0].status = 'cancelled' }],
+  ['a missing original appointment', (rows: Store) => { rows.event_occurrences = [] }],
+] as const) test('changed-scope legacy link denies ' + label + ' without signing documents', async () => {
+  const rows = guestStore()
+  rows.guest_tokens[0].occurrence_id = null
+  rows.events[0].start_datetime = '2026-10-01T02:00:00Z'
+  rows.event_occurrences[0].occurrence_key = rows.events[0].start_datetime
+  rows.event_guests[0].self_join_from = rows.events[0].start_datetime
+  rows.event_guests[0].self_join_until = rows.events[0].start_datetime
+  rows.attachments[0].occurrence_id = null
+  rows.current_guests = [{ email: 'guest@gmail.com' }]
+  tamper(rows)
+  const service = endpoint(['supabase/functions/guest-event/index.ts'], rows)
+  assert.equal((await service.handler(new Request('https://fixture.invalid/?token=' + token + '&attachment_id=file-id'))).status, 404)
+  assert.equal(service.signed(), 0)
+})
+
+test('unscoped link for a retained original occurrence survives changing scope', async () => {
+  const rows = guestStore()
+  rows.guest_tokens[0].occurrence_id = null
+  rows.events[0].start_datetime = '2026-10-07T02:00:00Z'
+  rows.event_occurrences[0].occurrence_key = rows.events[0].start_datetime
+  rows.event_guests[0].self_join_from = rows.events[0].start_datetime
+  rows.event_guests[0].self_join_until = rows.events[0].start_datetime
+  rows.current_guests = [{ email: 'guest@gmail.com' }]
+  const service = endpoint(['supabase/functions/guest-event/index.ts'], rows)
+  assert.equal((await service.handler(new Request('https://fixture.invalid/?token=' + token))).status, 200)
 })
 
 function cancellationGuestStore(): Store {

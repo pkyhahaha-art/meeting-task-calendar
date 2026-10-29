@@ -98,8 +98,8 @@ export interface Database {
         Relationships: []
       }
       event_guests: {
-        Row: { id: string; event_id: string; occurrence_id: string | null; email: string; revoked_at: string | null; acknowledged_at: string | null; created_at: string; self_join_from: string | null }
-        Insert: { id?: string; event_id: string; occurrence_id?: string | null; email: string; revoked_at?: string | null; self_join_from?: string | null }
+        Row: { id: string; event_id: string; occurrence_id: string | null; email: string; revoked_at: string | null; acknowledged_at: string | null; created_at: string; self_join_from: string | null; self_join_until: string | null; attendance_history: Json }
+        Insert: { id?: string; event_id: string; occurrence_id?: string | null; email: string; revoked_at?: string | null; self_join_from?: string | null; self_join_until?: string | null; attendance_history?: Json }
         Update: Partial<Database['public']['Tables']['event_guests']['Insert']>
         Relationships: []
       }
@@ -107,6 +107,12 @@ export interface Database {
         Row: { occurrence_id: string; email: string; created_at: string }
         Insert: { occurrence_id: string; email: string; created_at?: string }
         Update: Partial<Database['public']['Tables']['event_occurrence_guest_exclusions']['Insert']>
+        Relationships: []
+      }
+      event_occurrence_acknowledgements: {
+        Row: { event_id: string; occurrence_id: string; email: string; acknowledged_at: string }
+        Insert: { event_id: string; occurrence_id: string; email: string; acknowledged_at?: string }
+        Update: Partial<Database['public']['Tables']['event_occurrence_acknowledgements']['Insert']>
         Relationships: []
       }
       attachments: {
@@ -250,6 +256,7 @@ export interface Database {
       admin_cancel_meeting_occurrence: { Args: { target_event_id: string; target_occurrence_start: string; target_reason: string }; Returns: string }
       meeting_mobile_recipients_available: { Args: { target_guest_emails: string[]; target_event_id?: string }; Returns: boolean }
       join_meeting_as_attendee: { Args: { target_event_id: string; target_occurrence_start: string; target_scope: 'occurrence' | 'series' }; Returns: boolean }
+      change_meeting_attendance_to_occurrence: { Args: { target_event_id: string; target_occurrence_start: string }; Returns: boolean }
       meeting_join_server_time: { Args: Record<PropertyKey, never>; Returns: string }
       cancel_meeting_occurrence: { Args: { target_event_id: string; target_occurrence_start: string }; Returns: string }
       detach_meeting_occurrence: {

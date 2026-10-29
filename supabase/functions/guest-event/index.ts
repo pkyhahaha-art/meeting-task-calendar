@@ -38,9 +38,6 @@ Deno.serve(async (request) => {
       .eq('id', tokenRow.guest_id).is('revoked_at', null).maybeSingle()
     if (guestError) throw guestError
     if (!guest) return json({ error: 'สิทธิ์เข้าถึงถูกยกเลิกแล้ว' }, 404)
-    // A future-scoped series subscription never authorizes the historical
-    // base Meeting represented by an unscoped token.
-    if (guest.self_join_from && !tokenRow.occurrence_id) return json({ error: 'สิทธิ์เข้าถึงนัดหมายนี้ถูกยกเลิกแล้ว' }, 404)
     if (guest.occurrence_id && guest.occurrence_id !== tokenRow.occurrence_id) return json({ error: 'สิทธิ์เข้าถึงนัดหมายนี้ถูกยกเลิกแล้ว' }, 404)
 
     const occurrenceRequest = tokenRow.occurrence_id
@@ -53,6 +50,22 @@ Deno.serve(async (request) => {
     ])
     if (eventError || occurrenceError || attachmentError) throw eventError ?? occurrenceError ?? attachmentError
     if (!event || event.deleted_at || event.status !== 'scheduled') return json({ error: 'Meeting นี้ถูกยกเลิกแล้ว' }, 404)
+    let acknowledgementOccurrenceId: string | null = tokenRow.occurrence_id
+    if (!tokenRow.occurrence_id && (guest.self_join_from || guest.self_join_until || (Array.isArray(guest.attendance_history) && guest.attendance_history.length))) {
+      // A legacy unscoped link represents the original appointment. Once the
+      // series membership changes, validate that exact occurrence, including
+      // owner exclusions, before returning details or signing any documents.
+      const first = await admin.from('event_occurrences').select('id,status')
+        .eq('event_id', guest.event_id).eq('occurrence_key', event.start_datetime).maybeSingle()
+      if (first.error) throw first.error
+      if (!first.data || first.data.status !== 'scheduled') return json({ error: 'สิทธิ์เข้าถึงนัดหมายนี้ถูกยกเลิกแล้ว' }, 404)
+      const { data: currentGuests, error: accessError } = await admin.rpc('occurrence_guest_emails', {
+        target_event_id: guest.event_id, target_occurrence_id: first.data.id,
+      })
+      if (accessError) throw accessError
+      if (!currentGuests?.some((item: { email: string }) => item.email.toLowerCase() === guest.email.trim().toLowerCase())) return json({ error: 'สิทธิ์เข้าถึงนัดหมายนี้ถูกยกเลิกแล้ว' }, 404)
+      acknowledgementOccurrenceId = first.data.id
+    }
     let cancellationNotice: { original_occurrence_start?: unknown; new_occurrence_start?: unknown } | null = null
     if (tokenRow.occurrence_id && (!occurrence || occurrence.status !== 'scheduled')) {
       // Only the recipient's actual cancellation email can open its cancelled
@@ -92,6 +105,15 @@ Deno.serve(async (request) => {
       } : {}),
     }
 
+    if (request.method === 'POST' && acknowledgementOccurrenceId) {
+      const { data, error } = await admin.rpc('record_occurrence_acknowledgement', {
+        target_event_id: guest.event_id, target_occurrence_id: acknowledgementOccurrenceId, target_email: guest.email,
+      })
+      if (error) throw error
+      if (!data) return json({ error: 'สิทธิ์เข้าถึงนัดหมายนี้ถูกยกเลิกแล้ว' }, 404)
+      return json({ acknowledged_at: data })
+    }
+
     if (request.method === 'POST') {
       const { data, error } = await admin.from('event_guests')
         .update({ acknowledged_at: guest.acknowledged_at ?? new Date().toISOString() })
@@ -114,8 +136,17 @@ Deno.serve(async (request) => {
       if (error || !data) throw error ?? new Error('Unable to sign attachment')
       return { id: attachment.id, file_name: attachment.file_name, url: data.signedUrl }
     }))
+    let acknowledgedAt = guest.acknowledged_at
+    if (acknowledgementOccurrenceId) {
+      const { data, error } = await admin.from('event_occurrence_acknowledgements').select('acknowledged_at')
+        .eq('event_id', guest.event_id).eq('occurrence_id', acknowledgementOccurrenceId).eq('email', guest.email.trim().toLowerCase()).maybeSingle()
+      if (error) throw error
+      const legacyAcknowledgementApplies = Boolean(guest.occurrence_id)
+        || (!guest.self_join_from && !guest.self_join_until && (!Array.isArray(guest.attendance_history) || guest.attendance_history.length === 0))
+      acknowledgedAt = data?.acknowledged_at ?? (legacyAcknowledgementApplies ? guest.acknowledged_at : null)
+    }
     await admin.from('guest_tokens').update({ last_accessed_at: new Date().toISOString() }).eq('id', tokenRow.id)
-    return json({ event: { ...eventForGuest, acknowledged_at: guest.acknowledged_at, attachments: files } })
+    return json({ event: { ...eventForGuest, acknowledged_at: acknowledgedAt, attachments: files } })
   } catch (error) {
     console.error(error)
     return json({ error: 'ไม่สามารถเปิดข้อมูล Meeting ได้ในขณะนี้' }, 500)

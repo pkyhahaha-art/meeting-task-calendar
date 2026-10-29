@@ -76,12 +76,26 @@ async function hashToken(token: string) {
 async function issueAcknowledgementUrl(delivery: Delivery) {
   if (delivery.channel !== 'email' || !['task_assignee', 'external_assignee', 'guest'].includes(delivery.recipient_type)) return ''
   if (!delivery.event_id && !delivery.task_id) return ''
+  let acknowledgementOccurrenceId = ''
+  // Scoped participants receive a token for the appointment in this mail;
+  // an unscoped token would acknowledge appointments they did not join.
+  if (delivery.event_id && delivery.recipient_type === 'guest') {
+    const rows = await supabase.from('event_guests').select('email,self_join_from,self_join_until,attendance_history')
+      .eq('event_id', delivery.event_id).is('occurrence_id', null).is('revoked_at', null)
+    if (rows.error) throw rows.error
+    const guest = (rows.data ?? []).find((row: { email: string }) => text(row.email).trim().toLowerCase() === delivery.recipient_reference.trim().toLowerCase())
+    if (!guest || guest.self_join_from || guest.self_join_until || (Array.isArray(guest.attendance_history) && guest.attendance_history.length)) {
+      acknowledgementOccurrenceId = await meetingOccurrenceIdForDelivery(delivery)
+      if (!acknowledgementOccurrenceId) return ''
+    }
+  }
   const token = randomToken()
   const { error } = await supabase.from('email_acknowledgement_tokens').insert({
     event_id: delivery.event_id,
     task_id: delivery.task_id,
     recipient_type: delivery.recipient_type,
     recipient_reference: delivery.recipient_reference.toLowerCase(),
+    ...(acknowledgementOccurrenceId ? { occurrence_id: acknowledgementOccurrenceId } : {}),
     token_hash: await hashToken(token),
     expires_at: new Date(Date.now() + 30 * 24 * 60 * 60_000).toISOString(),
   })
@@ -307,6 +321,39 @@ async function currentOccurrenceEmailRecipient(delivery: Delivery) {
   return (guests.data ?? []).some((guest: { email: string }) => text(guest.email).toLowerCase() === delivery.recipient_reference.trim().toLowerCase())
 }
 
+// Recheck queued guest mail, including retries created before attendance changed.
+// A null occurrence is evaluated as the legacy series-wide scope by the RPC.
+async function meetingOccurrenceIdForDelivery(delivery: Delivery) {
+  let occurrenceId = await occurrenceIdForDelivery(delivery, delivery.payload)
+  if (!occurrenceId && delivery.reminder_id && delivery.event_id) {
+    const meeting = await supabase.from('events').select('start_datetime,recurrence_rule').eq('id', delivery.event_id).maybeSingle()
+    if (meeting.error) throw meeting.error
+    if (!meeting.data) return ''
+    if (meeting.data.recurrence_rule) {
+      const first = await supabase.from('event_occurrences').select('id').eq('event_id', delivery.event_id)
+        .eq('occurrence_key', meeting.data.start_datetime).maybeSingle()
+      if (first.error) throw first.error
+      if (!first.data) return ''
+      occurrenceId = first.data.id
+    }
+  }
+  return occurrenceId
+}
+
+async function currentMeetingGuestEmailRecipient(delivery: Delivery) {
+  if (!delivery.event_id || delivery.recipient_type !== 'guest') return true
+  const occurrenceId = await meetingOccurrenceIdForDelivery(delivery)
+  // A legacy first-occurrence reminder must not fall back to broad series scope.
+  if (delivery.reminder_id && !occurrenceId) {
+    const meeting = await supabase.from('events').select('recurrence_rule').eq('id', delivery.event_id).maybeSingle()
+    if (meeting.error) throw meeting.error
+    if (!meeting.data || meeting.data.recurrence_rule) return false
+  }
+  const guests = await supabase.rpc('occurrence_guest_emails', { target_event_id: delivery.event_id, target_occurrence_id: occurrenceId || null })
+  if (guests.error) throw guests.error
+  return (guests.data ?? []).some((guest: { email: string }) => text(guest.email).trim().toLowerCase() === delivery.recipient_reference.trim().toLowerCase())
+}
+
 async function issueExternalTaskUrl(delivery: Delivery, taskId: string) {
   if (!publicAppUrl) return ''
   const token = randomToken()
@@ -439,6 +486,14 @@ Deno.serve(async (request) => {
         const skipped = await supabase.from('notification_deliveries').update({
           status: 'skipped', next_attempt_at: null, error_code: 'meeting_recipient_unavailable',
           error_message: 'The recipient or appointment is no longer eligible for this email notification.',
+        }).eq('id', delivery.id)
+        if (skipped.error) throw skipped.error
+        continue
+      }
+      if (delivery.channel === 'email' && !isOccurrenceNotice(delivery) && !await currentMeetingGuestEmailRecipient(delivery)) {
+        const skipped = await supabase.from('notification_deliveries').update({
+          status: 'skipped', next_attempt_at: null, error_code: 'meeting_recipient_unavailable',
+          error_message: 'The recipient is no longer eligible for this meeting email notification.',
         }).eq('id', delivery.id)
         if (skipped.error) throw skipped.error
         continue
