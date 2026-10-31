@@ -24,6 +24,36 @@ const details: EventDetails = {
 }
 const noop = async () => {}
 
+test('successful attendance confirmation closes the form; cancellation and failure keep it open', async () => {
+  const fire = Swal.fire, update = Swal.update, validation = Swal.showValidationMessage
+  Swal.update = (() => {}) as typeof Swal.update
+  Swal.showValidationMessage = (() => {}) as typeof Swal.showValidationMessage
+  try {
+    for (const scenario of ['single', 'occurrence', 'series', 'cancel', 'failure'] as const) {
+      let renderer!: ReactTestRenderer
+      let closed = 0, selected = '', step = 0
+      Swal.fire = (async (options: { preConfirm?: (scope: string) => Promise<unknown> }) => {
+        step++
+        if (step > 1) return { isConfirmed: false }
+        if (scenario === 'cancel') return { isConfirmed: false }
+        const value = await options.preConfirm!(scenario === 'series' ? 'series' : 'occurrence')
+        return value === false ? { isConfirmed: false } : { isConfirmed: true, value }
+      }) as typeof Swal.fire
+      try {
+        const recurring = scenario !== 'single'
+        act(() => { renderer = create(<LanguageProvider><EventDialog open event={{ ...event, owner_user_id: 'owner', recurrence_rule: recurring ? 'FREQ=WEEKLY' : null }} details={details}
+          currentUserId="member" currentUserEmail="member@gmail.com" occurrenceStart={recurring ? event.start_datetime : undefined}
+          onCheckJoinTime={async () => Date.parse('2029-01-01T00:00:00Z')} onJoin={async scope => { selected = scope; if (scenario === 'failure') throw new Error('failed'); return true }}
+          canEdit={false} canViewDeliveryStatus={false} busy={false} onClose={() => { closed++ }} onSave={noop} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>) })
+        await act(async () => { renderer.root.findAllByType('button').find(button => button.children.includes('Join this meeting'))!.props.onClick(); await new Promise(resolve => setImmediate(resolve)) })
+        assert.equal(closed, scenario === 'cancel' || scenario === 'failure' ? 0 : 1, scenario)
+        if (scenario === 'series') assert.equal(selected, 'series')
+        if (scenario === 'single' || scenario === 'occurrence') assert.equal(selected, 'occurrence')
+      } finally { if (renderer) act(() => renderer.unmount()) }
+    }
+  } finally { Swal.fire = fire; Swal.update = update; Swal.showValidationMessage = validation }
+})
+
 test('employee attendees do not appear in external fields; editing external email preserves the employee', async () => {
   let renderer!: ReactTestRenderer
   let saved: EventDraft | undefined
@@ -61,7 +91,7 @@ test('an invited member pressing join sees the invitation message without anothe
 
 test('an occurrence attendee can expand to the series directly from the invitation notice', async () => {
   const fire = Swal.fire, update = Swal.update
-  let scope = ''
+  let scope = '', closed = 0
   let renderer!: ReactTestRenderer
   let step = 0
   Swal.update = (() => {}) as typeof Swal.update
@@ -75,15 +105,16 @@ test('an occurrence attendee can expand to the series directly from the invitati
     act(() => { renderer = create(<LanguageProvider><EventDialog open event={{ ...event, owner_user_id: 'owner', recurrence_rule: 'FREQ=WEEKLY;BYDAY=WE' }} details={invited}
       occurrenceStart={event.start_datetime} currentUserEmail="member@gmail.com" currentUserId="member" onCheckJoinTime={async () => Date.parse('2029-01-01T00:00:00Z')}
       onJoin={async selected => { scope = selected; return true }} canEdit={false} canViewDeliveryStatus={false} busy={false}
-      onClose={() => {}} onSave={noop} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>) })
+      onClose={() => { closed++ }} onSave={noop} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>) })
     await act(async () => { renderer.root.findAllByType('button').find(button => button.children.includes('Join this meeting'))!.props.onClick(); await new Promise(resolve => setImmediate(resolve)) })
     assert.equal(scope, 'series')
+    assert.equal(closed, 1)
   } finally { Swal.fire = fire; Swal.update = update; if (renderer) act(() => renderer.unmount()) }
 })
 
 test('a series attendee can switch to this occurrence with clear consequences', async () => {
   const fire = Swal.fire, update = Swal.update
-  let calls = 0, normalJoins = 0, step = 0
+  let calls = 0, normalJoins = 0, step = 0, closed = 0
   let renderer!: ReactTestRenderer
   Swal.update = (() => {}) as typeof Swal.update
   Swal.fire = (async (options: { confirmButtonText?: string; text?: string; preConfirm?: () => Promise<unknown> }) => {
@@ -96,10 +127,11 @@ test('a series attendee can switch to this occurrence with clear consequences', 
     act(() => { renderer = create(<LanguageProvider><EventDialog open event={{ ...event, owner_user_id: 'owner', recurrence_rule: 'FREQ=WEEKLY;BYDAY=WE' }} details={invited}
       occurrenceStart={event.start_datetime} currentUserEmail="member@gmail.com" currentUserId="member" onCheckJoinTime={async () => Date.parse('2029-01-01T00:00:00Z')}
       onJoin={async () => { normalJoins++; return true }} onChangeToOccurrence={async () => { calls++; return true }} canEdit={false} canViewDeliveryStatus={false} busy={false}
-      onClose={() => {}} onSave={noop} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>) })
+      onClose={() => { closed++ }} onSave={noop} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>) })
     await act(async () => { renderer.root.findAllByType('button').find(button => button.children.includes('Join this meeting'))!.props.onClick(); await new Promise(resolve => setImmediate(resolve)) })
     assert.equal(calls, 1)
     assert.equal(normalJoins, 0)
+    assert.equal(closed, 1)
   } finally { Swal.fire = fire; Swal.update = update; if (renderer) act(() => renderer.unmount()) }
 })
 
@@ -239,7 +271,7 @@ test('join uses one native radio scope and the PEA pending presentation', async 
     assert.deepEqual(submissions, ['series'])
     assert.match(pending[0], /Pending/)
     assert.match(pending[0], /pea-pending-clock/)
-    assert.match(pending[0], /pea-typing-mascot-v2\.png/)
+    assert.doesNotMatch(pending[0], /<img|pea-typing-mascot-v2\.png/)
     assert.doesNotMatch(pending[0], /มาสคอต PEA|PEA is confirming/)
   } finally { Swal.fire = originalFire; Swal.update = originalUpdate; Swal.showValidationMessage = originalValidation; if (renderer) act(() => renderer.unmount()) }
 })

@@ -10,10 +10,9 @@ import luxonPlugin from '@fullcalendar/luxon3'
 import thLocale from '@fullcalendar/core/locales/th'
 import enGbLocale from '@fullcalendar/core/locales/en-gb'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarCheck2, CalendarDays, CalendarPlus, CheckCircle2, Clock3, FileText, Link2, ListTodo, Search, Sparkles, Zap } from 'lucide-react'
+import { CalendarDays, CalendarPlus, CheckCircle2, Clock3, FileText, Link2, ListTodo, Search } from 'lucide-react'
 import Swal from 'sweetalert2'
-import bannerHero from '../../ภาพประกอบUI/PEA Calendar Banner 2D.png'
-import weekPlannerMascot from '../../ภาพประกอบUI/PEA Week Planner Mascot.png'
+
 import { useAuth } from '../auth/AuthProvider'
 import { profileAffiliation } from '../lib/organization'
 import { useConfirm } from '../components/ConfirmDialogProvider'
@@ -38,6 +37,7 @@ import {
   type TaskReminderKey,
 } from '../lib/taskForm'
 import { supabase } from '../lib/supabase'
+import { CalendarPeople } from '../components/MemberAvatar'
 import { checkMeetingMobileRecipients, getConnectedDevices } from '../lib/mobilePush'
 
 type EventRow = Database['public']['Tables']['events']['Row']
@@ -114,6 +114,25 @@ export function CalendarPage() {
   const [calendarTooltip, setCalendarTooltip] = useState<CalendarTooltip | null>(null)
   const attemptedEmailAcknowledgement = useRef<string | null>(null)
   const calendarRef = useRef<FullCalendar | null>(null)
+  const calendarContainerRef = useRef<HTMLDivElement | null>(null)
+  const miniCalendarRef = useRef<FullCalendar | null>(null)
+  const [miniSelectedDate, setMiniSelectedDate] = useState(() => bangkokDate())
+  useEffect(() => {
+    const container = calendarContainerRef.current
+    if (!container || typeof ResizeObserver === 'undefined') return
+    let frame = 0
+    let lastSize = ''
+    const observer = new ResizeObserver(([entry]) => {
+      if (!entry) return
+      const size = `${entry.contentRect.width}:${entry.contentRect.height}`
+      if (size === lastSize) return
+      lastSize = size
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => calendarRef.current?.getApi().updateSize())
+    })
+    observer.observe(container)
+    return () => { observer.disconnect(); cancelAnimationFrame(frame) }
+  }, [])
   const [calendarView, setCalendarView] = useState<CalendarView>('month')
   const [compactCalendar, setCompactCalendar] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches)
   const [calendarRange, setCalendarRange] = useState(() => {
@@ -138,6 +157,11 @@ export function CalendarPage() {
   }, [calendarView, compactCalendar])
 
   const updateCalendarRange = useCallback((info: DatesSetArg) => {
+    const mini = miniCalendarRef.current?.getApi()
+    const currentDate = calendarRef.current?.getApi().getDate() ?? info.start
+    setMiniSelectedDate(calendarDayKey(currentDate))
+    if (mini && (mini.getDate().getFullYear() !== currentDate.getFullYear()
+      || mini.getDate().getMonth() !== currentDate.getMonth())) mini.gotoDate(currentDate)
     setCalendarRange((current) => current.start.getTime() === info.start.getTime() && current.end.getTime() === info.end.getTime()
       ? current : { start: info.start, end: info.end })
   }, [])
@@ -480,7 +504,7 @@ export function CalendarPage() {
     },
     onSuccess: async ({ warning }) => {
       setEventSaveWarning(warning)
-      await Promise.all([queryClient.invalidateQueries({ queryKey: ['events'] }), queryClient.invalidateQueries({ queryKey: ['event-details'] }), queryClient.invalidateQueries({ queryKey: ['meeting-exceptions'] }), queryClient.invalidateQueries({ queryKey: ['recent-documents'] }), queryClient.invalidateQueries({ queryKey: ['event-creation-stats'] }), queryClient.invalidateQueries({ queryKey: ['admin-calendar-items'] })])
+      await Promise.all([queryClient.invalidateQueries({ queryKey: ['events'] }), queryClient.invalidateQueries({ queryKey: ['calendar-avatar-roster'] }), queryClient.invalidateQueries({ queryKey: ['event-details'] }), queryClient.invalidateQueries({ queryKey: ['meeting-exceptions'] }), queryClient.invalidateQueries({ queryKey: ['recent-documents'] }), queryClient.invalidateQueries({ queryKey: ['event-creation-stats'] }), queryClient.invalidateQueries({ queryKey: ['admin-calendar-items'] })])
     },
   })
 
@@ -636,7 +660,7 @@ export function CalendarPage() {
 
   const deleteEventMutation = useMutation({
     mutationFn: async (event: EventRow) => { const { error } = await supabase.from('events').update({ deleted_at: new Date().toISOString() }).eq('id', event.id); if (error) throw error },
-    onSuccess: async () => { await Promise.all([queryClient.invalidateQueries({ queryKey: ['events'] }), queryClient.invalidateQueries({ queryKey: ['event-creation-stats'] })]); setEventDialog({ open: false, event: null }) },
+    onSuccess: async () => { await Promise.all([queryClient.invalidateQueries({ queryKey: ['events'] }), queryClient.invalidateQueries({ queryKey: ['calendar-avatar-roster'] }), queryClient.invalidateQueries({ queryKey: ['event-creation-stats'] })]); setEventDialog({ open: false, event: null }) },
   })
   const joinMeetingMutation = useMutation({
     mutationFn: async (scope: 'occurrence' | 'series') => {
@@ -649,7 +673,7 @@ export function CalendarPage() {
       if (error) throw error
       return data === true
     },
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['event-details', selectedEvent?.id] }) },
+    onSuccess: async () => { await Promise.all([queryClient.invalidateQueries({ queryKey: ['event-details', selectedEvent?.id] }), queryClient.invalidateQueries({ queryKey: ['calendar-avatar-roster'] })]) },
   })
   const changeAttendanceMutation = useMutation({
     mutationFn: async () => {
@@ -695,7 +719,7 @@ export function CalendarPage() {
       }
     },
     onSuccess: async () => {
-      await Promise.all(['events', 'event-details', 'meeting-exceptions', 'recent-documents', 'event-creation-stats'].map((key) => queryClient.invalidateQueries({ queryKey: [key] })))
+      await Promise.all(['calendar-avatar-roster', 'events', 'event-details', 'meeting-exceptions', 'recent-documents', 'event-creation-stats'].map((key) => queryClient.invalidateQueries({ queryKey: [key] })))
       setEventDialog({ open: false, event: null })
     },
   })
@@ -858,7 +882,7 @@ export function CalendarPage() {
       locale={language === 'th' ? thLocale : enGbLocale}
       timeZone="Asia/Bangkok"
       initialView={calendarViewType(calendarView, compactCalendar)}
-      slotEventOverlap={calendarView !== 'week'}
+      slotEventOverlap={calendarView !== 'week' && calendarView !== 'day'}
       eventMaxStack={calendarView === 'week' ? 2 : undefined}
       datesSet={updateCalendarRange}
       firstDay={1}
@@ -891,81 +915,69 @@ export function CalendarPage() {
       eventContent={(info) => {
         const isTask = info.event.extendedProps.kind === 'task'
         const task = isTask ? info.event.extendedProps.row as TaskRow : null
-        const Icon = isTask ? ListTodo : CalendarDays
+        const Icon = info.event.extendedProps.isOverdue ? Clock3 : isTask ? task?.status === 'completed' ? CheckCircle2 : ListTodo : CalendarDays
         const title = `${task?.status === 'completed' ? text('เสร็จแล้ว: ', 'Completed: ') : ''}${info.event.title}`
-        if (info.view.type === 'timeGridWeek' && !info.event.allDay) return <div className="min-w-0 px-1 text-[11px] leading-tight"><span className="block truncate font-bold tabular-nums">{info.timeText.match(/^\d{1,2}:\d{2}/)?.[0] ?? info.timeText}</span><div className="fc-event-title">{title}</div></div>
-        return <div className="flex min-w-0 items-start gap-1 px-0.5"><Icon size={12} className="mt-0.5 shrink-0" aria-hidden="true" /><div className="min-w-0 flex-1">{info.view.type.startsWith('timeGrid') && !info.event.allDay && <span className="block truncate font-semibold tabular-nums">{info.timeText}</span>}<div className="fc-event-title truncate">{title}</div></div></div>
+        const people = <CalendarPeople ownerId={task ? task.creator_user_id : (info.event.extendedProps.row as EventRow).owner_user_id} eventId={isTask ? undefined : (info.event.extendedProps.row as EventRow).id} start={info.event.extendedProps.occurrenceStart as string | undefined ?? info.event.start?.toISOString()} profiles={profilesQuery.data ?? []} />
+        if (info.view.type === 'timeGridWeek' && !info.event.allDay) return <div className="calendar-entry-content min-w-0 px-1"><span className="flex min-w-0 items-center gap-1"><Icon size={13} className="shrink-0" aria-hidden="true" /><span className="truncate font-medium tabular-nums">{info.timeText.match(/^\d{1,2}:\d{2}/)?.[0] ?? info.timeText}</span></span><div className="fc-event-title">{title}</div>{people}</div>
+        return <div className="calendar-entry-content flex min-w-0 items-start gap-1 px-0.5"><Icon size={12} className="mt-0.5 shrink-0" aria-hidden="true" /><div className="min-w-0 flex-1">{info.view.type.startsWith('timeGrid') && !info.event.allDay && <span className="block truncate font-semibold tabular-nums">{info.timeText}</span>}<div className="fc-event-title truncate">{title}</div>{people}</div></div>
       }}
       events={calendarEntries}
-      headerToolbar={{ left: 'prev,next today', center: 'title', right: '' }}
-      dayMaxEvents
+      headerToolbar={{ left: 'title prev,next today', center: '', right: '' }}
+      dayMaxEvents={1}
       moreLinkContent={(info) => text(`+${info.num} เพิ่มเติม`, `+${info.num} more`)}
     />
-  ), [calendarEntries, entriesByDay, calendarView, compactCalendar, language, text, updateCalendarRange, warnPastCreation, setCalendarTooltipAt, showCalendarTooltip])
+  ), [calendarEntries, entriesByDay, calendarView, compactCalendar, language, text, updateCalendarRange, warnPastCreation, setCalendarTooltipAt, showCalendarTooltip, profilesQuery.data])
 
-  return (
-    <main className="calendar-page-main mx-auto max-w-[1600px] p-4 sm:p-6 xl:flex xl:flex-col xl:p-3">
-      <section className="relative mb-6 min-h-64 overflow-hidden rounded-[28px] border border-purple-100 bg-gradient-to-r from-[#f0dcff] via-[#fff0f7] to-[#eee6ff] px-6 py-7 shadow-sm sm:min-h-72 sm:px-8 xl:mb-2 xl:h-40 xl:min-h-0 xl:shrink-0 xl:px-8 xl:py-3" aria-label={text('ยินดีต้อนรับ', 'Welcome')}>
-        <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[28px]" aria-hidden="true">
-          <span className="absolute -left-16 -top-24 h-64 w-64 rounded-full bg-white/35 blur-2xl" />
-          <span className="absolute -bottom-24 right-8 h-64 w-64 rounded-full bg-purple-300/25 blur-2xl" />
-          <div className="absolute bottom-[-3rem] left-[43%] hidden h-40 w-32 rotate-[-5deg] rounded-[22px] border-4 border-white/25 bg-white/10 p-3 sm:block xl:h-28 xl:w-24 xl:p-2">
-            <span className="absolute -top-3 left-5 h-6 w-2 rounded-full bg-purple-300/30" />
-            <span className="absolute -top-3 right-5 h-6 w-2 rounded-full bg-purple-300/30" />
-            <span className="mt-3 grid grid-cols-3 gap-2 opacity-35 xl:gap-1.5">{Array.from({ length: 6 }, (_, index) => <span key={index} className={`aspect-square rounded-md ${index === 4 ? 'bg-purple-400/45' : 'bg-white/60'}`} />)}</span>
-          </div>
-          <Sparkles className="absolute left-[46%] top-8 hidden text-amber-400/80 drop-shadow-sm lg:block xl:top-3" size={24} />
-          <span className="absolute left-[51%] top-14 hidden h-2.5 w-2.5 rounded-full bg-pink-300/80 lg:block xl:top-8" />
-          <Clock3 className="absolute bottom-5 left-[57%] hidden text-brand-500/25 xl:block" size={34} strokeWidth={1.8} />
-          <CheckCircle2 className="absolute left-[62%] top-4 hidden text-amber-500/30 xl:block" size={30} strokeWidth={2} />
-          <span className="absolute left-[54%] top-3 hidden h-1.5 w-1.5 rounded-full bg-brand-400/30 xl:block" />
-          <span className="absolute bottom-3 left-[65%] hidden h-12 w-24 rounded-[50%] border-t-2 border-purple-400/20 xl:block" />
-        </div>
-        <div className="relative z-20 max-w-full sm:max-w-[54%] xl:max-w-[56%]">
-          <p className="mb-2 flex items-center gap-2 text-sm font-bold text-brand-800 xl:mb-0.5 xl:text-[11px]"><Sparkles size={16} />{text('จัดการนัดหมาย ประชุม งานสำคัญ', 'Manage appointments, meetings, and important tasks')} <CalendarCheck2 className="text-violet-500" size={18} /></p>
-          <h1 className="text-3xl font-extrabold leading-tight text-brand-900 sm:text-4xl xl:text-[1.65rem]">{text('ให้ทุกวันเป็นวันของความสำเร็จ', 'Make every day a success')}</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 xl:mt-1 xl:text-xs xl:leading-5">{text('ปฏิทินอัจฉริยะสำหรับชาว กฟภ. ช่วยให้การทำงานเป็นระบบมากขึ้น นัดหมายง่าย ไม่พลาดทุกภารกิจ สู่อนาคตพลังงานที่ยั่งยืน', 'A smart calendar for PEA teams. Organize work, keep every appointment in view, and move toward a sustainable energy future.')}</p>
-          <p className="mt-4 inline-flex rounded-full bg-white/55 px-5 py-2 text-sm font-bold text-brand-700 shadow-sm backdrop-blur-sm xl:mt-2 xl:px-4 xl:py-1 xl:text-xs">{text('“ ร่วมขับเคลื่อนพลังงาน เพื่อชีวิตที่ดีกว่าของทุกคน ”', '“ Driving energy for a better life for everyone ”')}</p>
-        </div>
-        <div className="absolute right-[25.5rem] top-2 z-30 hidden -rotate-2 rounded-[22px] border border-purple-200/70 bg-white/80 px-4 py-2 pr-8 text-center text-xs font-bold leading-4 text-brand-800 shadow-sm backdrop-blur-sm xl:block">
-          <span className="absolute -right-2 top-1/2 h-4 w-4 -translate-y-1/2 rotate-45 border-r border-t border-purple-200/70 bg-white/80" />
-          <span className="relative z-10">{text('นัดง่าย', 'Plan easily')}<br />{text('งานราบรื่น', 'Work smoothly')}<br />{text('ไปด้วยกัน', 'Together')}</span>
-          <Zap className="absolute right-2 top-1/2 -translate-y-1/2 text-amber-500" size={18} />
-        </div>
-        <div className="absolute right-4 top-3 z-30 hidden rounded-[20px] bg-white/65 px-4 py-2 text-center text-[10px] font-bold leading-4 text-brand-800 shadow-sm backdrop-blur-sm xl:block">{text('พลังงาน', 'Energy')}<br />{text('เชื่อมโยงอนาคต', 'for the future')} <span className="text-pink-500">♥</span></div>
-        <img src={bannerHero} alt={text('มาสคอต PEA โบกมือข้างปฏิทินและต้นไม้', 'PEA mascot waving beside a calendar and trees')} className="pointer-events-none absolute bottom-0 right-2 z-10 hidden w-[46%] max-w-[40rem] object-contain drop-shadow-[0_12px_8px_rgba(76,15,93,0.28)] sm:block xl:right-8 xl:h-[9.75rem] xl:w-auto xl:max-w-none" />
-      </section>
-      <div className="grid gap-5 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,1fr)_260px] xl:gap-3">
-        <div className="min-w-0 xl:flex xl:min-h-0 xl:flex-col">
-          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between xl:mb-1 xl:min-h-9 xl:shrink-0">
-            <div><h2 className="text-2xl font-bold text-brand-900 xl:text-lg">{text('ปฏิทิน Meeting & Task', 'Meeting & Task Calendar')}</h2></div>
-            <div className="flex flex-wrap gap-2 xl:gap-1.5"><button className="btn-secondary xl:min-h-9 xl:px-3 xl:py-1.5 xl:text-sm" onClick={() => setTaskDialog({ open: true, task: null })}><ListTodo size={16} />{text('เพิ่ม Task', 'Add task')}</button><button className="btn-primary xl:min-h-9 xl:px-3 xl:py-1.5 xl:text-sm" onClick={() => setEventDialog({ open: true, event: null })}><CalendarPlus size={16} />{text('เพิ่ม Meeting', 'Add meeting')}</button></div>
-          </div>
-          <div className="card p-3 sm:p-5 xl:flex xl:min-h-0 xl:flex-1 xl:flex-col xl:p-3">
-            <div className="mb-4 grid gap-3 lg:grid-cols-[minmax(235px,1fr)_minmax(0,2fr)] lg:items-start lg:gap-4 xl:mb-2 xl:grid-cols-[180px_minmax(0,1fr)] xl:gap-2 xl:shrink-0">
-              <div className="relative w-full max-w-md xl:max-w-none"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} /><input className="field-input pl-10 xl:px-3 xl:py-1.5 xl:pl-9 xl:text-xs" placeholder={text('ค้นหา Meeting หรือ Task', 'Search meetings or tasks')} value={search} onChange={(event) => setSearch(event.target.value)} /></div>
-              <div className="flex flex-wrap justify-start gap-1.5 text-xs font-semibold lg:justify-end xl:flex-nowrap xl:gap-1" aria-label={text('ตัวกรองรายการในปฏิทิน', 'Calendar filters')}>
-                <label className={`flex min-h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-xl border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-purple-300 xl:min-h-7 xl:gap-1 xl:px-1.5 xl:py-1 xl:text-[10px] ${showMeetings ? 'border-purple-300 bg-purple-100 text-purple-900' : 'border-slate-200 bg-white text-slate-500'}`}><input type="checkbox" className="h-4 w-4 accent-brand-600 xl:h-3 xl:w-3" checked={showMeetings} onChange={(event) => setShowMeetings(event.target.checked)} /><CalendarDays size={15} aria-hidden="true" /><span>{text('แสดง Meeting', 'Show meetings')}</span></label>
-                <label className={`flex min-h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-xl border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-amber-300 xl:min-h-7 xl:gap-1 xl:px-1.5 xl:py-1 xl:text-[10px] ${showTasks ? 'border-amber-300 bg-amber-100 text-amber-900' : 'border-slate-200 bg-white text-slate-500'}`}><input type="checkbox" className="h-4 w-4 accent-amber-600 xl:h-3 xl:w-3" checked={showTasks} onChange={(event) => setShowTasks(event.target.checked)} /><ListTodo size={15} aria-hidden="true" /><span>{text('แสดง Task', 'Show tasks')}</span></label>
-                <label className={`flex min-h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-xl border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-green-300 xl:min-h-7 xl:gap-1 xl:px-1.5 xl:py-1 xl:text-[10px] ${showCompletedTasks ? 'border-green-300 bg-green-100 text-green-900' : 'border-slate-200 bg-white text-slate-500'}`}><input type="checkbox" className="h-4 w-4 accent-green-600 xl:h-3 xl:w-3" checked={showCompletedTasks} onChange={(event) => setShowCompletedTasks(event.target.checked)} /><CheckCircle2 size={15} aria-hidden="true" /><span>{text('แสดง Task ที่เสร็จแล้ว', 'Show completed tasks')}</span></label>
-                <label className={`flex min-h-9 max-w-full cursor-pointer items-center gap-1.5 rounded-xl border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-red-300 lg:whitespace-nowrap xl:min-h-7 xl:gap-1 xl:px-1.5 xl:py-1 xl:text-[10px] ${showOverdue ? 'border-red-300 bg-red-100 text-red-900' : 'border-slate-200 bg-white text-slate-500'}`}><input type="checkbox" className="h-4 w-4 shrink-0 accent-red-600 xl:h-3 xl:w-3" checked={showOverdue} onChange={(event) => setShowOverdue(event.target.checked)} /><Clock3 size={15} className="shrink-0" aria-hidden="true" /><span>{text('แสดง Task / Meeting เกินวันครบกำหนด/นัดหมาย', 'Show overdue tasks and past meetings')}</span></label>
+  const calendarControls = (
+<div className="mb-4 grid gap-3 lg:mb-0 lg:gap-3">
+              <div className="relative w-full max-w-md lg:max-w-none"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} /><input className="field-input pl-10 lg:px-3 lg:py-1.5 lg:pl-9 lg:text-sm" placeholder={text('ค้นหา Meeting หรือ Task', 'Search meetings or tasks')} value={search} onChange={(event) => setSearch(event.target.value)} /></div>
+              <div className="calendar-filter-options flex flex-wrap justify-start gap-1.5 text-xs font-semibold lg:flex-col lg:items-stretch lg:gap-1" aria-label={text('ตัวกรองรายการในปฏิทิน', 'Calendar filters')}>
+                <label className={`calendar-filter-option semantic-choice semantic-meeting flex min-h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-slate-300 lg:min-h-9 lg:gap-1.5 lg:px-2 lg:py-1 lg:text-xs ${showMeetings ? 'border-slate-300 bg-slate-100 text-slate-900' : 'border-slate-200 bg-white text-slate-500'}`}><input type="checkbox" className="h-4 w-4 accent-brand-600 lg:h-3.5 lg:w-3.5" checked={showMeetings} onChange={(event) => setShowMeetings(event.target.checked)} /><CalendarDays size={15} aria-hidden="true" /><span>{text('แสดง Meeting', 'Show meetings')}</span></label>
+                <label className={`calendar-filter-option semantic-choice semantic-task flex min-h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-amber-300 lg:min-h-9 lg:gap-1.5 lg:px-2 lg:py-1 lg:text-xs ${showTasks ? 'border-amber-300 bg-amber-100 text-amber-900' : 'border-slate-200 bg-white text-slate-500'}`}><input type="checkbox" className="h-4 w-4 accent-amber-600 lg:h-3.5 lg:w-3.5" checked={showTasks} onChange={(event) => setShowTasks(event.target.checked)} /><ListTodo size={15} aria-hidden="true" /><span>{text('แสดง Task', 'Show tasks')}</span></label>
+                <label className={`calendar-filter-option semantic-choice semantic-completed flex min-h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-green-300 lg:min-h-9 lg:gap-1.5 lg:px-2 lg:py-1 lg:text-xs ${showCompletedTasks ? 'border-green-300 bg-green-100 text-green-900' : 'border-slate-200 bg-white text-slate-500'}`}><input type="checkbox" className="h-4 w-4 accent-green-600 lg:h-3.5 lg:w-3.5" checked={showCompletedTasks} onChange={(event) => setShowCompletedTasks(event.target.checked)} /><CheckCircle2 size={15} aria-hidden="true" /><span>{text('แสดง Task ที่เสร็จแล้ว', 'Show completed tasks')}</span></label>
+                <label className={`calendar-filter-option semantic-choice semantic-overdue flex min-h-9 max-w-full cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-red-300 lg:whitespace-normal lg:min-h-9 lg:gap-1.5 lg:px-2 lg:py-1 lg:text-xs ${showOverdue ? 'border-red-300 bg-red-100 text-red-900' : 'border-slate-200 bg-white text-slate-500'}`}><input type="checkbox" className="h-4 w-4 shrink-0 accent-red-600 lg:h-3.5 lg:w-3.5" checked={showOverdue} onChange={(event) => setShowOverdue(event.target.checked)} /><Clock3 size={15} className="shrink-0" aria-hidden="true" /><span>{text('แสดง Task / Meeting เกินวันครบกำหนด/นัดหมาย', 'Show overdue tasks and past meetings')}</span></label>
               </div>
             </div>
-            {(eventsQuery.isError || tasksQuery.isError || profilesQuery.isError || exceptionsQuery.isError) && <p className="mb-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{text('โหลดข้อมูลไม่สำเร็จ กรุณาตรวจสอบว่าได้รัน migration ล่าสุดแล้ว', 'Could not load data. Check that the latest migrations have been applied.')}</p>}
-            {calendarView === 'week' && !compactCalendar && <div className="mb-3 flex min-h-16 items-center gap-3 overflow-hidden rounded-2xl border border-purple-200 bg-gradient-to-r from-purple-50 via-white to-amber-50 px-3 py-1.5 shadow-sm xl:mb-2" role="note">
-              <img src={weekPlannerMascot} alt={text('มาสคอต PEA ถือแพลนเนอร์รายสัปดาห์', 'PEA mascot holding a weekly planner')} className="h-14 w-14 shrink-0 object-contain" />
-              <p className="text-xs leading-5 text-brand-900 sm:text-sm"><strong className="block">{text('มุมมองสัปดาห์', 'Week view')}</strong>{text('รายการที่เวลาใกล้กันจะแบ่งช่องภายในวันเดียวกัน กดรายการเพื่อดูรายละเอียด', 'Overlapping items share the same day in separate columns. Select an item for details.')}</p>
-            </div>}
-            <div className={`calendar-fill calendar-fill-${calendarView} relative xl:min-h-0 xl:flex-1`}>
-            <div className="calendar-view-switcher mb-3 grid grid-cols-4 gap-1 rounded-2xl border border-purple-100 bg-purple-50/80 p-1 xl:absolute xl:right-0 xl:top-0 xl:z-10 xl:mb-0 xl:w-72" role="group" aria-label={text('มุมมองปฏิทิน', 'Calendar view')}>
-              {([{ value: 'day', label: text('วัน', 'Day') }, { value: 'week', label: text('สัปดาห์', 'Week') }, { value: 'month', label: text('เดือน', 'Month') }, { value: 'year', label: text('ปี', 'Year') }] as const).map((view) =>
-                <button key={view.value} type="button" aria-pressed={calendarView === view.value} onClick={() => setCalendarView(view.value)} className={`min-h-11 rounded-xl px-3 py-2 text-sm font-semibold transition ${calendarView === view.value ? 'bg-brand-700 text-white shadow-sm' : 'text-brand-800 hover:bg-white/80'}`}>{view.label}</button>
-              )}
+  )
+
+  const calendarViewOptions = [
+    { value: 'day', label: text('วัน', 'Day') },
+    { value: 'week', label: text('สัปดาห์', 'Week') },
+    { value: 'month', label: text('เดือน', 'Month') },
+    { value: 'year', label: text('ปี', 'Year') },
+  ] as const
+
+  return (
+    <main className="calendar-page-main mx-auto w-full p-4 sm:p-6 lg:flex lg:flex-col lg:p-3">
+      <div className="grid gap-5 lg:min-h-0 lg:flex-1 lg:grid-cols-[310px_minmax(0,1fr)] lg:gap-0">
+        <div className="calendar-primary-column min-w-0 lg:order-2 lg:flex lg:min-h-0 lg:flex-col">
+          <div className="calendar-page-header mb-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between lg:mb-1 lg:min-h-12 lg:shrink-0">
+            <div className="calendar-title-and-status">
+              <section className="calendar-status-header" aria-label={text('สถานะงาน', 'Task status')}>
+                <span className="calendar-status-title">{text('สถานะงาน', 'Task status')}</span>
+                <span className="semantic-pending"><Clock3 size={14} aria-hidden="true" /><span>{text('รอดำเนินการ', 'Pending')}</span><strong>{pendingCount}</strong></span>
+                <span className="semantic-completed"><CheckCircle2 size={14} aria-hidden="true" /><span>{text('เสร็จแล้ว', 'Completed')}</span><strong>{completedCount}</strong></span>
+                <span className="semantic-meeting"><CalendarDays size={14} aria-hidden="true" /><span>{text('ประชุมวันนี้', 'Meetings today')}</span><strong>{todayEntries.filter((entry) => entry.extendedProps.kind === 'event').length}</strong></span>
+              </section>
             </div>
+            <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end lg:gap-1.5">
+              <label className="calendar-view-switcher w-full sm:w-auto">
+                <CalendarDays size={17} aria-hidden="true" />
+                <select aria-label={text('มุมมองปฏิทิน', 'Calendar view')} value={calendarView} onChange={(event) => setCalendarView(event.target.value as CalendarView)}>
+                  {calendarViewOptions.map((view) => <option key={view.value} value={view.value}>{view.label}</option>)}
+                </select>
+              </label>
+              <div className="flex flex-wrap gap-2 lg:gap-1.5"><button className="btn-secondary semantic-task-action lg:min-h-9 lg:px-3 lg:py-1.5 lg:text-sm" onClick={() => setTaskDialog({ open: true, task: null })}><ListTodo size={16} />{text('เพิ่ม Task', 'Add task')}</button><button className="btn-primary lg:min-h-9 lg:px-3 lg:py-1.5 lg:text-sm" onClick={() => setEventDialog({ open: true, event: null })}><CalendarPlus size={16} />{text('เพิ่ม Meeting', 'Add meeting')}</button></div>
+            </div>
+          </div>
+          <div className="min-w-0 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+            <div className="lg:hidden">{calendarControls}</div>
+            {(eventsQuery.isError || tasksQuery.isError || profilesQuery.isError || exceptionsQuery.isError) && <p className="mb-3 rounded-md bg-red-50 p-3 text-sm text-red-700">{text('โหลดข้อมูลไม่สำเร็จ กรุณาตรวจสอบว่าได้รัน migration ล่าสุดแล้ว', 'Could not load data. Check that the latest migrations have been applied.')}</p>}
+            <div ref={calendarContainerRef} className={`calendar-fill calendar-fill-${calendarView} relative lg:min-h-0 lg:flex-1`}>
               {calendar}
-              {calendarTooltip && <div role="tooltip" className="pointer-events-none fixed z-50 max-h-[70vh] w-72 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-xl" style={{ left: calendarTooltip.x, top: calendarTooltip.y }}>
+              {calendarTooltip && <div role="tooltip" className="pointer-events-none fixed z-50 max-h-[70vh] w-72 overflow-y-auto rounded-md border border-slate-200 bg-white p-3 shadow-xl" style={{ left: calendarTooltip.x, top: calendarTooltip.y }}>
                 {calendarTooltip.items.map((item, index) => <section key={`${item.kind}-${item.title}-${index}`} className={index ? 'mt-3 border-t border-slate-100 pt-3' : undefined}>
-                  <p className={`mb-2 text-xs font-bold ${item.kind === 'task' ? 'text-amber-700' : 'text-brand-700'}`}>{item.kind === 'task' ? text('งาน', 'Task') : text('การประชุม', 'Meeting')}</p>
+                  <p className={`mb-2 text-xs font-bold ${item.kind === 'task' ? 'semantic-ink semantic-task' : 'semantic-ink semantic-meeting'}`}>{item.kind === 'task' ? text('งาน', 'Task') : text('การประชุม', 'Meeting')}</p>
                   <dl className="space-y-1.5 text-sm text-slate-700">
                     <div><dt className="inline font-semibold text-slate-500">{text('ชื่อ: ', 'Title: ')}</dt><dd className="inline break-words">{item.title}</dd></div>
                     <div><dt className="inline font-semibold text-slate-500">{text('หน่วยงาน: ', 'Department: ')}</dt><dd className="inline break-words">{item.affiliation}</dd></div>
@@ -977,34 +989,44 @@ export function CalendarPage() {
             </div>
           </div>
         </div>
-        <aside className="grid content-start gap-4 sm:grid-cols-2 xl:flex xl:min-h-0 xl:flex-col xl:gap-3 xl:overflow-hidden" aria-label={text('สรุปปฏิทิน', 'Calendar summary')}>
-          <section className="card p-4 xl:shrink-0 xl:p-2">
-            <div className="mb-3 flex items-center justify-between xl:mb-1"><h2 className="font-bold text-brand-900">{text('นัดหมายวันนี้', "Today's appointments")}</h2><span className="rounded-full bg-purple-50 px-2.5 py-1 text-sm font-bold text-brand-700 xl:px-2 xl:py-0.5 xl:text-xs">{todayEntries.length}</span></div>
-            {todayEntries.length ? <div className="space-y-2 xl:space-y-0.5">{todayEntries.slice(0, 4).map((entry) =>
-              <button key={entry.id} type="button" onClick={() => openCalendarEntry(entry)} className="flex w-full min-w-0 items-start gap-2 rounded-xl bg-purple-50/70 p-3 text-left hover:bg-purple-100 xl:gap-1.5 xl:p-1.5"><span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${entry.extendedProps.isOverdue ? 'bg-red-500' : entry.extendedProps.kind === 'task' ? 'bg-amber-500' : 'bg-brand-600'}`} /><span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-800 xl:text-xs">{entry.title}</span><span className="text-xs text-slate-500 xl:text-[10px]">{entry.extendedProps.kind === 'task' ? text('งาน', 'Task') : text('การประชุม', 'Meeting')}</span></span></button>
-            )}</div> : <p className="rounded-xl bg-purple-50/70 p-3 text-sm text-slate-500">{text('วันนี้ยังไม่มีรายการในปฏิทิน', 'No calendar items today.')}</p>}
+        <aside className="calendar-sidebar grid content-start gap-4 sm:grid-cols-2 lg:order-1 lg:flex lg:min-h-0 lg:flex-col lg:gap-0 lg:overflow-y-auto lg:border lg:border-slate-200 lg:bg-slate-50" aria-label={text('สรุปปฏิทิน', 'Calendar summary')}>
+          <div className="calendar-sidebar-heading sm:col-span-2 lg:col-span-1">
+            <CalendarDays size={20} aria-hidden="true" />
+            <span><strong>{text('ปฏิทิน', 'My Calendar')}</strong><small>{text('การประชุมและงาน', 'Meetings & tasks')}</small></span>
+          </div>
+          <section className="mini-calendar-card card p-4 sm:col-span-2 lg:col-span-1 lg:shrink-0" aria-label={text('เลือกวันที่ในปฏิทิน', 'Choose a calendar date')}>
+            <FullCalendar ref={miniCalendarRef} plugins={[dayGridPlugin, interactionPlugin, luxonPlugin]} initialView="dayGridMonth"
+              locale={language === 'th' ? thLocale : enGbLocale} timeZone="Asia/Bangkok" firstDay={1} height="auto"
+              headerToolbar={{ left: 'title', center: '', right: 'prev,next' }} fixedWeekCount={false} showNonCurrentDates
+              dayCellClassNames={(info) => calendarDayKey(info.date) === miniSelectedDate ? ['mini-calendar-selected'] : []}
+              dayCellContent={(info) => <button type="button" className="mini-calendar-date" aria-label={calendarDateLabel(info.date, language)}
+                aria-pressed={calendarDayKey(info.date) === miniSelectedDate} onClick={(event) => {
+                  event.stopPropagation()
+                  const day = calendarDayKey(info.date)
+                  setMiniSelectedDate(day)
+                  calendarRef.current?.getApi().gotoDate(day)
+                }}>{info.dayNumberText}</button>} />
           </section>
-          <section className="card p-4 xl:shrink-0 xl:p-2">
-            <h2 className="mb-3 font-bold text-brand-900 xl:mb-1">{text('ภาพรวมงาน', 'Task overview')}</h2>
-            <div className="grid grid-cols-3 gap-2 text-center xl:gap-1">
-              <div className="rounded-xl bg-amber-50 px-1 py-3 xl:py-1.5"><Clock3 className="mx-auto mb-1 text-amber-600" size={20} /><strong className="block text-xl text-amber-800 xl:text-lg">{pendingCount}</strong><span className="text-[11px] text-slate-600 xl:text-[10px]">{text('รอดำเนินการ', 'Pending')}</span></div>
-              <div className="rounded-xl bg-green-50 px-1 py-3 xl:py-1.5"><CheckCircle2 className="mx-auto mb-1 text-green-600" size={20} /><strong className="block text-xl text-green-700 xl:text-lg">{completedCount}</strong><span className="text-[11px] text-slate-600 xl:text-[10px]">{text('เสร็จแล้ว', 'Completed')}</span></div>
-              <div className="rounded-xl bg-purple-50 px-1 py-3 xl:py-1.5"><CalendarDays className="mx-auto mb-1 text-brand-600" size={20} /><strong className="block text-xl text-brand-700 xl:text-lg">{todayEntries.filter((entry) => entry.extendedProps.kind === 'event').length}</strong><span className="text-[11px] text-slate-600 xl:text-[10px]">{text('ประชุมวันนี้', 'Meetings today')}</span></div>
-            </div>
+          <section className="calendar-filter-panel hidden lg:block">{calendarControls}</section>
+          <section className="card p-4 lg:shrink-0 lg:p-2">
+            <div className="mb-3 flex items-center justify-between lg:mb-1"><h2 className="font-bold text-brand-900">{text('นัดหมายวันนี้', "Today's appointments")}</h2><span className="rounded-full bg-slate-50 px-2.5 py-1 text-sm font-bold text-brand-700 lg:px-2 lg:py-0.5 lg:text-sm">{todayEntries.length}</span></div>
+            {todayEntries.length ? <div className="space-y-2 lg:space-y-0.5">{todayEntries.slice(0, 4).map((entry) =>
+              <button key={entry.id} type="button" onClick={() => openCalendarEntry(entry)} className="flex w-full min-w-0 items-start gap-2 rounded-md bg-slate-50/70 p-3 text-left hover:bg-slate-100 lg:gap-1.5 lg:p-1.5"><span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${entry.extendedProps.isOverdue ? 'semantic-dot semantic-overdue' : entry.extendedProps.kind === 'task' ? (entry.extendedProps.row as TaskRow).status === 'completed' ? 'semantic-dot semantic-completed' : 'semantic-dot semantic-task' : 'semantic-dot semantic-meeting'}`} /><span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-800 lg:text-sm">{entry.title}</span><span className="text-xs text-slate-500 lg:text-sm">{entry.extendedProps.kind === 'task' ? text('งาน', 'Task') : text('การประชุม', 'Meeting')}</span></span></button>
+            )}</div> : <p className="rounded-md bg-slate-50/70 p-3 text-sm text-slate-500">{text('วันนี้ยังไม่มีรายการในปฏิทิน', 'No calendar items today.')}</p>}
           </section>
-          <section className="card p-4 sm:col-span-2 xl:col-span-1 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+          <section className="card p-4 sm:col-span-2 lg:col-span-1 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
             <h2 className="sr-only">{text('รายการถัดไปและเอกสารล่าสุด', 'Upcoming items and recent documents')}</h2>
-            <div className="mb-3 flex rounded-xl bg-purple-50 p-1 text-xs font-bold">
+            <div className="mb-3 flex rounded-md bg-slate-50 p-1 text-xs font-bold">
               <button type="button" aria-pressed={sideTab === 'upcoming'} onClick={() => setSideTab('upcoming')} className={`flex-1 rounded-lg px-2 py-2 transition ${sideTab === 'upcoming' ? 'bg-white text-brand-900 shadow-sm' : 'text-slate-500 hover:text-brand-700'}`}>{text('รายการถัดไป', 'Upcoming')}</button>
               <button type="button" aria-pressed={sideTab === 'documents'} onClick={() => setSideTab('documents')} className={`flex-1 rounded-lg px-2 py-2 transition ${sideTab === 'documents' ? 'bg-white text-brand-900 shadow-sm' : 'text-slate-500 hover:text-brand-700'}`}>{text('เอกสารล่าสุด', 'Recent documents')}</button>
             </div>
             {sideTab === 'upcoming' ? upcomingEntries.length ? <div className="space-y-2">{upcomingEntries.map((entry) =>
-              <button key={entry.id} type="button" onClick={() => openCalendarEntry(entry)} className="flex w-full items-start gap-3 rounded-xl border border-purple-50 p-2.5 text-left hover:bg-purple-50"><span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${entry.extendedProps.isOverdue ? 'bg-red-500' : entry.extendedProps.kind === 'task' ? 'bg-amber-500' : 'bg-brand-600'}`} /><span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-800">{entry.title}</span><span className="text-xs text-slate-500">{calendarDateLabel(new Date(entry.start), language)}</span></span></button>
+              <button key={entry.id} type="button" onClick={() => openCalendarEntry(entry)} className="flex w-full items-start gap-3 rounded-md border border-slate-50 p-2.5 text-left hover:bg-slate-50"><span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${entry.extendedProps.isOverdue ? 'semantic-dot semantic-overdue' : entry.extendedProps.kind === 'task' ? (entry.extendedProps.row as TaskRow).status === 'completed' ? 'semantic-dot semantic-completed' : 'semantic-dot semantic-task' : 'semantic-dot semantic-meeting'}`} /><span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-800">{entry.title}</span><span className="text-xs text-slate-500">{calendarDateLabel(new Date(entry.start), language)}</span></span></button>
             )}</div> : <p className="text-sm text-slate-500">{text('ยังไม่มีรายการถัดไป', 'No upcoming items.')}</p>
               : recentDocumentsQuery.isLoading ? <p className="text-sm text-slate-500">{text('กำลังโหลดเอกสาร…', 'Loading documents…')}</p>
                 : recentDocumentsQuery.isError ? <p className="text-sm text-red-600">{text('โหลดเอกสารไม่สำเร็จ', 'Could not load documents.')}</p>
                   : recentDocuments.length ? <div className="space-y-2">{recentDocuments.map((document) =>
-                    <button key={document.id} type="button" onClick={() => openRecentDocument(document)} className="flex w-full items-start gap-2.5 rounded-xl border border-purple-50 p-2.5 text-left hover:bg-purple-50">
+                    <button key={document.id} type="button" onClick={() => openRecentDocument(document)} className="flex w-full items-start gap-2.5 rounded-md border border-slate-50 p-2.5 text-left hover:bg-slate-50">
                       <span className="mt-0.5 text-brand-600">{document.kind === 'link' ? <Link2 size={18} /> : <FileText size={18} />}</span>
                       <span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-800">{document.name}</span><span className="text-xs text-slate-500">{document.parent === 'event' ? text('การประชุม', 'Meeting') : text('งาน', 'Task')} · {calendarDateLabel(new Date(document.addedAt), language)}</span></span>
                     </button>
@@ -1012,9 +1034,9 @@ export function CalendarPage() {
           </section>
         </aside>
       </div>
-      {(eventMutation.isError || taskMutation.isError || deleteEventMutation.isError || deleteTaskMutation.isError || deleteEventAttachmentMutation.isError || deleteTaskAttachmentMutation.isError || toggleTaskMutation.isError || acknowledgeTaskMutation.isError || retryNotificationMutation.isError) && <p className="fixed bottom-4 right-4 rounded-xl bg-red-600 px-4 py-3 text-sm text-white shadow-lg">{text('ดำเนินการไม่สำเร็จ กรุณาตรวจสอบข้อมูลและลองใหม่', 'The action could not be completed. Check the details and try again.')}</p>}
-      {taskSaveWarning && <div className="fixed bottom-4 right-4 max-w-md rounded-xl bg-amber-100 px-4 py-3 text-sm text-amber-950 shadow-lg" role="alert"><p>{taskSaveWarning}</p><button type="button" className="mt-2 font-semibold underline" onClick={() => setTaskSaveWarning('')}>{text('ปิด', 'Close')}</button></div>}
-      {eventSaveWarning && <div className="fixed bottom-4 right-4 max-w-md rounded-xl bg-amber-100 px-4 py-3 text-sm text-amber-950 shadow-lg" role="alert"><p>{eventSaveWarning}</p><button type="button" className="mt-2 font-semibold underline" onClick={() => setEventSaveWarning('')}>{text('ปิด', 'Close')}</button></div>}
+      {(eventMutation.isError || taskMutation.isError || deleteEventMutation.isError || deleteTaskMutation.isError || deleteEventAttachmentMutation.isError || deleteTaskAttachmentMutation.isError || toggleTaskMutation.isError || acknowledgeTaskMutation.isError || retryNotificationMutation.isError) && <p role="alert" className="ui-toast fixed bottom-4 right-4 rounded-md bg-red-600 px-4 py-3 text-sm text-white shadow-lg">{text('ดำเนินการไม่สำเร็จ กรุณาตรวจสอบข้อมูลและลองใหม่', 'The action could not be completed. Check the details and try again.')}</p>}
+      {taskSaveWarning && <div className="ui-toast fixed bottom-4 right-4 max-w-md rounded-md bg-amber-100 px-4 py-3 text-sm text-amber-950 shadow-lg" role="alert"><p>{taskSaveWarning}</p><button type="button" className="mt-2 font-semibold underline" onClick={() => setTaskSaveWarning('')}>{text('ปิด', 'Close')}</button></div>}
+      {eventSaveWarning && <div className="ui-toast fixed bottom-4 right-4 max-w-md rounded-md bg-amber-100 px-4 py-3 text-sm text-amber-950 shadow-lg" role="alert"><p>{eventSaveWarning}</p><button type="button" className="mt-2 font-semibold underline" onClick={() => setEventSaveWarning('')}>{text('ปิด', 'Close')}</button></div>}
 
       <EventDialog
         defaultAffiliation={profileAffiliation(profile)}

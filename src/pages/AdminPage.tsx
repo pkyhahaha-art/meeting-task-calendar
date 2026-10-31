@@ -66,16 +66,16 @@ export function AdminPage() {
     void queryClient.invalidateQueries({ queryKey: ['admin-latest-system'] })
   }
 
-  return <main className="mx-auto max-w-6xl space-y-5 p-4 sm:p-6">
-    <header className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900"><ShieldCheck className="text-brand-600" />ผู้ดูแลระบบ</h1><p className="mt-1 text-sm text-slate-500">จัดการสมาชิก ตรวจการแจ้งเตือน และดูรายงาน</p></div><button type="button" className="btn-secondary" onClick={refresh} disabled={profilesQuery.isFetching || overviewQuery.isFetching || latestSystem.isFetching}><RefreshCw size={16} />โหลดภาพรวมใหม่</button></header>
-    <nav className="flex flex-wrap gap-2" aria-label="ส่วนจัดการของ Admin"><button type="button" className={area === 'overview' ? 'btn-primary' : 'btn-secondary'} aria-pressed={area === 'overview'} onClick={() => setArea('overview')}>สมาชิกและรายงาน</button><button type="button" className={area === 'items' ? 'btn-primary' : 'btn-secondary'} aria-pressed={area === 'items'} onClick={() => setArea('items')}>จัดการงานและประชุม</button></nav>
+  return <main className="ui-page mx-auto max-w-6xl space-y-5 p-4 sm:p-6">
+    <header className="ui-page-header flex flex-wrap items-center justify-between gap-3"><div><h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900"><ShieldCheck className="text-brand-600" />ผู้ดูแลระบบ</h1><p className="mt-1 text-sm text-slate-500">จัดการสมาชิก ตรวจการแจ้งเตือน และดูรายงาน</p></div><button type="button" className="btn-secondary" onClick={refresh} disabled={profilesQuery.isFetching || overviewQuery.isFetching || latestSystem.isFetching}><RefreshCw size={16} />โหลดภาพรวมใหม่</button></header>
+    <nav className="ui-tabs flex flex-wrap gap-2" aria-label="ส่วนจัดการของ Admin"><button type="button" className={area === 'overview' ? 'btn-primary' : 'btn-secondary'} aria-pressed={area === 'overview'} onClick={() => setArea('overview')}>สมาชิกและรายงาน</button><button type="button" className={area === 'items' ? 'btn-primary' : 'btn-secondary'} aria-pressed={area === 'items'} onClick={() => setArea('items')}>จัดการงานและประชุม</button></nav>
     {area === 'items' ? <AdminCalendarItemsPanel adminUserId={user!.id} members={members} /> : <>
-    <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900"><strong>การลืมรหัสผ่านเป็นบริการแบบทำเอง:</strong> ให้พนักงานกด “ลืมรหัสผ่าน” ที่หน้าเข้าสู่ระบบ อีเมลยืนยันส่งอัตโนมัติเมื่อสมัคร ปุ่มส่งใหม่ใช้เฉพาะเมื่อสมาชิกยังไม่ยืนยันและต้องการลิงก์ใหม่</div>
+    <div className="rounded-xl border border-purple-200 bg-purple-50 p-4 text-sm text-purple-900"><strong>การลืมรหัสผ่านเป็นบริการแบบทำเอง:</strong> ให้พนักงานกด “ลืมรหัสผ่าน” ที่หน้าเข้าสู่ระบบ อีเมลยืนยันส่งอัตโนมัติเมื่อสมัคร ปุ่มส่งใหม่ใช้เฉพาะเมื่อสมาชิกยังไม่ยืนยันและต้องการลิงก์ใหม่</div>
     {message && <p role="status" className="rounded-xl bg-purple-50 p-3 text-sm text-brand-800">{message}</p>}
     <section className="grid gap-3 sm:grid-cols-3" aria-label="ภาพรวมบัญชีสมาชิกทั้งหมด">
       {Object.entries(statusText).map(([status, label]) => <div key={status} className="card p-4"><p className="text-2xl font-bold text-brand-700">{profilesQuery.isSuccess ? members.filter((member) => member.status === status).length : '—'}</p><p className="text-sm text-slate-500">สมาชิก{label} · ทุกช่วงเวลา</p></div>)}
     </section>
-    <section className="card overflow-hidden">
+    <section className="ui-panel card overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-4"><div><h2 className="flex items-center gap-2 text-lg font-bold"><Users size={20} className="text-brand-600" />บัญชีพนักงาน</h2><p className="mt-1 text-xs text-slate-500">ค้นหาจากสมาชิกทั้งหมด บัญชีที่ระงับจะถูกปฏิเสธการใช้งานตามเงื่อนไขเดิม</p></div><button type="button" className="btn-secondary" disabled={!profilesQuery.isSuccess || profilesQuery.isFetching || !filtered.length} onClick={exportMembers}><Download size={16} />CSV ตามตัวกรอง</button></div>
       <div className="grid gap-3 border-b border-slate-100 p-4 sm:grid-cols-2 lg:grid-cols-4">
         <AdminFilter label="ชื่อ / รหัสพนักงาน / Gmail"><input className="field-input" value={filters.search} onChange={(e) => updateFilters({ search: e.target.value })} /></AdminFilter>
@@ -93,14 +93,14 @@ export function AdminPage() {
         <AdminPager count={filtered.length} page={currentPage} busy={profilesQuery.isFetching} onPage={setPage} />
       </>}
     </section>
-    <section className="card space-y-4 p-4">
+    <section className="ui-panel card space-y-4 p-4">
       <h2 className="font-bold">ช่วงวันที่รายงานงาน/ประชุมและประวัติ</h2>
       <div className="flex flex-wrap items-end gap-3"><AdminFilter label="ตั้งแต่วันที่"><input type="date" className="field-input" value={dates.from} onChange={(e) => setDates({ ...dates, from: e.target.value })} /></AdminFilter><AdminFilter label="ถึงวันที่"><input type="date" className="field-input" value={dates.to} onChange={(e) => setDates({ ...dates, to: e.target.value })} /></AdminFilter><button type="button" className="btn-secondary" onClick={() => setDates({ from: '', to: '' })}>ทุกช่วงเวลา</button></div>
       <p className="text-xs text-slate-500">นับตามวันที่สร้าง/บันทึกรายการ เวลาไทย รวมวันสิ้นสุด · ไม่รวมงาน/ประชุมที่ลบ · ประชุมทำซ้ำนับชุดละ 1 รายการ</p>
       {dateError ? <p role="alert" className="text-sm text-amber-800">{dateError}</p> : overviewQuery.isError ? <p role="alert" className="text-sm text-red-700">โหลดภาพรวมไม่สำเร็จ กรุณาลองใหม่</p> : <div className="grid gap-3 sm:grid-cols-3">{[['Meeting ที่สร้าง', overviewQuery.data?.eventCount], ['Task ที่สร้าง', overviewQuery.data?.taskCount], ['แจ้งเตือนที่ต้องตรวจสอบ', overviewQuery.data?.problemCount]].map(([label, value]) => <div key={label} className="rounded-xl bg-purple-50 p-4"><p className="text-2xl font-bold text-brand-700">{overviewQuery.isPending || overviewQuery.isFetching ? '…' : value}</p><p className="text-sm text-slate-600">{label}</p></div>)}</div>}
       <p className="text-xs text-slate-500">แจ้งเตือนที่ต้องตรวจสอบนับสถานะ “ส่งไม่สำเร็จ” และ “รอโควตา” ครบทุกแถวในช่วงวันที่ ไม่จำกัด 20 รายการล่าสุด</p>
     </section>
-    <section className="card space-y-2 p-4"><h2 className="font-bold">งานระบบล่าสุด · ทุกช่วงเวลา</h2>{latestSystem.isPending ? <p role="status" className="text-sm text-slate-500">กำลังตรวจงานระบบ…</p> : latestSystem.isError ? <p role="alert" className="text-sm text-red-700">ตรวจงานระบบไม่ได้ กรุณาโหลดภาพรวมใหม่</p> : latestSystem.data ? <p className="text-sm text-slate-600">{latestSystem.data.job_name} · <AdminStatus value={latestSystem.data.status} /> · {adminDate(latestSystem.data.created_at)} · ประมวลผล {latestSystem.data.processed_count} รายการ</p> : <p className="text-sm text-slate-500">ยังไม่มีประวัติงานระบบ</p>}</section>
+    <section className="ui-panel card space-y-2 p-4"><h2 className="font-bold">งานระบบล่าสุด · ทุกช่วงเวลา</h2>{latestSystem.isPending ? <p role="status" className="text-sm text-slate-500">กำลังตรวจงานระบบ…</p> : latestSystem.isError ? <p role="alert" className="text-sm text-red-700">ตรวจงานระบบไม่ได้ กรุณาโหลดภาพรวมใหม่</p> : latestSystem.data ? <p className="text-sm text-slate-600">{latestSystem.data.job_name} · <AdminStatus value={latestSystem.data.status} /> · {adminDate(latestSystem.data.created_at)} · ประมวลผล {latestSystem.data.processed_count} รายการ</p> : <p className="text-sm text-slate-500">ยังไม่มีประวัติงานระบบ</p>}</section>
     <AdminHistoryPanel members={members} dates={dates} />
     </>}
   </main>

@@ -29,9 +29,9 @@ export function DeviceNotificationDetails({ alert, details = alert.details, docu
   return <>
     <h2 className="break-words text-xl font-bold text-slate-900">{occurrenceNotice ? alert.title : details?.title || alert.title}</h2>
     <p className="text-xs text-slate-500">{!occurrenceNotice && `${alert.title} · `}รับเมื่อ {dateLabel(alert.receivedAt)}</p>
-    {rows.length > 0 && <dl className="space-y-3 rounded-xl bg-purple-50 p-4 text-sm">{rows.map(([label, value]) => <div key={label}><dt className="font-semibold text-brand-700">{label}</dt><dd className="mt-1 break-words text-slate-800">{value}</dd></div>)}</dl>}
+    {rows.length > 0 && <dl className="space-y-3 rounded-xl border border-slate-100 bg-white p-4 text-sm">{rows.map(([label, value]) => <div key={label}><dt className={`font-semibold ${details?.entity === 'task' ? 'semantic-ink semantic-task' : details?.entity === 'meeting' ? 'semantic-ink semantic-meeting' : 'text-brand-700'}`}>{label}</dt><dd className="mt-1 break-words text-slate-800">{value}</dd></div>)}</dl>}
     <div className="space-y-2">
-      <h3 className="text-sm font-semibold text-brand-700">{details?.entity === 'task' ? 'รายละเอียด / คำสั่งงาน' : 'รายละเอียด / วาระการประชุม'}</h3>
+      <h3 className={`text-sm font-semibold ${details?.entity === 'task' ? 'semantic-ink semantic-task' : details?.entity === 'meeting' ? 'semantic-ink semantic-meeting' : 'text-brand-700'}`}>{details?.entity === 'task' ? 'รายละเอียด / คำสั่งงาน' : 'รายละเอียด / วาระการประชุม'}</h3>
       <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700">{details?.description || alert.body}</p>
     </div>
     {canLoad && <section className="space-y-3 rounded-xl border border-purple-100 p-4">

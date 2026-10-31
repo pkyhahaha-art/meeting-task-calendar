@@ -19,8 +19,7 @@ export function SaveActionMenu({ busy, onSave, onComplete, allowNotification = t
       confirmButtonText: text('บันทึกการแก้ไข', 'Save changes'),
       denyButtonText: text('บันทึกการแก้ไขและแจ้งเตือน', 'Save and notify'),
       cancelButtonText: text('ยกเลิก', 'Cancel'),
-      confirmButtonColor: '#0f766e',
-      denyButtonColor: '#b45309',
+      customClass: { popup: 'semantic-meeting-dialog', confirmButton: 'ui-save-quiet', denyButton: 'ui-save-notify' },
     })
     if (!result.isConfirmed && !result.isDenied) return
     const notifyRecipients = allowNotification && result.isDenied
@@ -31,6 +30,7 @@ export function SaveActionMenu({ busy, onSave, onComplete, allowNotification = t
       if (!saved) return
       await Swal.fire({
         icon: typeof saved === 'object' ? 'warning' : 'success',
+        customClass: { popup: 'semantic-meeting-dialog' },
         title: typeof saved === 'object' ? text('บันทึกการประชุมแล้ว', 'Meeting saved') : text('สำเร็จ', 'Success'),
         text: typeof saved === 'object' ? saved.warning : notifyRecipients ? text('บันทึกการแก้ไขและแจ้งเตือนผู้รับแล้ว', 'Changes saved and recipients notified.') : allowNotification ? text('บันทึกการแก้ไขเรียบร้อยแล้ว', 'Changes saved.') : text('บันทึกการแก้ไขเฉพาะนัดแล้ว', 'Changes for this occurrence have been saved.'),
         showConfirmButton: typeof saved === 'object',

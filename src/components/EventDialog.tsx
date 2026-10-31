@@ -223,8 +223,7 @@ export function EventDialog({
     if (joinedViewedAppointment) {
       const recurring = Boolean(event.recurrence_rule)
       const switchingToOccurrence = recurring && joinedSeries
-      const mascotUrl = `${import.meta.env?.BASE_URL ?? '/'}brand/pea-typing-mascot-v2.png`
-      const notice = await Swal.fire({ icon: 'info', title: text('คุณได้ถูกเชิญเข้าร่วมประชุมนี้แล้ว', 'You have already been invited to this meeting.'),
+      const notice = await Swal.fire({ icon: 'info', customClass: { popup: 'semantic-meeting-dialog' }, title: text('คุณได้ถูกเชิญเข้าร่วมประชุมนี้แล้ว', 'You have already been invited to this meeting.'),
         text: recurring ? (switchingToOccurrence
           ? text('คุณต้องการเปลี่ยนเป็นเข้าร่วมเฉพาะนัดนี้หรือไม่? การเข้าร่วมนัดอื่นที่ยังไม่ถึงจะถูกยกเลิก', 'Switch to this occurrence only? Your attendance at other future occurrences will be cancelled.')
           : text('คุณต้องการเปลี่ยนเป็นเข้าร่วมประชุมทั้งชุดตั้งแต่นัดนี้เป็นต้นไปหรือไม่?', 'Switch to this and future occurrences?')) : undefined,
@@ -234,7 +233,7 @@ export function EventDialog({
         showLoaderOnConfirm: recurring,
         allowOutsideClick: () => !Swal.isLoading(),
         preConfirm: recurring ? async () => {
-          Swal.update({ footer: `<div role="status" aria-live="polite" class="pea-join-pending"><img src="${mascotUrl}" alt="" class="pea-join-pending-mascot" /><p><span class="pea-pending-clock" aria-hidden="true"></span>Pending<span class="pea-pending-dots" aria-hidden="true">…</span></p></div>` })
+          Swal.update({ footer: `<div role="status" aria-live="polite" class="pea-join-pending"><p><span class="pea-pending-clock" aria-hidden="true"></span>Pending<span class="pea-pending-dots" aria-hidden="true">…</span></p></div>` })
           try {
             if (switchingToOccurrence && !onChangeToOccurrence) throw new Error(text('ไม่สามารถเปลี่ยนขอบเขตได้ กรุณาลองใหม่', 'Could not change attendance. Please try again.'))
             const changed = switchingToOccurrence ? await onChangeToOccurrence!() : await onJoin('series')
@@ -247,11 +246,13 @@ export function EventDialog({
           }
         } : undefined,
       })
-      if (recurring && notice.isConfirmed) await Swal.fire({ icon: 'success', title: notice.value?.changed ? text('เปลี่ยนการเข้าร่วมแล้ว', 'Attendance changed') : text('การเข้าร่วมเป็นปัจจุบันแล้ว', 'Attendance is already up to date'), timer: 1800, showConfirmButton: false })
+      if (recurring && notice.isConfirmed && typeof notice.value?.changed === 'boolean') {
+        await Swal.fire({ icon: 'success', title: notice.value.changed ? text('เปลี่ยนการเข้าร่วมแล้ว', 'Attendance changed') : text('การเข้าร่วมเป็นปัจจุบันแล้ว', 'Attendance is already up to date'), timer: 1800, showConfirmButton: false })
+        onClose()
+      }
       return
     }
     const recurring = Boolean(event.recurrence_rule)
-    const mascotUrl = `${import.meta.env?.BASE_URL ?? '/'}brand/pea-typing-mascot-v2.png`
     const result = await Swal.fire({
       customClass: { popup: 'pea-join-dialog' },
       title: text('เข้าร่วมประชุมนี้?', 'Join this meeting?'),
@@ -274,7 +275,7 @@ export function EventDialog({
           Swal.showValidationMessage(text('กรุณาเลือกหนึ่งตัวเลือก', 'Please select one option.'))
           return false
         }
-        Swal.update({ footer: `<div role="status" aria-live="polite" class="pea-join-pending"><img src="${mascotUrl}" alt="" class="pea-join-pending-mascot" /><p><span class="pea-pending-clock" aria-hidden="true"></span>Pending<span class="pea-pending-dots" aria-hidden="true">…</span></p></div>` })
+        Swal.update({ footer: `<div role="status" aria-live="polite" class="pea-join-pending"><p><span class="pea-pending-clock" aria-hidden="true"></span>Pending<span class="pea-pending-dots" aria-hidden="true">…</span></p></div>` })
         try { return { joined: await onJoin(recurring && scope === 'series' ? 'series' : 'occurrence') } }
         catch (reason) {
           Swal.update({ footer: '' })
@@ -284,7 +285,10 @@ export function EventDialog({
         }
       },
     })
-    if (result.isConfirmed) await Swal.fire({ icon: 'success', title: result.value?.joined === true ? text('เข้าร่วมประชุมแล้ว', 'You joined the meeting') : text('คุณได้ถูกเชิญเข้าร่วมประชุมนี้แล้ว', 'You have already been invited to this meeting.'), timer: 1800, showConfirmButton: false })
+    if (result.isConfirmed && typeof result.value?.joined === 'boolean') {
+      await Swal.fire({ icon: 'success', title: result.value.joined ? text('เข้าร่วมประชุมแล้ว', 'You joined the meeting') : text('คุณได้ถูกเชิญเข้าร่วมประชุมนี้แล้ว', 'You have already been invited to this meeting.'), timer: 1800, showConfirmButton: false })
+      onClose()
+    }
   }
 
   useEffect(() => {
@@ -365,9 +369,9 @@ export function EventDialog({
 
   if (event && !details) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4" role="dialog" aria-modal="true">
-        <div className="flex flex-col items-center gap-3 rounded-2xl bg-white p-8 shadow-2xl">
-          <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
+      <div className="ui-dialog-backdrop fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+        <div className="ui-dialog-panel flex flex-col items-center gap-3 rounded-xl bg-white p-8 shadow-2xl">
+          <Loader2 className="semantic-meeting semantic-ink h-8 w-8 animate-spin" />
           <p className="text-sm font-semibold text-slate-700">{text('กำลังโหลดข้อมูลการประชุม...', 'Loading meeting details...')}</p>
         </div>
       </div>
@@ -598,15 +602,15 @@ export function EventDialog({
     )
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/35 p-0 sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="event-title">
-      <section className="max-h-[95vh] w-full max-w-3xl overflow-y-auto rounded-t-2xl bg-white p-5 shadow-2xl sm:rounded-2xl sm:p-6">
-        <div className="relative mb-5 flex flex-col gap-3 pr-12 sm:flex-row sm:items-start sm:justify-between sm:pr-0">
+    <div className="ui-dialog-backdrop fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="event-title">
+      <section className="ui-dialog-panel semantic-meeting-dialog max-h-[95vh] w-full max-w-3xl overflow-y-auto rounded-t-2xl bg-white p-5 shadow-2xl sm:rounded-xl sm:p-6">
+        <div className="ui-dialog-header relative mb-5 flex flex-col gap-3 pr-12 sm:flex-row sm:items-start sm:justify-between sm:pr-0">
           <div className="flex min-w-0 gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
+            <span className="semantic-meeting flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
               <CalendarClock size={22} />
             </span>
             <div>
-              <h2 id="event-title" className="text-xl font-bold">
+              <h2 id="event-title" className="semantic-meeting semantic-ink text-xl font-bold">
                 {event ? text('รายละเอียดการประชุม', 'Meeting details') : text('เพิ่มการประชุม', 'Add meeting')}
               </h2>
               {event && !canEdit && (
@@ -645,12 +649,12 @@ export function EventDialog({
             <fieldset disabled={!canEdit || busy || savingNew} className="rounded-xl border border-brand-200 bg-brand-50/50 p-4 disabled:opacity-75">
               <legend className="px-1 text-sm font-semibold text-slate-800">{text('การแก้ไขนี้มีผลกับ', 'Apply these changes to')}</legend>
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                <label className={`cursor-pointer rounded-lg border p-3 ${editScope === 'series' ? 'border-brand-600 bg-white' : 'border-slate-200 bg-white/70'}`}>
+                <label className={`ui-choice semantic-meeting semantic-choice cursor-pointer rounded-lg border p-3 ${editScope === 'series' ? 'border-brand-600 bg-white' : 'border-slate-200 bg-white/70'}`}>
                   <input type="radio" name="event-edit-scope" className="sr-only" checked={editScope === 'series'} onChange={() => changeEditScope('series')} />
                   <span className="block text-sm font-semibold text-slate-800">{text('ทุกนัดในชุด', 'Every meeting in the series')}</span>
                   <span className="mt-1 block text-xs text-slate-600">{text('แก้ข้อมูลและการแจ้งเตือนของทั้งชุดนัดหมาย', 'Updates the details and notifications for the whole series.')}</span>
                 </label>
-                <label className={`cursor-pointer rounded-lg border p-3 ${editScope === 'occurrence' ? 'border-brand-600 bg-white' : 'border-slate-200 bg-white/70'}`}>
+                <label className={`ui-choice semantic-meeting semantic-choice cursor-pointer rounded-lg border p-3 ${editScope === 'occurrence' ? 'border-brand-600 bg-white' : 'border-slate-200 bg-white/70'}`}>
                   <input type="radio" name="event-edit-scope" className="sr-only" checked={editScope === 'occurrence'} onChange={() => changeEditScope('occurrence')} />
                   <span className="block text-sm font-semibold text-slate-800">{text(`เฉพาะนัดวันที่ ${occurrenceDateTime}`, `Only ${occurrenceDateTime}`)}</span>
                   <span className="mt-1 block text-xs text-slate-600">{text('แก้ได้เฉพาะรายละเอียด สถานที่ ผู้เข้าร่วม และเอกสาร', 'Only details, location, attendees, and documents can be changed.')}</span>
@@ -675,7 +679,7 @@ export function EventDialog({
           )}
 
           <fieldset disabled={!canEdit || busy || savingNew} className="space-y-5 disabled:opacity-75">
-            <section className="space-y-4 rounded-xl border border-slate-200 p-4">
+            <section className="ui-form-section space-y-4 rounded-xl border border-slate-200 p-4">
               <h3 className="flex items-center gap-2 font-semibold text-slate-800">
                 <FileText size={18} className="text-brand-600" />
                 {text('ข้อมูลการประชุม', 'Meeting details')}
@@ -736,7 +740,7 @@ export function EventDialog({
               </section>
             )}
 
-            <section className="space-y-4 rounded-xl border border-slate-200 p-4">
+            <section className="ui-form-section space-y-4 rounded-xl border border-slate-200 p-4">
               <div className="flex items-center justify-between">
                 <h3 className="flex items-center gap-2 font-semibold text-slate-800">
                   <Repeat2 size={18} className="text-brand-600" />
@@ -1000,7 +1004,7 @@ export function EventDialog({
               )}
             </section>
 
-            <section className="space-y-3 rounded-xl border border-slate-200 p-4">
+            <section className="ui-form-section space-y-3 rounded-xl border border-slate-200 p-4">
               <h3 className="flex items-center gap-2 font-semibold text-slate-800">
                 <UserPlus size={18} className="text-brand-600" />
                 {text('ผู้เข้าร่วม (ไม่บังคับ)', 'Attendees (optional)')}
@@ -1056,7 +1060,7 @@ export function EventDialog({
               </p>
             </section>
 
-            <section className="space-y-4 rounded-xl border border-slate-200 p-4">
+            <section className="ui-form-section space-y-4 rounded-xl border border-slate-200 p-4">
               <h3 className="flex items-center gap-2 font-semibold text-slate-800">
                 <Bell size={18} className="text-brand-600" />
                 {text('การแจ้งเตือน', 'Notifications')}
@@ -1148,7 +1152,7 @@ export function EventDialog({
                       </span>
                     )}
                   </label>
-                  <span tabIndex={0} aria-label={mobileTooltip} className="group relative inline-flex h-6 w-6 cursor-help items-center justify-center rounded-full border border-slate-300 text-xs font-bold text-slate-500">i<span role="tooltip" className="absolute bottom-full right-0 z-20 mb-2 hidden w-64 rounded-lg bg-slate-800 p-2 text-xs font-normal text-white shadow-lg group-hover:block group-focus:block">{mobileTooltip}</span></span></div>
+                  <span tabIndex={0} aria-label={mobileTooltip} className="group relative inline-flex h-6 w-6 cursor-help items-center justify-center rounded-full border border-slate-300 text-xs font-bold text-slate-500">i<span role="tooltip" className="ui-tooltip absolute bottom-full right-0 z-20 mb-2 hidden w-64 rounded-lg bg-slate-800 p-2 text-xs font-normal text-white shadow-lg group-hover:block group-focus:block">{mobileTooltip}</span></span></div>
                 </div>
                 {!mobileAvailable ? (
                   <p className="text-xs text-amber-700">
@@ -1167,7 +1171,7 @@ export function EventDialog({
               )}
             </section>
 
-            <section className="space-y-3 rounded-xl border border-slate-200 p-4">
+            <section className="ui-form-section space-y-3 rounded-xl border border-slate-200 p-4">
               <h3 className="flex items-center gap-2 font-semibold text-slate-800">
                 <Paperclip size={18} className="text-brand-600" />
                 {text('ไฟล์แนบ', 'Attachments')}

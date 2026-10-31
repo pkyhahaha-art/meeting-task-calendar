@@ -18,7 +18,6 @@ import {
   Wifi,
   Settings2
 } from 'lucide-react'
-import mascotHoldingPad from '../../ภาพประกอบUI/02_Hand I-Pad.jpg'
 import { useAuth } from '../auth/AuthProvider'
 import { useLanguage } from '../i18n/LanguageProvider'
 import { useConfirm } from '../components/ConfirmDialogProvider'
@@ -202,20 +201,20 @@ export function MobilePushPage() {
   }
 
   return (
-    <main className="min-h-screen p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-6">
+    <main className="ui-page min-h-screen p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-6">
       {!pushConfig.data?.ready && !pushConfig.isFetching && (
         <p role="status" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
           {pushConfig.error?.message || text('ระบบส่งแจ้งเตือนมือถือยังไม่พร้อม คุณสามารถติดตั้งแอปบนหน้าจอโฮมไว้ก่อน แล้วกดตรวจสอบระบบอีกครั้งบนมือถือเมื่อผู้ดูแลตั้งค่าแล้ว', 'Mobile delivery is not ready yet. Install the Home Screen app, then check the server again after setup.')}
         </p>
       )}
       {/* Hero Header Banner */}
-      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand-900 via-brand-800 to-purple-950 p-6 sm:p-8 text-white shadow-xl shadow-purple-950/20">
-        <div className="absolute -right-12 -top-12 h-64 w-64 rounded-full bg-purple-500/20 blur-3xl" />
-        <div className="absolute -left-12 -bottom-12 h-64 w-64 rounded-full bg-amber-500/20 blur-3xl" />
+      <section className="ui-panel relative overflow-hidden rounded-3xl border border-purple-100 bg-purple-50/60 p-6 sm:p-8 text-slate-900 shadow-sm">
+        <div className="absolute -right-12 -top-12 h-64 w-64 rounded-full bg-purple-200/30 blur-3xl" />
+        <div className="absolute -left-12 -bottom-12 h-64 w-64 rounded-full bg-violet-200/30 blur-3xl" />
 
         <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="max-w-xl space-y-3 text-center md:text-left">
-            <div className="inline-flex items-center gap-2 rounded-full bg-amber-400/20 border border-amber-300/30 px-3.5 py-1 text-xs font-semibold text-amber-300 backdrop-blur-sm">
+            <div className="inline-flex items-center gap-2 rounded-full bg-purple-100/70 border border-purple-200 px-3.5 py-1 text-xs font-semibold text-purple-800">
               <Sparkles size={14} className="animate-pulse" />
               <span>{text('ระบบแจ้งเตือนแบบเรียลไทม์ (Device Pairing)', 'Real-time Push Notification (Device Pairing)')}</span>
             </div>
@@ -224,7 +223,7 @@ export function MobilePushPage() {
               {text('เชื่อมต่อการแจ้งเตือนผ่านมือถือ', 'Connect Mobile Notifications')}
             </h1>
 
-            <p className="text-sm sm:text-base text-purple-100/90 leading-relaxed">
+            <p className="text-sm sm:text-base text-slate-600 leading-relaxed">
               {text(
                 'สแกน QR Code ครั้งเดียวด้วยมือถือเครื่องที่คุณต้องการรับการแจ้งเตือน ไม่ต้องล็อกอิน Gmail ซ้ำ ระบบจะแจ้งเตือนการประชุมและงานที่คุณต้องทำทันทีเมื่อถึงเวลา',
                 'Scan the QR code once on your mobile phone to receive meeting and task alerts instantly without logging into Gmail again.'
@@ -233,22 +232,13 @@ export function MobilePushPage() {
           </div>
 
           <div className="relative flex shrink-0 items-center justify-center">
-            <div className="relative h-32 w-32 sm:h-40 sm:w-40 rounded-2xl overflow-hidden border-2 border-white/20 bg-white/10 p-1 shadow-2xl backdrop-blur">
-              <img
-                src={mascotHoldingPad}
-                alt="PEA Mascot holding tablet"
-                className="h-full w-full object-cover rounded-xl"
-              />
-            </div>
-            <div className="absolute -bottom-2 -right-2 rounded-full bg-amber-400 p-2 text-brand-950 shadow-lg animate-bounce">
-              <BellRing size={20} />
-            </div>
+            <div className="flex h-24 w-24 items-center justify-center rounded-3xl border border-purple-100 bg-white/80 text-purple-600 shadow-sm sm:h-28 sm:w-28" aria-hidden="true"><BellRing size={42} /></div>
           </div>
         </div>
       </section>
 
       {/* Connected Devices List */}
-      <section className="bg-white rounded-3xl border border-purple-100 p-6 sm:p-8 shadow-sm space-y-6">
+      <section className="ui-panel bg-white rounded-3xl border border-purple-100 p-6 sm:p-8 shadow-sm space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-purple-100 pb-4">
           <div className="space-y-1">
             <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
@@ -286,10 +276,10 @@ export function MobilePushPage() {
               return (
                 <div
                   key={device.id}
-                  className="flex flex-col gap-4 rounded-2xl border border-purple-100 bg-gradient-to-r from-purple-50/50 via-white to-amber-50/30 p-4 shadow-sm hover:border-purple-200 transition"
+                  className="flex flex-col gap-4 rounded-2xl border border-purple-100 bg-white p-4 shadow-sm hover:border-purple-200 transition"
                 >
                   <div className="flex items-center gap-3.5 min-w-0">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-100 to-amber-100 text-brand-800 shadow-sm">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-purple-100 text-brand-800 shadow-sm">
                       {isPhone ? <Smartphone size={24} /> : <Laptop size={24} />}
                     </div>
                     <div className="min-w-0 flex-1">
@@ -338,7 +328,7 @@ export function MobilePushPage() {
       {/* Pairing QR is opened only for a first or additional device. */}
       {showPairingPanel && <div className="mx-auto max-w-xl">
         {/* Left Column: QR Code Box */}
-        <section className="bg-white rounded-3xl border border-purple-100 p-6 sm:p-8 shadow-sm flex flex-col items-center text-center space-y-6">
+        <section className="ui-panel bg-white rounded-3xl border border-purple-100 p-6 sm:p-8 shadow-sm flex flex-col items-center text-center space-y-6">
           <div className="space-y-1">
             <h2 className="text-xl font-bold text-slate-900 flex items-center justify-center gap-2">
               <Smartphone className="text-brand-600" size={24} />
@@ -350,7 +340,7 @@ export function MobilePushPage() {
           </div>
 
           {/* QR Container */}
-          <div className="relative p-5 rounded-3xl bg-gradient-to-b from-purple-50 via-white to-amber-50 border-2 border-brand-200/60 shadow-inner flex flex-col items-center">
+          <div className="relative p-5 rounded-3xl bg-purple-50/50 border-2 border-brand-200/60 shadow-inner flex flex-col items-center">
             {isGenerating ? (
               <div className="flex h-[242px] w-[242px] flex-col items-center justify-center rounded-2xl bg-white p-6 shadow-sm border border-purple-100">
                 <Loader2 size={40} className="animate-spin text-brand-600 mb-3" />

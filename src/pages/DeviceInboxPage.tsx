@@ -120,9 +120,9 @@ export function DeviceInboxPage() {
 
   const unread = (alerts.data ?? []).filter((alert) => !alert.read).length
 
-  return <main className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-amber-50 p-4 sm:p-6">
+  return <main className="ui-page min-h-screen bg-purple-50/40 p-4 sm:p-6">
     <div className="mx-auto max-w-lg space-y-4">
-      <header className="space-y-2 pt-3">
+      <header className="ui-page-header space-y-2 pt-3">
         <div className="flex items-center justify-between gap-3">
           <AppLogo className="h-20 w-20" />
           {!loading && <Link to={user ? '/calendar' : '/login'} className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl border border-purple-200 bg-white px-3 text-sm font-semibold text-brand-700 shadow-sm hover:bg-purple-50">{user ? <CalendarDays size={18} /> : <LogIn size={18} />}{user ? 'ดูปฏิทิน' : 'เข้าสู่ระบบ'}</Link>}
@@ -131,7 +131,7 @@ export function DeviceInboxPage() {
         <p className="text-xs text-slate-500">แจ้งเตือนงานและประชุม</p>
         <p className="rounded-xl border border-purple-100 bg-white/70 px-3 py-2 text-xs leading-relaxed text-slate-600"><span className="font-semibold text-brand-700">กลับหน้าจอโฮมมือถือ:</span> ปัดขึ้นจากขอบล่างของหน้าจอ หรือกดปุ่มโฮมของเครื่อง การเชื่อมต่อรับแจ้งเตือนยังอยู่เหมือนเดิม</p>
       </header>
-      <section className="rounded-2xl border border-purple-100 bg-white p-4 shadow-sm">
+      <section className="ui-panel rounded-2xl border border-purple-100 bg-white p-4 shadow-sm">
         <div className="flex items-center gap-2 font-semibold text-slate-800">
           {checking ? <Loader2 size={18} className="animate-spin" /> : device ? <CheckCircle2 size={18} className="text-green-600" /> : <Smartphone size={18} />}
           <span>{checking ? 'กำลังตรวจอุปกรณ์…' : device ? `เชื่อมต่อแล้ว${device.userName ? ` · ${device.userName}` : ''}` : 'ยังไม่ได้เชื่อมต่อรับข้อความใหม่'}</span>
@@ -143,7 +143,7 @@ export function DeviceInboxPage() {
         {device && <button type="button" onClick={() => void testNotification()} disabled={testing} className="btn-primary mt-3 w-full text-sm">{testing ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}ทดสอบส่งจากเซิร์ฟเวอร์มามือถือเครื่องนี้</button>}
         {(testStatus || testReceived) && <p role="status" className={`mt-3 rounded-xl p-3 text-sm ${testReceived ? 'bg-green-50 text-green-800' : 'bg-amber-50 text-amber-900'}`}>{testReceived ? 'มือถือเครื่องนี้รับข้อความทดสอบแล้ว เปิดอ่านจากกล่องแจ้งเตือนได้เลย' : testStatus}</p>}
       </section>
-      <section className="overflow-hidden rounded-2xl border border-purple-100 bg-white shadow-sm">
+      <section className="ui-panel overflow-hidden rounded-2xl border border-purple-100 bg-white shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-purple-50 p-4">
           <h1 className="flex items-center gap-2 text-lg font-bold text-slate-900"><BellRing size={20} className="text-brand-700" />{selected ? 'รายละเอียดแจ้งเตือน' : 'กล่องแจ้งเตือน'}{!selected && unread > 0 && <span className="rounded-full bg-brand-700 px-2 py-0.5 text-xs text-white">{unread}</span>}</h1>
           <div className="flex items-center gap-1">
@@ -161,7 +161,7 @@ export function DeviceInboxPage() {
         </article> : alerts.isPending ? <p className="p-6 text-center text-slate-500">กำลังโหลดข้อความ…</p>
           : alerts.error ? <p role="alert" className="p-6 text-red-700">อ่านกล่องข้อความไม่ได้ กรุณาเปิดแอปอีกครั้ง</p>
             : (alerts.data ?? []).length === 0 ? <div className="space-y-2 p-8 text-center"><BellRing size={32} className="mx-auto text-purple-300" /><p className="font-semibold text-slate-700">ยังไม่มีข้อความแจ้งเตือน</p><p className="text-sm text-slate-500">ข้อความใหม่ที่ส่งมายังมือถือเครื่องนี้จะแสดงที่นี่ แตะข้อความเพื่อดูงานหรือประชุมได้ทันที</p></div>
-              : <ul className="divide-y divide-purple-50">{alerts.data?.map((alert) => <li key={alert.id} className={`flex items-start ${alert.read ? '' : 'bg-purple-50/60'}`}><button type="button" onClick={() => setParams({ notification: alert.id })} className="min-w-0 flex-1 space-y-1 p-4 text-left transition hover:bg-purple-50"><span className="block break-words font-semibold text-slate-900">{!alert.read && <span className="mr-2 inline-block h-2 w-2 rounded-full bg-brand-700" />}{alert.title}</span><span className="block line-clamp-2 text-sm text-slate-600">{alert.body}</span><time className="block text-xs text-slate-400">{dateLabel(alert.receivedAt)}</time></button><button type="button" disabled={deleting} aria-label={`ลบข้อความ: ${alert.title}`} onClick={() => void removeMessages([alert.id])} className="mr-2 mt-2 flex min-h-11 min-w-11 items-center justify-center rounded-xl text-slate-400 hover:bg-red-50 hover:text-red-700 disabled:opacity-40"><Trash2 size={18} /></button></li>)}</ul>}
+              : <ul className="divide-y divide-purple-50">{alerts.data?.map((alert) => <li key={alert.id} className={`flex items-start ${alert.read ? '' : 'bg-purple-50/60'}`}><button type="button" onClick={() => setParams({ notification: alert.id })} className="min-w-0 flex-1 space-y-1 p-4 text-left transition hover:bg-purple-50"><span className="block break-words font-semibold text-slate-900">{!alert.read && <span className={`semantic-dot mr-2 inline-block h-2 w-2 rounded-full ${alert.details?.status === 'completed' ? 'semantic-completed' : alert.details?.entity === 'task' ? 'semantic-task' : alert.details?.entity === 'meeting' ? 'semantic-meeting' : 'bg-brand-700'}`} />}{alert.title}</span><span className="block line-clamp-2 text-sm text-slate-600">{alert.body}</span><time className="block text-xs text-slate-400">{dateLabel(alert.receivedAt)}</time></button><button type="button" disabled={deleting} aria-label={`ลบข้อความ: ${alert.title}`} onClick={() => void removeMessages([alert.id])} className="mr-2 mt-2 flex min-h-11 min-w-11 items-center justify-center rounded-xl text-slate-400 hover:bg-red-50 hover:text-red-700 disabled:opacity-40"><Trash2 size={18} /></button></li>)}</ul>}
       </section>
       <div className="flex flex-wrap items-center justify-end gap-2 text-xs">
         <Link to="/pair-device?reconnect=1" className="inline-flex min-h-11 items-center text-slate-500">เปลี่ยนบัญชีที่เชื่อมต่อ</Link>

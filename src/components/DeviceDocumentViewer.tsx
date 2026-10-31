@@ -8,7 +8,7 @@ export function DeviceDocumentViewer({ name, previewUrl, downloadUrl, download =
   name: string; previewUrl?: string; downloadUrl?: string; download?: boolean
 }) {
   const [loaded, setLoaded] = useState(false)
-  return <main className="flex h-[100dvh] flex-col bg-slate-100">
+  return <main className="ui-page flex h-[100dvh] flex-col bg-purple-50/40">
     <header className="z-10 shrink-0 border-b border-purple-100 bg-white px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] shadow-sm">
       <div className="flex items-center justify-between gap-2">
         <Link replace to="/device-inbox" className="inline-flex min-h-11 items-center gap-1 font-semibold text-brand-700"><ChevronLeft size={20} />กลับกล่องแจ้งเตือน</Link>

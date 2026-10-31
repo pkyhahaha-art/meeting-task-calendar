@@ -85,7 +85,7 @@ function endpoint(files: string[], rows: Store, options: { profileError?: boolea
     console: { error: () => undefined },
   })
   for (const file of files) {
-    const source = readFileSync(new URL('../../' + file, import.meta.url), 'utf8').replace(/^import .*\n/gm, '').replace(/export /g, '')
+    const source = readFileSync(new URL('../../' + file, import.meta.url), 'utf8').replace(/^import .*\r?\n/gm, '').replace(/export /g, '')
     vm.runInContext(ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText, context)
   }
   return { handler, writes, signed: () => signed }

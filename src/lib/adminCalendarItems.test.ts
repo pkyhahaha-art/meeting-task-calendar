@@ -10,7 +10,7 @@ function harness(result: { data: unknown; error: unknown } = { data: { rows: [],
   const context = vm.createContext({ reportDateBounds, reportPageSize, supabase: {
     rpc: async (name: string, args?: Record<string, unknown>) => { calls.push({ name, args }); return result },
   } })
-  const source = readFileSync(new URL('./adminCalendarItems.ts', import.meta.url), 'utf8').replace(/^import .*\n/gm, '').replace(/export /g, '')
+  const source = readFileSync(new URL('./adminCalendarItems.ts', import.meta.url), 'utf8').replace(/^import .*\r?\n/gm, '').replace(/export /g, '')
   vm.runInContext(ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText, context)
   return { calls, load: vm.runInContext('loadAdminCalendarItems', context), trash: vm.runInContext('trashAdminCalendarItems', context),
     cancel: vm.runInContext('cancelAdminMeetingOccurrence', context), occurrences: vm.runInContext('loadAdminMeetingOccurrences', context),

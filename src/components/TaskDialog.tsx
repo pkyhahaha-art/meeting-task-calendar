@@ -6,6 +6,7 @@ import type { Database } from '../lib/database.types'
 import { bangkokDate, formatDisplayDate, isPastBangkokDate, parseDisplayDate, validateAttachments } from '../lib/eventForm'
 import {
   calculateContinuousStartDate,
+  continuousReminderPreview,
   daysBetweenBangkokDates,
   invalidExternalEmails,
   isGoogleDocumentUrl,
@@ -204,9 +205,9 @@ export function TaskDialog({
 
   if (task && !details) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4" role="dialog" aria-modal="true">
-        <div className="flex flex-col items-center gap-3 rounded-2xl bg-white p-8 shadow-2xl">
-          <Loader2 className="h-8 w-8 animate-spin text-amber-700" />
+      <div className="ui-dialog-backdrop fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+        <div className="ui-dialog-panel flex flex-col items-center gap-3 rounded-xl bg-white p-8 shadow-2xl">
+          <Loader2 className="semantic-task semantic-ink h-8 w-8 animate-spin" />
           <p className="text-sm font-semibold text-slate-700">{text('กำลังโหลดข้อมูลงาน...', 'Loading task details...')}</p>
         </div>
       </div>
@@ -222,6 +223,8 @@ export function TaskDialog({
 
   const creationDateInPast = !task && isPastBangkokDate(draft.dueDate)
   const continuousStartDate = draft.dueDate ? calculateContinuousStartDate(draft.dueDate, draft.continuousConfig.startDaysBefore) : ''
+  const continuousPreview = continuousReminderPreview(draft.dueDate, draft.dueTime, draft.continuousConfig)
+  const previewDateLabel = (date: Date) => date.toLocaleDateString(language === 'th' ? 'th-TH' : 'en-GB', { timeZone: 'Asia/Bangkok', day: 'numeric', month: 'short' })
   const isContinuousStartInPast = draft.reminderMode === 'continuous' && Boolean(continuousStartDate) && isPastBangkokDate(continuousStartDate)
   const expiredSingleReminderKeys = draft.reminderMode === 'single'
     ? pastTaskSingleReminderKeys(draft.dueDate, draft.dueTime, draft.reminderKeys)
@@ -316,14 +319,14 @@ export function TaskDialog({
       confirmButtonText: text('บันทึกการแก้ไข', 'Save changes'),
       denyButtonText: text('บันทึกการแก้ไขและแจ้งเตือน', 'Save and notify'),
       cancelButtonText: text('ยกเลิก', 'Cancel'),
-      confirmButtonColor: '#0f766e',
-      denyButtonColor: '#b45309',
+      customClass: { popup: 'semantic-task-dialog', confirmButton: 'ui-save-quiet', denyButton: 'ui-save-notify' },
     })
     if (!result.isConfirmed && !result.isDenied) return
     const notifyRecipients = result.isDenied
     if (notifyRecipients && task?.status !== 'pending') {
       await Swal.fire({
         icon: 'warning',
+        customClass: { popup: 'semantic-task-dialog' },
         title: text('ไม่สามารถแจ้งเตือนได้', 'Cannot send notification'),
         text:
           task?.status === 'completed'
@@ -340,6 +343,7 @@ export function TaskDialog({
       if (await save(notifyRecipients)) {
         await Swal.fire({
           icon: 'success',
+          customClass: { popup: 'semantic-task-dialog' },
           title: text('สำเร็จ', 'Success'),
           text: notifyRecipients
             ? text('บันทึกการแก้ไขและแจ้งเตือนผู้รับแล้ว', 'Changes saved and recipients notified.')
@@ -367,6 +371,7 @@ export function TaskDialog({
         if (await save(true)) {
           await Swal.fire({
             icon: 'success',
+            customClass: { popup: 'semantic-task-dialog' },
             title: text('สำเร็จ', 'Success'),
             text: text('สร้าง Task เรียบร้อยแล้ว', 'Task created.'),
             showConfirmButton: false,
@@ -393,15 +398,15 @@ export function TaskDialog({
   )
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/35 p-0 sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="task-title">
-      <section className="max-h-[95vh] w-full max-w-3xl overflow-y-auto rounded-t-2xl bg-white p-5 shadow-2xl sm:rounded-2xl sm:p-6">
-        <div className="relative mb-5 flex flex-col gap-3 pr-12 sm:flex-row sm:items-start sm:justify-between sm:pr-0">
+    <div className="ui-dialog-backdrop fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="task-title">
+      <section className="ui-dialog-panel semantic-task-dialog max-h-[95vh] w-full max-w-3xl overflow-y-auto rounded-t-2xl bg-white p-5 shadow-2xl sm:rounded-xl sm:p-6">
+        <div className="ui-dialog-header relative mb-5 flex flex-col gap-3 pr-12 sm:flex-row sm:items-start sm:justify-between sm:pr-0">
           <div className="flex min-w-0 gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-700">
+            <span className="semantic-task flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
               <CheckCircle2 size={22} />
             </span>
             <div>
-              <h2 id="task-title" className="text-xl font-bold">
+              <h2 id="task-title" className="semantic-task semantic-ink text-xl font-bold">
                 {task ? text('รายละเอียด Task', 'Task details') : text('เพิ่ม Task', 'Add task')}
               </h2>
               {task && !canEdit && (
@@ -426,9 +431,9 @@ export function TaskDialog({
 
         <form onSubmit={submit} className="space-y-5">
           <fieldset disabled={!canEdit || busy || saving} className="space-y-5 disabled:opacity-75">
-            <section className="space-y-4 rounded-xl border border-slate-200 p-4">
+            <section className="ui-form-section space-y-4 rounded-xl border border-slate-200 p-4">
               <h3 className="flex items-center gap-2 font-semibold text-slate-800">
-                <FileText size={18} className="text-amber-700" />
+                <FileText size={18} className="semantic-task semantic-ink" />
                 {text('ข้อมูลงาน', 'Task details')}
               </h3>
               <div>
@@ -487,12 +492,15 @@ export function TaskDialog({
                         if (date) setDueDateText(formatDisplayDate(date))
                       }}
                     />
-                    <label className="absolute inset-y-1 right-1 flex w-10 items-center justify-center rounded-lg text-brand-600 hover:bg-brand-50">
+                    <label className="absolute inset-y-0 right-0 flex w-12 cursor-pointer items-center justify-center rounded-lg text-brand-600 hover:bg-brand-50 focus-within:ring-2 focus-within:ring-brand-300">
                       <CalendarDays size={19} aria-hidden="true" />
                       <input
                         type="date"
                         className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
                         aria-label={text('เลือกวันครบกำหนดจากปฏิทิน', 'Choose due date from calendar')}
+                        onClick={(event) => {
+                          try { event.currentTarget.showPicker?.() } catch { event.currentTarget.focus() }
+                        }}
                         value={draft.dueDate}
                         min={task ? undefined : bangkokDate()}
                         onChange={(event) => {
@@ -518,9 +526,9 @@ export function TaskDialog({
             </section>
           </fieldset>
 
-          <section className="space-y-3 rounded-xl border border-slate-200 p-4">
+          <section className="ui-form-section space-y-3 rounded-xl border border-slate-200 p-4">
             <h3 className="flex items-center gap-2 font-semibold text-slate-800">
-              <UserRound size={18} className="text-amber-700" />
+              <UserRound size={18} className="semantic-task semantic-ink" />
               {text('ผู้รับมอบหมาย', 'Assignees')}
             </h3>
             <div role="tablist" aria-label={text('ประเภทผู้รับมอบหมาย', 'Assignee type')} className="grid grid-cols-1 gap-1 rounded-xl bg-slate-100 p-1 sm:grid-cols-3">
@@ -533,18 +541,18 @@ export function TaskDialog({
                   aria-controls={`task-recipient-panel-${key}`}
                   aria-selected={recipientTab === key}
                   onClick={() => setRecipientTab(key)}
-                  className={`rounded-lg px-2 py-2 text-sm font-medium transition-colors ${recipientTab === key ? 'bg-white text-amber-800 shadow-sm' : 'text-slate-600 hover:bg-white/70'
+                  className={`rounded-lg px-2 py-2 text-sm font-medium transition-colors ${recipientTab === key ? 'semantic-task semantic-ink bg-white shadow-sm' : 'text-slate-600 hover:bg-white/70'
                     }`}
                 >
                   {label}
-                  {count > 0 && <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">{count}</span>}
+                  {count > 0 && <span className="semantic-task ml-1 rounded-full px-1.5 py-0.5 text-xs">{count}</span>}
                 </button>
               ))}
             </div>
             <fieldset disabled={!canEdit || busy || saving} className="disabled:opacity-75">
               {recipientTab === 'self' && (
                 <div role="tabpanel" id="task-recipient-panel-self" aria-labelledby="task-recipient-tab-self">
-                  <label className="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm">
+                  <label className="semantic-task semantic-choice flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm">
                     <input
                       type="checkbox"
                       checked={selfSelected}
@@ -554,7 +562,7 @@ export function TaskDialog({
                     />
                     <span className="min-w-0 flex-1 truncate">{selfProfile ? `${selfProfile.full_name} — ${selfProfile.email}` : text('ฉัน', 'Me')}</span>
                     {details?.internalRecipients.find((recipient) => recipient.user_id === userId)?.acknowledged_at && (
-                      <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">{text('รับทราบแล้ว', 'Acknowledged')}</span>
+                      <span className="semantic-completed shrink-0 rounded-full px-2 py-0.5 text-xs font-medium">{text('รับทราบแล้ว', 'Acknowledged')}</span>
                     )}
                   </label>
                 </div>
@@ -564,7 +572,7 @@ export function TaskDialog({
                   {profiles
                     .filter((profile) => profile.status === 'active' && profile.id !== userId)
                     .map((profile) => (
-                      <label key={profile.id} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50">
+                      <label key={profile.id} className="semantic-task semantic-choice flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50">
                         <input
                           type="checkbox"
                           checked={draft.internalUserIds.includes(profile.id)}
@@ -580,7 +588,7 @@ export function TaskDialog({
                            <span className="block text-xs text-slate-500">{profile.email}</span>
                         </span>
                         {details?.internalRecipients.find((recipient) => recipient.user_id === profile.id)?.acknowledged_at && (
-                          <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">{text('รับทราบแล้ว', 'Acknowledged')}</span>
+                          <span className="semantic-completed shrink-0 rounded-full px-2 py-0.5 text-xs font-medium">{text('รับทราบแล้ว', 'Acknowledged')}</span>
                         )}
                       </label>
                     ))}
@@ -603,7 +611,7 @@ export function TaskDialog({
                         aria-label={`${text('Gmail ผู้รับภายนอกคนที่', 'External Gmail recipient')} ${index + 1}`}
                       />
                       {details?.externalRecipients.find((recipient) => recipient.email === email.trim().toLowerCase())?.acknowledged_at && (
-                        <span className="shrink-0 rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-700">{text('รับทราบแล้ว', 'Acknowledged')}</span>
+                        <span className="semantic-completed shrink-0 rounded-full px-2 py-1 text-xs font-medium">{text('รับทราบแล้ว', 'Acknowledged')}</span>
                       )}
                       {draft.externalEmails.length > 1 && (
                         <button
@@ -632,10 +640,10 @@ export function TaskDialog({
           <fieldset disabled={!canEdit || busy || saving} className="space-y-5 disabled:opacity-75">
 
             {/* Notification Section with 2 Modes */}
-            <section className="space-y-4 rounded-xl border border-slate-200 p-4">
+            <section className="ui-form-section space-y-4 rounded-xl border border-slate-200 p-4">
               <div className="flex items-center justify-between">
                 <h3 className="flex items-center gap-2 font-semibold text-slate-800">
-                  <Bell size={18} className="text-amber-700" />
+                  <Bell size={18} className="semantic-task semantic-ink" />
                   {text('การแจ้งเตือน', 'Notifications')}
                 </h3>
               </div>
@@ -645,7 +653,7 @@ export function TaskDialog({
                 <button
                   type="button"
                   onClick={() => set('reminderMode', 'single')}
-                  className={`rounded-lg py-2 text-sm font-medium transition-all ${draft.reminderMode === 'single' ? 'bg-white text-amber-800 shadow-sm' : 'text-slate-600 hover:bg-white/60'
+                  className={`rounded-lg py-2 text-sm font-medium transition-colors ${draft.reminderMode === 'single' ? 'semantic-task semantic-ink bg-white shadow-sm' : 'text-slate-600 hover:bg-white/60'
                     }`}
                 >
                   {text('1. แจ้งครั้งเดียว', '1. Single reminder')}
@@ -653,7 +661,7 @@ export function TaskDialog({
                 <button
                   type="button"
                   onClick={() => set('reminderMode', 'continuous')}
-                  className={`rounded-lg py-2 text-sm font-medium transition-all ${draft.reminderMode === 'continuous' ? 'bg-white text-amber-800 shadow-sm' : 'text-slate-600 hover:bg-white/60'
+                  className={`rounded-lg py-2 text-sm font-medium transition-colors ${draft.reminderMode === 'continuous' ? 'semantic-task semantic-ink bg-white shadow-sm' : 'text-slate-600 hover:bg-white/60'
                     }`}
                 >
                   {text('2. แจ้งต่อเนื่อง', '2. Continuous reminder')}
@@ -673,10 +681,10 @@ export function TaskDialog({
                       return (
                         <label
                           key={option.key}
-                          className={`cursor-pointer select-none rounded-full border px-3 py-1.5 text-sm transition-colors ${isChecked && isPast
-                              ? 'border-red-500 bg-red-50 font-medium text-red-800'
+                          className={`semantic-choice cursor-pointer select-none rounded-full border px-3 py-1.5 text-sm transition-colors ${isChecked && isPast
+                              ? 'semantic-overdue border-red-500 bg-red-50 font-medium text-red-800'
                               : isChecked
-                                ? 'border-amber-500 bg-amber-50 font-medium text-amber-800'
+                                ? `${option.key === 'overdue' ? 'semantic-overdue' : 'semantic-task'} font-medium`
                                 : isPast
                                   ? 'border-slate-200 bg-slate-100 text-slate-400 opacity-60'
                                   : 'border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -733,7 +741,7 @@ export function TaskDialog({
 
               {/* Mode 2: Continuous Reminders */}
               {draft.reminderMode === 'continuous' && (
-                <div className="space-y-3 rounded-xl border border-amber-200/70 bg-amber-50/50 p-3.5">
+                <div className="semantic-task space-y-3 rounded-xl border p-3.5">
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div>
                       <label className="field-label text-xs" htmlFor="continuous-days">
@@ -770,13 +778,7 @@ export function TaskDialog({
                             `Reminder start date (${formatDisplayDate(continuousStartDate)}) has already passed (${Math.max(0, daysRemaining)} days remaining). Please choose within remaining days.`
                           )}
                         </p>
-                      ) : (
-                        continuousStartDate && (
-                          <p className="mt-1 text-[11px] text-slate-500">
-                            {text(`ระบบจะเริ่มส่งแจ้งเตือนตั้งแต่วันที่ ${formatDisplayDate(continuousStartDate)}`, `Reminders will start on ${formatDisplayDate(continuousStartDate)}`)}
-                          </p>
-                        )
-                      )}
+                      ) : null}
                     </div>
 
                     <div>
@@ -793,7 +795,7 @@ export function TaskDialog({
                             })
                           }
                           className={`flex-1 rounded-lg border py-2 text-xs font-medium transition-colors ${draft.continuousConfig.frequency === 'daily'
-                              ? 'border-amber-500 bg-amber-50 text-amber-800'
+                              ? 'semantic-task'
                               : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
                             }`}
                         >
@@ -808,7 +810,7 @@ export function TaskDialog({
                             })
                           }
                           className={`flex-1 rounded-lg border py-2 text-xs font-medium transition-colors ${draft.continuousConfig.frequency === 'weekdays'
-                              ? 'border-amber-500 bg-amber-50 text-amber-800'
+                              ? 'semantic-task'
                               : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
                             }`}
                         >
@@ -818,12 +820,19 @@ export function TaskDialog({
                     </div>
                   </div>
 
-                  <p className="text-xs text-amber-800/85">
+                  <div className="grid gap-1 text-xs font-normal leading-relaxed text-slate-600" role="status" aria-live="polite">
+                    {continuousStartDate && !isContinuousStartInPast && <p>{text(`เริ่มเตือน: ${formatDisplayDate(continuousStartDate)}`, `First reminder period: ${formatDisplayDate(continuousStartDate)}`)}</p>}
+                    {!draft.dueDate ? <p>{text('เลือกวันครบกำหนดเพื่อดูวันที่เตือน', 'Choose a due date to preview reminders.')}</p>
+                      : continuousPreview.nextDate
+                        ? <p>{text('รอบเตือนถัดไป: ', 'Next reminder: ')}{previewDateLabel(continuousPreview.nextDate)}{` · ${draft.dueTime || '09:00'} ${text('น.', '(Bangkok)')}`}</p>
+                        : <p>{text('ไม่มีรอบเตือนถัดไป', 'No further reminders.')}</p>}
+                  <p>
                     {text(
-                      '🔔 แจ้งเตือนต่อเนื่องจนถึงวันครบกำหนด และหยุดแจ้งทันทีเมื่อกด “เสร็จสิ้น” (Task จะแสดงในปฏิทินเพียง 1 รายการในวันครบกำหนด)',
-                      '🔔 Notifies continuously until due date and stops immediately when marked completed. (Task appears only once on its due date)'
+                      'เตือนถึงวันครบกำหนด และหยุดเมื่อปิดงาน',
+                      'Reminders end on the due date or when completed.'
                     )}
                   </p>
+                  </div>
                 </div>
               )}
 
@@ -851,7 +860,7 @@ export function TaskDialog({
                     disabled={!hasConnectedDevices}
                     onChange={(event) => set('notifyLine', event.target.checked)}
                   />
-                  <Smartphone size={16} className={hasConnectedDevices ? 'text-amber-700' : 'text-slate-400'} />
+                  <Smartphone size={16} className={hasConnectedDevices ? 'semantic-task semantic-ink' : 'text-slate-400'} />
                   <span>{text('แจ้งเตือนผ่านมือถือ', 'Mobile notification')}</span>
                   {!hasConnectedDevices ? (
                     <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 border border-amber-200">
@@ -876,9 +885,9 @@ export function TaskDialog({
               )}
             </section>
 
-            <section className="space-y-3 rounded-xl border border-slate-200 p-4">
+            <section className="ui-form-section space-y-3 rounded-xl border border-slate-200 p-4">
               <h3 className="flex items-center gap-2 font-semibold text-slate-800">
-                <Paperclip size={18} className="text-amber-700" />
+                <Paperclip size={18} className="semantic-task semantic-ink" />
                 {text('เอกสารประกอบ', 'Supporting documents')}
               </h3>
               {details?.attachments.map((file) => (

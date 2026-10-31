@@ -7,7 +7,6 @@ import { AdminFilter, AdminPager, AdminStatus, adminDate } from './AdminReportCo
 import { reportDateBounds, reportPageSize, type AdminProfile } from '../lib/adminReports'
 import { adminItemKey, cancelAdminMeetingOccurrence, loadAdminCalendarItems, loadAdminMeetingOccurrences, trashAdminCalendarItems,
   type AdminCalendarFilters, type AdminCalendarItem } from '../lib/adminCalendarItems'
-import adminMascot from '../../ภาพประกอบUI/02_Hand I-Pad.jpg'
 
 const initialFilters: AdminCalendarFilters = { entity: '', creator: '', search: '', from: '', to: '' }
 const statusLabel: Record<string, string> = { pending: 'ยังไม่เสร็จ', completed: 'เสร็จแล้ว', cancelled: 'ยกเลิกแล้ว', scheduled: 'ตามกำหนด' }
@@ -97,14 +96,13 @@ export function AdminCalendarItemsPanel({ adminUserId, members }: { adminUserId:
     catch { setMessage({ error: true, text: `${result} แต่โหลดข้อมูลล่าสุดไม่สำเร็จ กรุณากดโหลดรายการใหม่` }) }
     finally { saving.current = false; setWorking(false) }
   }
-  return <><section className="card overflow-hidden border-purple-100" aria-labelledby="admin-items-title" aria-hidden={trashAllOpen || undefined}>
-    <div className="flex items-center justify-between gap-4 border-b border-purple-100 bg-gradient-to-br from-purple-50 via-white to-amber-50 p-4 sm:p-6">
+  return <><section className="ui-panel card overflow-hidden border-purple-100" aria-labelledby="admin-items-title" aria-hidden={trashAllOpen || undefined}>
+    <div className="flex items-center justify-between gap-4 border-b border-purple-100 bg-purple-50/50 p-4 sm:p-6">
       <div className="min-w-0 space-y-3">
         <span className="inline-flex rounded-full border border-purple-100 bg-white px-3 py-1 text-xs font-bold tracking-wide text-brand-700">PEA · ADMIN</span>
         <div><h2 id="admin-items-title" className="flex items-center gap-2 text-xl font-bold text-brand-800 sm:text-2xl"><CalendarDays size={22} className="shrink-0 text-brand-600" />จัดการงานและประชุม</h2><p className="mt-2 text-sm leading-relaxed text-slate-600">ค้นหา ตรวจสอบ และจัดการรายการของสมาชิก</p></div>
         <button type="button" className="btn-secondary bg-white" disabled={blocked || Boolean(dateError)} onClick={() => void items.refetch()}><RefreshCw size={16} />โหลดรายการใหม่</button>
       </div>
-      <div className="shrink-0 rounded-2xl border border-amber-200/70 bg-white p-1 shadow-sm sm:p-2"><img src={adminMascot} alt="" aria-hidden="true" width={1500} height={1500} className="h-20 w-20 rounded-xl object-contain sm:h-28 sm:w-28" /></div>
     </div>
     <div className="space-y-4 border-b border-slate-100 p-4">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -125,7 +123,7 @@ export function AdminCalendarItemsPanel({ adminUserId, members }: { adminUserId:
     </div>
     {dateError ? <p role="alert" className="p-5 text-amber-800">{dateError}</p> : items.isPending ? <p role="status" className="p-5 text-slate-500">กำลังโหลดงานและประชุม…</p> : items.isError ? <p role="alert" className="p-5 text-red-700">โหลดรายการไม่ได้ กรุณาโหลดใหม่และตรวจสิทธิ์ Admin</p> : <>
       {!rows.length ? <div className="p-8 text-center"><CalendarDays size={32} className="mx-auto mb-3 text-purple-300" /><p className="font-semibold text-slate-700">ไม่พบงานหรือประชุมตามตัวกรอง</p><p className="mt-1 text-sm text-slate-500">ลองเปลี่ยนคำค้นหรือช่วงวันที่สร้าง</p></div> : <div className="max-w-full overflow-x-auto">
-        <table className="block w-full text-left text-sm xl:table xl:table-fixed" aria-label="รายการงานและประชุมสำหรับ Admin">
+        <table className="ui-table block w-full text-left text-sm xl:table xl:table-fixed" aria-label="รายการงานและประชุมสำหรับ Admin">
           <thead className="hidden border-b border-purple-200 bg-purple-50 text-xs font-bold text-brand-800 xl:table-header-group"><tr>
             <th scope="col" className="w-[5%] px-2 py-4"><span className="sr-only">เลือก</span></th><th scope="col" className="w-[24%] px-3 py-4">รายการ / ประเภท</th><th scope="col" className="w-[18%] px-3 py-4">ผู้สร้าง</th><th scope="col" className="w-[12%] px-3 py-4">หน่วยงาน</th><th scope="col" className="w-[16%] px-3 py-4">วันประชุม / ครบกำหนด</th><th scope="col" className="w-[10%] px-3 py-4">สถานะ</th><th scope="col" className="w-[15%] px-3 py-4">จัดการ</th>
           </tr></thead>
@@ -134,7 +132,7 @@ export function AdminCalendarItemsPanel({ adminUserId, members }: { adminUserId:
               <td className="row-start-1 align-top xl:px-2 xl:py-4"><label className="flex min-h-11 min-w-11 items-center justify-center"><input type="checkbox" className="h-5 w-5 accent-purple-700" aria-label={`เลือก ${item.title}`} disabled={blocked} checked={selected.includes(adminItemKey(item))} onChange={e => setSelected(current => e.target.checked ? [...current, adminItemKey(item)] : current.filter(key => key !== adminItemKey(item)))} /></label></td>
               <td className="min-w-0 row-start-1 align-top xl:px-3 xl:py-4">
                 <h3 className="break-words font-bold leading-relaxed text-slate-900">{item.title}</h3>
-                <div className="mt-2 flex flex-wrap gap-2"><span className="rounded-full bg-purple-100/70 px-2 py-1 text-xs font-semibold text-brand-700">{item.entity === 'task' ? isLegacyTaskSeries(item) ? 'Task ทำซ้ำเดิม' : 'Task' : isMeetingSeries(item) ? 'Meeting ทำซ้ำ' : 'Meeting'}</span><span className="xl:hidden"><AdminStatus value={item.status} label={statusLabel[item.status] || item.status} /></span></div>
+                <div className="mt-2 flex flex-wrap gap-2"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${item.entity === 'task' ? 'semantic-task' : 'semantic-meeting'}`}>{item.entity === 'task' ? isLegacyTaskSeries(item) ? 'Task ทำซ้ำเดิม' : 'Task' : isMeetingSeries(item) ? 'Meeting ทำซ้ำ' : 'Meeting'}</span><span className="xl:hidden"><AdminStatus value={item.status} label={statusLabel[item.status] || item.status} /></span></div>
                 <details className="mt-2 min-w-0"><summary className="min-h-11 cursor-pointer py-3 text-xs font-semibold text-brand-700 underline decoration-purple-200 underline-offset-4">ดูรายละเอียดรายการ</summary>
                   <dl className="space-y-3 rounded-xl border border-purple-100 bg-white p-3 text-xs">{[['หน่วยงาน / สังกัด', item.affiliation || '—'], ['สร้างเมื่อ', adminDate(item.created_at)],
                     ...(item.entity === 'meeting' ? [['เริ่มประชุม', adminDate(item.start_datetime)], ['สิ้นสุด', adminDate(item.end_datetime)]] : [['ครบกำหนด', item.due_date ? adminDate(`${item.due_date}T${item.due_time || '00:00:00'}+07:00`) : '—']]), ['รหัสรายการ', item.id]].map(([label, value]) => <div key={label}><dt className="font-semibold text-slate-500">{label}</dt><dd className="mt-1 break-words [overflow-wrap:anywhere]">{value}</dd></div>)}</dl>

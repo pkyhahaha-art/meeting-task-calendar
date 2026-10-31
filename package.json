@@ -13,6 +13,7 @@
     "typecheck": "node ./node_modules/typescript/bin/tsc -b --pretty false"
   },
   "dependencies": {
+    "@fontsource/ibm-plex-sans-thai-looped": "5.3.0",
     "@fullcalendar/core": "6.1.19",
     "@fullcalendar/daygrid": "6.1.19",
     "@fullcalendar/interaction": "6.1.19",

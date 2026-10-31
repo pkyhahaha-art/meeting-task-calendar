@@ -12,7 +12,7 @@ test('the actual report queries apply dates, channel, status, entity and search 
     query[method] = (...args: unknown[]) => { calls.push([method, ...args]); return query }
   }
   const context = vm.createContext({ supabase: { from: (table: string) => { calls.push(['from', table]); return query } }, reportDateBounds, collectReportRows })
-  const source = readFileSync(new URL('./adminReportQueries.ts', import.meta.url), 'utf8').replace(/^import .*\n/gm, '').replace(/export /g, '')
+  const source = readFileSync(new URL('./adminReportQueries.ts', import.meta.url), 'utf8').replace(/^import .*\r?\n/gm, '').replace(/export /g, '')
   vm.runInContext(ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText, context)
   const load = vm.runInContext('loadDeliveryReport', context)
   const filters = { from: '2026-10-01', to: '2026-10-31', channel: 'push', status: 'failed', entity: 'task', search: 'งาน 100%' }

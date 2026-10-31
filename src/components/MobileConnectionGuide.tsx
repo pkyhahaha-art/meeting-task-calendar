@@ -16,7 +16,7 @@ export function MobileConnectionGuide() {
       <div className="flex flex-col gap-2 sm:flex-row" role="group" aria-label={text('เลือกชนิดมือถือ', 'Choose phone type')}>
         {(['ios', 'android'] as const).map((value) => <button key={value} type="button" aria-pressed={platform === value} onClick={() => setPlatform(value)} className={platform === value ? 'btn-primary' : 'btn-secondary'}>{value === 'ios' ? 'iPhone / iPad' : 'Android · Chrome'}</button>)}
       </div>
-      {platform === 'ios' ? <div className="space-y-3 rounded-2xl border border-orange-200 bg-orange-50 p-4 text-sm leading-relaxed text-orange-900">
+      {platform === 'ios' ? <div className="space-y-3 rounded-2xl border border-purple-100 bg-purple-50/40 p-4 text-sm leading-relaxed text-orange-900">
         <h3 className="font-bold">{text('iPhone / iPad · เพิ่มไอคอนก่อน แล้วจึงเปิดแจ้งเตือน', 'iPhone / iPad · Add the icon before enabling notifications')}</h3>
         <p>{text('ต้องใช้ iOS / iPadOS 16.4 ขึ้นไป และเปิดจากไอคอนบนหน้าจอโฮมเพื่อขอสิทธิ์แจ้งเตือน', 'Use iOS / iPadOS 16.4 or later and open the Home Screen app to request notification permission.')}</p>
         <ol className="list-decimal space-y-3 pl-5">
@@ -27,12 +27,12 @@ export function MobileConnectionGuide() {
           <li><strong>{text('กลับหน้าจอโฮม แล้วเปิดไอคอน PEA', 'Open the PEA icon from your Home Screen')}</strong><p>{text('เปิดไอคอน PEA Meeting & Task Calendar ที่เพิ่งเพิ่ม หากมีช่อง “ลิงก์เชื่อมต่อ” ให้วางลิงก์ที่คัดลอก แล้วแตะ “ตรวจสอบลิงก์เชื่อมต่อ”', 'Open the new PEA Meeting & Task Calendar icon. If the Pairing link field appears, paste the copied link and tap Verify pairing link.')}</p></li>
           <li><strong>{text('อนุญาตการแจ้งเตือน', 'Allow notifications')}</strong><p>{text('แตะ “เปิดการแจ้งเตือนบนมือถือเครื่องนี้” แล้วเลือก “อนุญาต” (Allow) เมื่อเชื่อมสำเร็จจะเข้าสู่กล่องแจ้งเตือน ครั้งต่อไปเปิดจากไอคอนนี้ได้เลย', 'Tap Enable Notifications on This Device, then Allow. Successful pairing opens your inbox. Use this Home Screen icon next time.')}</p></li>
         </ol>
-        <details className="rounded-xl border border-orange-200 bg-white/70 p-3">
+        <details className="rounded-xl border border-purple-100 bg-white/70 p-3">
           <summary className="min-h-11 cursor-pointer font-semibold">{text('หาเมนูเพิ่มไอคอนไม่พบ / เปิดแล้วยังอยู่ใน Safari', 'Cannot find Add to Home Screen / the icon opens Safari')}</summary>
           <p className="mt-2">{text('ในรายการแชร์ เลื่อนลงล่างสุด → “แก้ไขการทำงาน” → เพิ่ม “เพิ่มไปยังหน้าจอโฮม” หากเปิดไอคอนแล้วมีแถบที่อยู่ Safari และระบบยังขอให้เพิ่มแอป ให้เพิ่มไอคอนโดยเปิด Open as Web App หากมีตัวเลือกนี้ อย่าเพิ่งล้างข้อมูลเว็บไซต์หรือยกเลิกเครื่องที่เชื่อมอยู่', 'In Share, scroll to the bottom → Edit Actions → add Add to Home Screen. If the icon opens Safari’s address bar and the app still asks you to install, add the icon with Open as Web App enabled if offered. Keep existing paired devices and website data.')}</p>
         </details>
         <a className="inline-flex min-h-11 items-center font-semibold underline" href="https://support.apple.com/th-th/guide/iphone/iphea86e5236/ios" target="_blank" rel="noopener noreferrer">{text('ดูขั้นตอนจาก Apple (เปิดแท็บใหม่)', 'Apple’s instructions (opens a new tab)')}</a>
-      </div> : <div className="space-y-3 rounded-2xl border border-green-200 bg-green-50 p-4 text-sm leading-relaxed text-green-900">
+      </div> : <div className="space-y-3 rounded-2xl border border-purple-100 bg-purple-50/40 p-4 text-sm leading-relaxed text-green-900">
         <h3 className="font-bold">{text('Android · เชื่อมต่อด้วย Chrome แล้วเพิ่มไอคอน', 'Android · Pair in Chrome, then add the icon')}</h3>
         <p>{text('Samsung, OPPO, vivo, Xiaomi / Redmi หรือ Pixel ใช้ขั้นตอน Chrome นี้ได้ ชื่อปุ่มยืนยันและวิธีวางไอคอนอาจต่างกันตามเครื่อง', 'Use these Chrome steps on Samsung, OPPO, vivo, Xiaomi / Redmi or Pixel. Confirmation buttons and icon placement can vary by device.')}</p>
         <ol className="list-decimal space-y-3 pl-5">
@@ -43,7 +43,7 @@ export function MobileConnectionGuide() {
           <li><strong>{text('ยืนยันและวางไอคอน', 'Confirm and place the icon')}</strong><p>{text('แตะ “ติดตั้ง” / “เพิ่ม” ตามหน้าต่างของเครื่อง หากมีภาพไอคอนให้ลาก ให้แตะค้างแล้วลากลงหน้าจอหลัก หรือใช้ปุ่มเพิ่มอัตโนมัติหากมี', 'Tap Install / Add in your device’s prompt. If it offers a draggable icon, touch and hold it to place it on the Home screen, or use the automatic Add option if offered.')}</p></li>
           <li><strong>{text('เปิดใช้งานจากไอคอน PEA', 'Open the PEA icon')}</strong><p>{text('กลับหน้าจอหลัก แล้วเปิด PEA Meeting & Task Calendar ตรวจว่าเห็นกล่องแจ้งเตือนของคุณ ครั้งต่อไปเปิดจากไอคอนนี้ได้ ไม่ต้องสแกน QR ใหม่', 'Return to your Home screen and open PEA Meeting & Task Calendar. Check your inbox appears. Open this icon next time without scanning a new QR.')}</p></li>
         </ol>
-        <details className="rounded-xl border border-green-200 bg-white/70 p-3">
+        <details className="rounded-xl border border-purple-100 bg-white/70 p-3">
           <summary className="min-h-11 cursor-pointer font-semibold">{text('ไม่มีเมนูติดตั้ง / หาไอคอนไม่เจอ', 'No installation menu / cannot find the icon')}</summary>
           <p className="mt-2">{text('ตรวจว่าเปิดใน Chrome โดยตรง ปิดเว็บไซต์เดสก์ท็อป และใช้ Chrome เวอร์ชันล่าสุด หากมี “เปิดแอป” แสดงว่าอาจติดตั้งแล้ว ลองค้นหา PEA Meeting & Task Calendar ในรายการแอป แล้วแตะไอคอนค้างเพื่อเพิ่มหรือลากลงหน้าจอหลักตามเมนูของเครื่อง', 'Use Chrome directly, turn off Desktop site and update Chrome. An Open app option can mean it is already installed. Search your apps for PEA Meeting & Task Calendar, then hold its icon to add or drag it onto the Home screen as your device allows.')}</p>
         </details>

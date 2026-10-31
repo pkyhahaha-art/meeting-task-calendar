@@ -10,11 +10,11 @@ type StatusDisplay = { label: string; className: string }
 const statusDisplay: Record<DeliveryStatusRow['status'], StatusDisplay> = {
   queued: { label: 'รอส่ง', className: 'bg-slate-100 text-slate-700' },
   processing: { label: 'กำลังส่ง', className: 'bg-sky-100 text-sky-700' },
-  sent: { label: 'ส่งแล้ว', className: 'bg-emerald-100 text-emerald-700' },
-  retry: { label: 'กำลังลองส่งใหม่', className: 'bg-amber-100 text-amber-800' },
-  failed: { label: 'ส่งไม่สำเร็จ', className: 'bg-red-100 text-red-700' },
+  sent: { label: 'ส่งแล้ว', className: 'semantic-completed' },
+  retry: { label: 'กำลังลองส่งใหม่', className: 'semantic-pending' },
+  failed: { label: 'ส่งไม่สำเร็จ', className: 'semantic-overdue' },
   skipped: { label: 'ข้ามการส่ง', className: 'bg-slate-100 text-slate-600' },
-  deferred_quota: { label: 'รอโควตา', className: 'bg-amber-100 text-amber-800' },
+  deferred_quota: { label: 'รอโควตา', className: 'semantic-pending' },
 }
 
 const recipientExplanation: Record<string, string> = {
@@ -62,7 +62,7 @@ export function NotificationDeliveryStatus({ deliveries, acknowledgements, onRet
   }
 
   return (
-    <section className={embedded ? 'space-y-3' : 'space-y-3 rounded-xl border border-slate-200 p-4'}>
+    <section className={embedded ? 'space-y-3' : 'ui-panel space-y-3 rounded-xl border border-slate-200 p-4'}>
       <div><h3 className="flex items-center gap-2 font-semibold text-slate-800"><Bell size={18} className="text-brand-600" />{text(title?.thai ?? 'สถานะการแจ้งเตือน', title?.english ?? 'Notification status')}</h3><p className="mt-1 text-xs text-slate-500">{text(description?.thai ?? 'แสดงสถานะล่าสุดของแต่ละผู้รับและช่องทาง', description?.english ?? 'Shows the latest status for each recipient and channel.')}</p></div>
       {!deliveries.length && <p className="rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-500">{text(emptyMessage?.thai ?? 'ยังไม่มีรายการแจ้งเตือนสำหรับ Meeting หรือ Task นี้', emptyMessage?.english ?? 'There are no notifications for this meeting or task yet.')}</p>}
       <div className="space-y-2">

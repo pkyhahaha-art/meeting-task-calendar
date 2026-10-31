@@ -7,7 +7,7 @@ import ts from 'typescript'
 test('the real email worker signs uploaded Task documents and emits clickable links for every recipient type', async () => {
   const root = '../../supabase/functions/process-notification-queue/'
   const source = ['emailTemplate.ts', 'taskLink.ts', 'taskDocuments.ts', 'index.ts'].map((file) =>
-    readFileSync(new URL(root + file, import.meta.url), 'utf8').replace(/^import .*\n/gm, '').replace(/export /g, '')).join('\n')
+    readFileSync(new URL(root + file, import.meta.url), 'utf8').replace(/^import .*\r?\n/gm, '').replace(/export /g, '')).join('\n')
   let signings = 0
   const db = {
     from(table: string) {

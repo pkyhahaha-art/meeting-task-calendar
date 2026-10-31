@@ -135,7 +135,7 @@ export function PairDevicePage() {
   }
 
   return (
-    <main className={`min-h-screen bg-gradient-to-br from-purple-50 via-white to-amber-50 p-4 sm:p-6 flex flex-col items-center ${desktopTouchDevice ? 'justify-start' : 'justify-start sm:justify-center'}`}>
+    <main className={`ui-page min-h-screen bg-purple-50/40 p-4 sm:p-6 flex flex-col items-center ${desktopTouchDevice ? 'justify-start' : 'justify-start sm:justify-center'}`}>
       <div className="w-full max-w-md space-y-5">
         {/* PEA Brand Header */}
         <div className="flex flex-col items-center text-center space-y-2">
@@ -153,7 +153,7 @@ export function PairDevicePage() {
         </aside>}
         <div className="relative overflow-hidden rounded-3xl border border-purple-100 bg-white p-5 sm:p-8 shadow-xl shadow-purple-950/5 text-center">
           {/* Top Mascot image */}
-          <div className="mx-auto mb-5 relative flex h-32 w-32 items-center justify-center rounded-3xl overflow-hidden border-2 border-brand-200/80 bg-gradient-to-b from-purple-50 to-amber-50 shadow-md">
+          <div className="mx-auto mb-5 relative flex h-32 w-32 items-center justify-center rounded-3xl overflow-hidden border-2 border-brand-200/80 bg-purple-50 shadow-md">
             <img
               src={mascotHoldingPad}
               alt="PEA Mascot holding tablet"
@@ -217,7 +217,7 @@ export function PairDevicePage() {
                 </p>
               </div>
 
-              <div className="rounded-2xl border border-green-100 bg-gradient-to-br from-green-50/60 to-purple-50/40 p-4 text-left text-xs text-slate-700 space-y-2">
+              <div className="rounded-2xl border border-green-100 bg-purple-50/50 p-4 text-left text-xs text-slate-700 space-y-2">
                 <div className="flex items-center gap-2 font-bold text-green-900">
                   <BellRing size={16} className="text-green-600" />
                   <span>สิ่งที่คุณจะได้รับ:</span>
@@ -232,7 +232,7 @@ export function PairDevicePage() {
               <div className="pt-2">
                 <Link
                   to="/device-inbox"
-                  className="w-full inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-700 via-fuchsia-600 to-amber-500 px-4 py-2.5 font-semibold text-white shadow-md shadow-purple-300/40 hover:from-brand-800 transition text-sm"
+                  className="btn-primary w-full text-sm"
                 >
                   <CalendarDays size={17} />
                   <span>{text('เปิดกล่องแจ้งเตือน', 'Open notifications')}</span>
@@ -286,7 +286,7 @@ export function PairDevicePage() {
                 type="button"
                 onClick={handleEnablePush}
                 disabled={pairing || support !== 'ready' || !pushConfigured}
-                className="w-full inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-brand-700 via-fuchsia-600 to-amber-500 px-5 py-3 font-bold text-white shadow-lg shadow-purple-400/30 hover:from-brand-800 hover:via-fuchsia-700 hover:to-amber-600 transition disabled:opacity-60 text-base"
+                className="btn-primary w-full min-h-12 text-base"
               >
                 {pairing ? (
                   <>

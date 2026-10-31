@@ -19,7 +19,7 @@ export function AccountDisabledPage() {
       setError(text('ออกจากระบบไม่สำเร็จ กรุณาลองอีกครั้ง', 'Unable to sign out. Please try again.'))
     } finally { setBusy(false) }
   }
-  return <main className="flex min-h-screen items-center justify-center p-6 text-center"><div className="w-full max-w-md space-y-4">
+  return <main className="ui-page flex min-h-screen items-center justify-center p-6 text-center"><div className="w-full max-w-md space-y-4">
     <h1 className="text-2xl font-bold">{text('บัญชีถูกระงับ', 'Account disabled')}</h1>
     <p className="text-slate-600">{text('กรุณาติดต่อผู้ดูแลระบบ', 'Please contact an administrator.')}</p>
     {error && <p role="alert" className="text-sm text-red-600">{error}</p>}

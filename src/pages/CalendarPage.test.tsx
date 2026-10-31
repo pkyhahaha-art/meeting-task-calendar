@@ -29,6 +29,8 @@ function calendarPage() {
   const confirmations: Record<string, unknown>[] = []
   const confirm = async (options: Record<string, unknown>) => { confirmations.push(options); return false }
   const anchor = new Date('2030-09-21T02:00:00Z')
+  let activeDate = anchor
+  const navigation: { mini: boolean; date: string | Date }[] = []
   const changes: { view: string; date: Date }[] = []
   const listeners = new Set<() => void>()
   const media = { matches: false, addEventListener: (_: string, listener: () => void) => listeners.add(listener), removeEventListener: (_: string, listener: () => void) => listeners.delete(listener) }
@@ -44,9 +46,9 @@ function calendarPage() {
   ]
   const queryData: Record<string, unknown> = { events: meetings, tasks, 'meeting-exceptions': [{ event_id: 'cancelled', occurrence_key: '2030-09-21T02:00:00Z' }], 'mobile-push-devices': [], 'assignable-profiles': [] }
   class Calendar extends React.Component<Record<string, unknown>> {
-    api = { view: { type: 'dayGridMonth' }, getDate: () => anchor, changeView: (view: string, date: Date) => { this.api.view.type = view; changes.push({ view, date }) } }
+    api = { view: { type: 'dayGridMonth' }, getDate: () => 'events' in this.props ? activeDate : anchor, gotoDate: (date: string | Date) => { navigation.push({ mini: !('events' in this.props), date }); if ('events' in this.props) activeDate = new Date(date) }, changeView: (view: string, date: Date) => { this.api.view.type = view; changes.push({ view, date }) } }
     getApi() { return this.api }
-    render() { calendarRenders++; return React.createElement('div', { ...this.props, 'data-testid': 'calendar-fixture' }) }
+    render() { const main = 'events' in this.props; if (main) calendarRenders++; return React.createElement('div', { ...this.props, 'data-testid': main ? 'calendar-fixture' : 'mini-calendar-fixture' }) }
   }
   const require = createRequire(import.meta.url)
   const exports: { CalendarPage?: React.ComponentType } = {}
@@ -54,7 +56,7 @@ function calendarPage() {
     react: React,
     '@fullcalendar/react': Calendar,
     '@tanstack/react-query': { useQuery: (options: { queryKey: string[]; enabled?: boolean; queryFn: () => Promise<unknown> }) => { queries.set(options.queryKey[0], options); return { data: queryData[options.queryKey[0]], isError: queryErrors.has(options.queryKey[0]), isLoading: false } }, useMutation: (options: { mutationFn?: (args: Record<string, unknown>) => Promise<unknown> }) => { mutationOptions.push(options); return { isPending: false, isError: false, mutateAsync: async (args: Record<string, unknown>) => { mutations.push(args) } } }, useQueryClient: () => ({ invalidateQueries: async () => {} }) },
-    'react-router-dom': { useLocation: () => ({ search: routeSearch }), useNavigate: () => () => {} },
+    'react-router-dom': { useLocation: () => ({ search: routeSearch }), useNavigate: () => () => {}, useOutletContext: () => ({}) },
     '../auth/AuthProvider': { useAuth: () => ({ user: { id: userId }, profile: { role, status } }) },
     '../i18n/LanguageProvider': { useLanguage: () => ({ language, text }) },
     '../components/ConfirmDialogProvider': { useConfirm: () => confirm },
@@ -62,6 +64,7 @@ function calendarPage() {
     '../lib/calendarView': { ...calendarView, calendarMeetingOccurrences: (...args: Parameters<typeof calendarView.calendarMeetingOccurrences>) => { occurrenceRanges.push({ start: args[1], end: args[2] }); return calendarView.calendarMeetingOccurrences(...args) } },
     '../components/EventDialog': { EventDialog: (props: Record<string, unknown>) => React.createElement('div', { ...props, 'data-testid': 'event-dialog' }) },
     '../components/TaskDialog': { TaskDialog: (props: Record<string, unknown>) => React.createElement('task-dialog', props) },
+    '../components/MemberAvatar': { CalendarPeople: () => null },
     '../lib/supabase': { supabase: { rpc: async (name: string, args: unknown) => { rpcCalls.push({ name, args }); return { data: true, error: null } }, from: (table: string) => ({ update: (values: unknown) => { writes.push({ table, values }); return { eq: async () => ({ error: null }) } }, delete: () => ({ eq: async () => ({ error: null }) }), insert: async () => ({ error: null }) }) } },
     '../lib/mobilePush': { checkMeetingMobileRecipients: async () => false, getConnectedDevices: async () => [] },
   }
@@ -72,9 +75,11 @@ function calendarPage() {
   act(() => { renderer = create(React.createElement(exports.CalendarPage!)) })
   const calendar = () => renderer.root.findByProps({ 'data-testid': 'calendar-fixture' })
   const button = (label: string) => renderer.root.findAllByType('button').find((node) => node.children.includes(label))!
+  const viewSelect = () => renderer.root.findByProps({ 'aria-label': 'Calendar view' })
   const refresh = () => act(() => renderer.update(React.createElement(exports.CalendarPage!)))
   return {
-    renderer, calendar, button, changes, anchor, queryData, queries, queryErrors, mutations, rpcCalls, mutationOptions, writes, meetings, tasks, occurrenceRanges, confirmations,
+    renderer, calendar, button, viewSelect, changes, anchor, navigation, queryData, queries, queryErrors, mutations, rpcCalls, mutationOptions, writes, meetings, tasks, occurrenceRanges, confirmations,
+    setActiveDate: (date: Date) => { activeDate = date },
     renders: () => calendarRenders, refresh,
     setLanguage: (next: string) => { language = next; text = (th, en) => next === 'th' ? th : en; refresh() },
     setUser: (next: string) => { userId = next; refresh() },
@@ -84,6 +89,24 @@ function calendarPage() {
     resize: (compact: boolean) => act(() => { media.matches = compact; listeners.forEach((listener) => listener()) }),
   }
 }
+
+test('mini calendar navigates the main calendar and follows its current date across years', () => {
+  const page = calendarPage()
+  try {
+    const mini = () => page.renderer.root.findByProps({ 'data-testid': 'mini-calendar-fixture' })
+    const target = new Date('2031-01-15T04:00:00Z')
+    const control = mini().props.dayCellContent({ date: target, dayNumberText: '15' })
+    assert.equal(control.type, 'button')
+    act(() => control.props.onClick({ stopPropagation() {} }))
+    assert.deepEqual(page.navigation.at(-1), { mini: false, date: '2031-01-15' })
+    assert.equal(mini().props.dayCellClassNames({ date: target })[0], 'mini-calendar-selected')
+    const next = new Date('2032-02-17T04:00:00Z')
+    page.setActiveDate(next)
+    act(() => page.calendar().props.datesSet({ start: next, end: new Date('2032-03-01T00:00:00Z') }))
+    assert.equal(page.navigation.at(-1)?.mini, true)
+    assert.equal(mini().props.dayCellClassNames({ date: next })[0], 'mini-calendar-selected')
+  } finally { act(() => page.renderer.unmount()) }
+})
 
 test('active Admin can edit another creator’s records without gaining completion or ordinary deletion controls', async () => {
   const page = calendarPage()
@@ -144,21 +167,21 @@ test('editing a legacy recurring task preserves its rule because the form has no
 test('switcher changes all views, marks the selected choice, and keeps the viewed date on mobile resize', () => {
   const page = calendarPage()
   try {
-    assert.equal(page.button('Month').props['aria-pressed'], true)
+    assert.equal(page.viewSelect().props.value, 'month')
     assert.equal(page.calendar().props.slotEventOverlap, true)
     assert.equal(page.calendar().props.eventMaxStack, undefined)
-    for (const [label, view] of [['Day', 'timeGridDay'], ['Week', 'timeGridWeek'], ['Year', 'multiMonthYear']] as const) {
-      act(() => page.button(label).props.onClick())
+    for (const [value, view] of [['day', 'timeGridDay'], ['week', 'timeGridWeek'], ['year', 'multiMonthYear']] as const) {
+      act(() => page.viewSelect().props.onChange({ target: { value } }))
       assert.equal(page.changes.at(-1)?.view, view)
-      assert.equal(page.button(label).props['aria-pressed'], true)
-      assert.equal(page.calendar().props.slotEventOverlap, label !== 'Week')
-      assert.equal(page.calendar().props.eventMaxStack, label === 'Week' ? 2 : undefined)
+      assert.equal(page.viewSelect().props.value, value)
+      assert.equal(page.calendar().props.slotEventOverlap, value !== 'week' && value !== 'day')
+      assert.equal(page.calendar().props.eventMaxStack, value === 'week' ? 2 : undefined)
     }
-    act(() => page.button('Week').props.onClick())
+    act(() => page.viewSelect().props.onChange({ target: { value: 'week' } }))
     page.resize(true)
     assert.equal(page.changes.at(-1)?.view, 'listWeek')
     assert.equal(page.changes.at(-1)?.date, page.anchor)
-    assert.equal(page.button('Week').props['aria-pressed'], true)
+    assert.equal(page.viewSelect().props.value, 'week')
     page.resize(false)
     assert.equal(page.changes.at(-1)?.view, 'timeGridWeek')
   } finally { act(() => page.renderer.unmount()) }
@@ -266,7 +289,7 @@ test('query refresh replaces edited, added and deleted records in events, day to
 test('search, filters, account, locale and date changes still refresh calendar options and controls', async () => {
   const page = calendarPage()
   try {
-    const search = page.renderer.root.findByProps({ placeholder: 'Search meetings or tasks' })
+    const search = page.renderer.root.findAllByProps({ placeholder: 'Search meetings or tasks' })[0]
     act(() => search.props.onChange({ target: { value: 'Timed task' } }))
     assert.deepEqual(Array.from(page.calendar().props.events, (entry: { title: string }) => entry.title), ['Timed task'])
     act(() => search.props.onChange({ target: { value: '' } }))

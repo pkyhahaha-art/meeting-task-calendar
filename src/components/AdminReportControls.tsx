@@ -23,7 +23,7 @@ export function adminDate(value: string | null) {
 // These are the existing Task/Meeting status words; delivery behavior is unchanged.
 export const adminDeliveryStatus = { queued: 'รอส่ง', processing: 'กำลังส่ง', sent: 'ส่งแล้ว', retry: 'กำลังลองส่งใหม่', failed: 'ส่งไม่สำเร็จ', skipped: 'ข้ามการส่ง', deferred_quota: 'รอโควตา' }
 export function AdminStatus({ value, label = value }: { value: string; label?: string }) {
-  const color = value === 'sent' || value === 'completed' || value === 'active' ? 'bg-green-50 text-green-700'
-    : value === 'failed' || value === 'disabled' || value === 'deferred_quota' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'
+  const color = value === 'sent' || value === 'completed' || value === 'active' ? 'semantic-completed'
+    : value === 'failed' || value === 'disabled' || value === 'deferred_quota' ? 'semantic-overdue' : 'semantic-pending'
   return <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${color}`}>{label}</span>
 }

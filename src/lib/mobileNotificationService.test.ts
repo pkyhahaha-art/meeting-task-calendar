@@ -42,8 +42,8 @@ function service(active = true) {
   }
   const helperFiles = ['webPushDelivery.ts', 'mobileTestTarget.ts', 'mobileNotificationDocuments.ts']
   const helpers = helperFiles.map((file) => readFileSync(new URL(`../../supabase/functions/_shared/${file}`, import.meta.url), 'utf8')
-    .replace(/^import .*\n/gm, '').replace(/export /g, '')).join('\n')
-  const entry = readFileSync(new URL('../../supabase/functions/mobile-push/index.ts', import.meta.url), 'utf8').replace(/^import .*\n/gm, '')
+    .replace(/^import .*\r?\n/gm, '').replace(/export /g, '')).join('\n')
+  const entry = readFileSync(new URL('../../supabase/functions/mobile-push/index.ts', import.meta.url), 'utf8').replace(/^import .*\r?\n/gm, '')
   const compiled = ts.transpileModule(`${helpers}\n${entry}`, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText
   vm.runInNewContext(compiled, { URL, Request, Response, Date, JSON, crypto, createClient: () => db, webpush: {},
     Deno: { env: { get: (key: string) => key === 'SUPABASE_URL' ? 'https://database.example' : 'unit-config' },

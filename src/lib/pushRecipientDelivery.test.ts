@@ -117,7 +117,7 @@ function service(options: Options = {}) {
     },
     storage: { from() { return { async createSignedUrl(path: string) { signings++; return { data: { signedUrl: `https://storage.example/signed/${path}` }, error: null } } } } },
   }
-  const source = readFileSync(new URL('../../supabase/functions/process-notification-queue/index.ts', import.meta.url), 'utf8').replace(/^import .*\n/gm, '')
+  const source = readFileSync(new URL('../../supabase/functions/process-notification-queue/index.ts', import.meta.url), 'utf8').replace(/^import .*\r?\n/gm, '')
   const payloadBuilder = readFileSync(new URL('../../supabase/functions/process-notification-queue/deviceNotification.ts', import.meta.url), 'utf8').replace(/export /g, '')
   const emailTemplate = readFileSync(new URL('../../supabase/functions/process-notification-queue/emailTemplate.ts', import.meta.url), 'utf8').replace(/export /g, '')
   const compiled = ts.transpileModule(`${emailTemplate}\n${payloadBuilder}\n${source}`, {

@@ -24,7 +24,7 @@ export function LoginPage() {
 
   const returnTo = (location.state as { from?: { pathname?: string; search?: string } } | null)?.from
   const from = returnTo?.pathname === '/calendar' ? `/calendar${returnTo.search || ''}` : homePathForRole()
-  if (user && profileLoading) return <div className="flex min-h-screen items-center justify-center text-slate-500">กำลังตรวจสอบสิทธิ์…</div>
+  if (user && profileLoading) return <div className="ui-page flex min-h-screen items-center justify-center text-slate-500">กำลังตรวจสอบสิทธิ์…</div>
   if (user) return <Navigate to={from} replace />
 
   const submit = async (values: LoginValues) => {

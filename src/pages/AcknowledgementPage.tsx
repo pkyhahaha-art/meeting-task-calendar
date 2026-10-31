@@ -16,5 +16,5 @@ export function AcknowledgementPage() {
     }).then(() => window.close())
   }, [])
 
-  return <main className="min-h-screen bg-slate-50" aria-label="กำลังยืนยันการรับทราบ" />
+  return <main className="ui-page min-h-screen bg-slate-50" aria-label="กำลังยืนยันการรับทราบ" />
 }

@@ -139,6 +139,13 @@ export function generateContinuousReminderDates(
   return results
 }
 
+export function continuousReminderPreview(dueDate: string, dueTime: string, config: TaskContinuousConfig, now = new Date()) {
+  const all = dueDate ? generateContinuousReminderDates(dueDate, dueTime, config) : []
+  const dates = all.filter(date => date.getTime() >= now.getTime())
+  const nextDate = all.slice(1).find(date => date.getTime() >= now.getTime())
+  return { dates, skippedCount: all.length - dates.length, nextDate }
+}
+
 export function isGoogleDocumentUrl(value: string) {
   try {
     const url = new URL(value)

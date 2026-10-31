@@ -49,7 +49,7 @@ export function AdminHistoryPanel({ members, dates }: { members: AdminProfile[];
     } catch (error) { setMessage(error instanceof Error ? error.message : 'ส่งออกไม่ได้ กรุณาลองใหม่') }
     finally { setExporting(false) }
   }
-  return <section className="card overflow-hidden">
+  return <section className="ui-panel card overflow-hidden">
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-4">
       <div className="flex flex-wrap gap-2" aria-label="เลือกประวัติที่ตรวจสอบ">{([['deliveries', 'การส่งแจ้งเตือน'], ['audit', 'ประวัติการดำเนินการ'], ['system', 'งานระบบ']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={tab === value} className={tab === value ? 'btn-primary' : 'btn-secondary'} onClick={() => { setTab(value); setPage(0); setMessage('') }}>{label}</button>)}</div>
       <div className="flex gap-2"><button type="button" className="btn-secondary" disabled={!validDates || report.isFetching} onClick={() => void report.refetch()}><RefreshCw size={16} />โหลดใหม่</button><button type="button" className="btn-secondary" disabled={exporting || !validDates || report.isPending || report.isError || !report.data?.count} onClick={() => void exportReport()}>{exporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}CSV ตามตัวกรอง</button></div>

@@ -8,6 +8,7 @@ import { ConfirmDialogProvider } from './components/ConfirmDialogProvider'
 import { CookieConsent } from './components/CookieConsent'
 import { LanguageProvider } from './i18n/LanguageProvider'
 import './index.css'
+import './design-system.css'
 
 const queryClient = new QueryClient({
   defaultOptions: {
