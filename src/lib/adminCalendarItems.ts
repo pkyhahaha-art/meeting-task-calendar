@@ -7,6 +7,7 @@ export type AdminCalendarItem = {
   creator_name: string; creator_email: string; created_at: string; affiliation: string
   status: string; recurring: boolean; start_datetime: string | null; end_datetime: string | null
   due_date: string | null; due_time: string | null
+  description?: string | null; location?: string | null
 }
 export type AdminCalendarFilters = ReportDates & { entity: string; creator: string; search: string }
 export type AdminMeetingOccurrence = { id: string; occurrence_key: string; start_datetime: string; end_datetime: string | null }

@@ -213,3 +213,4 @@ export function downloadXlsx(filename: string, headers: string[], rows: (string 
   link.remove()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
+

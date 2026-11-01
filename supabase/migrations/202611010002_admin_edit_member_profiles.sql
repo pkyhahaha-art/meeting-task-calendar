@@ -92,3 +92,4 @@ revoke all on function public.admin_update_member_profile(uuid, text, text, text
 grant execute on function public.admin_update_member_profile(uuid, text, text, text, text) to authenticated;
 
 commit;
+

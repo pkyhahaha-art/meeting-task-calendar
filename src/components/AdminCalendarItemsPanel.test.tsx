@@ -15,6 +15,7 @@ const item = (id: string, entity: 'task' | 'meeting' = 'task', recurring = false
   id, entity, recurring, title: `รายการ ${id}`, creator_user_id: 'creator', creator_name: 'ผู้สร้าง', creator_email: 'fixture@example.invalid',
   created_at: '2026-10-01T02:00:00Z', affiliation: 'หน่วยงาน', status: entity === 'task' ? 'pending' : 'scheduled',
   start_datetime: '2026-10-07T02:00:00Z', end_datetime: '2026-10-07T03:00:00Z', due_date: '2026-10-07', due_time: '09:00:00',
+  description: `รายละเอียด ${id}`, location: entity === 'meeting' ? `ห้องประชุม ${id}` : null,
 })
 const key = (row: Pick<AdminCalendarItem, 'entity' | 'id'>) => `${row.entity}:${row.id}`
 const delay = () => new Promise<void>(resolve => setTimeout(resolve, 15))
@@ -291,14 +292,38 @@ test('switching Admin accounts closes global confirmation without previewing or 
     assert.equal(h.calls.some(call => call.name === 'trash-all'), false)
   } finally { h.unmount() }
 })
-test('Export Excel exports all visible rows when none selected, and only selected rows when chosen', async () => {
+test('Export Excel exports all visible rows with location and agenda when none selected, and only selected rows when chosen', async () => {
   const h = await harness([item('A'), item('B', 'meeting')])
   try {
     assert.ok(h.button('Export Excel (ทั้งหมด 2)'))
     await h.click('Export Excel')
     assert.equal(exportedXlsx.length, 1)
     assert.equal(String(exportedXlsx[0][0]).includes('calendar-items-all-in-table'), true)
-    assert.equal((exportedXlsx[0][2] as unknown[]).length, 2)
+    const headers = exportedXlsx[0][1] as string[]
+    assert.deepEqual(JSON.parse(JSON.stringify(headers)), [
+      'ประเภท',
+      'ชื่องาน/ประชุม',
+      'ผู้สร้าง',
+      'อีเมลผู้สร้าง',
+      'หน่วยงาน',
+      'สถานที่',
+      'รายละเอียด / วาระการประชุม',
+      'วันประชุม / ครบกำหนด',
+      'เวลาสิ้นสุด',
+      'สถานะ',
+      'วันที่สร้าง',
+      'รหัสรายการ',
+    ])
+    const rows = exportedXlsx[0][2] as unknown[][]
+    assert.equal(rows.length, 2)
+    assert.equal(rows[0][5], '—')
+    assert.equal(rows[0][6], 'รายละเอียด A')
+    assert.equal(rows[1][5], 'ห้องประชุม B')
+    assert.equal(rows[1][6], 'รายละเอียด B')
+
+    const dts = h.renderer.root.findAllByType('dt').map(node => node.children[0])
+    assert.ok(dts.includes('สถานที่'))
+    assert.ok(dts.includes('รายละเอียด / วาระการประชุม'))
 
     await h.selectAll()
     assert.ok(h.button('Export Excel (2 ที่เลือก)'))

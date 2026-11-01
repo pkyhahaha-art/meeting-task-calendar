@@ -106,6 +106,8 @@ export function AdminCalendarItemsPanel({ adminUserId, members }: { adminUserId:
       'ผู้สร้าง',
       'อีเมลผู้สร้าง',
       'หน่วยงาน',
+      'สถานที่',
+      'รายละเอียด / วาระการประชุม',
       'วันประชุม / ครบกำหนด',
       'เวลาสิ้นสุด',
       'สถานะ',
@@ -120,6 +122,8 @@ export function AdminCalendarItemsPanel({ adminUserId, members }: { adminUserId:
       item.creator_name || 'ไม่ระบุชื่อ',
       item.creator_email,
       item.affiliation || '—',
+      item.entity === 'meeting' ? (item.location || '—') : '—',
+      item.description || '—',
       item.entity === 'meeting'
         ? adminDate(item.start_datetime)
         : (item.due_date ? adminDate(`${item.due_date}T${item.due_time || '00:00:00'}+07:00`) : '—'),
@@ -182,8 +186,15 @@ export function AdminCalendarItemsPanel({ adminUserId, members }: { adminUserId:
                 <h3 className="break-words font-bold leading-relaxed text-slate-900">{item.title}</h3>
                 <div className="mt-2 flex flex-wrap gap-2"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${item.entity === 'task' ? 'semantic-task' : 'semantic-meeting'}`}>{item.entity === 'task' ? isLegacyTaskSeries(item) ? 'Task ทำซ้ำเดิม' : 'Task' : isMeetingSeries(item) ? 'Meeting ทำซ้ำ' : 'Meeting'}</span><span className="xl:hidden"><AdminStatus value={item.status} label={statusLabel[item.status] || item.status} /></span></div>
                 <details className="mt-2 min-w-0"><summary className="min-h-11 cursor-pointer py-3 text-xs font-semibold text-brand-700 underline decoration-purple-200 underline-offset-4">ดูรายละเอียดรายการ</summary>
-                  <dl className="space-y-3 rounded-xl border border-purple-100 bg-white p-3 text-xs">{[['หน่วยงาน / สังกัด', item.affiliation || '—'], ['สร้างเมื่อ', adminDate(item.created_at)],
-                    ...(item.entity === 'meeting' ? [['เริ่มประชุม', adminDate(item.start_datetime)], ['สิ้นสุด', adminDate(item.end_datetime)]] : [['ครบกำหนด', item.due_date ? adminDate(`${item.due_date}T${item.due_time || '00:00:00'}+07:00`) : '—']]), ['รหัสรายการ', item.id]].map(([label, value]) => <div key={label}><dt className="font-semibold text-slate-500">{label}</dt><dd className="mt-1 break-words [overflow-wrap:anywhere]">{value}</dd></div>)}</dl>
+                  <dl className="space-y-3 rounded-xl border border-purple-100 bg-white p-3 text-xs">{[
+                    ['หน่วยงาน / สังกัด', item.affiliation || '—'],
+                    ['สร้างเมื่อ', adminDate(item.created_at)],
+                    ...(item.entity === 'meeting'
+                      ? [['เริ่มประชุม', adminDate(item.start_datetime)], ['สิ้นสุด', adminDate(item.end_datetime)], ['สถานที่', item.location || '—']]
+                      : [['ครบกำหนด', item.due_date ? adminDate(`${item.due_date}T${item.due_time || '00:00:00'}+07:00`) : '—']]),
+                    ['รายละเอียด / วาระการประชุม', item.description || '—'],
+                    ['รหัสรายการ', item.id],
+                  ].map(([label, value]) => <div key={label}><dt className="font-semibold text-slate-500">{label}</dt><dd className="mt-1 break-words [overflow-wrap:anywhere]">{value}</dd></div>)}</dl>
                 </details>
               </td>
               <td className="col-span-2 grid min-w-0 grid-cols-[6rem_minmax(0,1fr)] gap-2 align-top xl:table-cell xl:px-3 xl:py-4"><span className="text-xs font-semibold text-slate-500 xl:hidden">ผู้สร้าง</span><div className="min-w-0"><p className="break-words font-medium text-slate-800">{item.creator_name || 'ไม่ระบุชื่อ'}</p><p className="mt-1 text-xs text-slate-500 [overflow-wrap:anywhere]">{item.creator_email}</p></div></td>

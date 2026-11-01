@@ -46,3 +46,4 @@ test('generateXlsxBlob builds a valid zip archive of openxml files', async () =>
   assert.equal(bytes[3], 0x04)
   assert.ok(bytes.length > 1000)
 })
+
