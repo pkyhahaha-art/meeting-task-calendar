@@ -81,6 +81,7 @@ export function AdminPage() {
         confirmButtonColor: '#75638F',
       })
     } catch (err) {
+      console.error('Failed to upload member avatar:', err)
       const isFileErr = err instanceof Error && err.message === 'INVALID_FILE_TYPE_OR_SIZE'
       const msg = isFileErr
         ? text('เลือกรูป JPG, PNG หรือ WebP ขนาดไม่เกิน 5 MB', 'Choose a JPG, PNG or WebP up to 5 MB.')
@@ -116,7 +117,8 @@ export function AdminPage() {
         confirmButtonText: text('ตกลง', 'OK'),
         confirmButtonColor: '#75638F',
       })
-    } catch {
+    } catch (err) {
+      console.error('Failed to remove member avatar:', err)
       void Swal.fire({
         icon: 'error',
         title: text('ลบรูปไม่สำเร็จ', 'Could not remove photo'),
