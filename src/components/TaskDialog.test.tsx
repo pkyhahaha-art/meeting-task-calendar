@@ -18,8 +18,8 @@ const details: TaskDetails = {
   externalRecipients: [], notificationDeliveries: [], reminders: [], reminderNotificationDeliveries: [],
 }
 const noop = async () => {}
-function dialog(connected: boolean, onSave: (draft: TaskDraft) => Promise<void> = noop, savedDetails = details, savedTask: typeof task | null = task, asAdmin = false, mobileConnectionError = false) {
-  return <LanguageProvider><TaskDialog open task={savedTask} details={savedTask ? savedDetails : undefined} userId={asAdmin ? 'admin' : 'creator'}
+function dialog(connected: boolean, onSave: (draft: TaskDraft) => Promise<void> = noop, savedDetails = details, savedTask: typeof task | null = task, asAdmin = false, mobileConnectionError = false, selectedDate = '2035-10-15') {
+  return <LanguageProvider><TaskDialog open task={savedTask} details={savedTask ? savedDetails : undefined} selectedDate={selectedDate} userId={asAdmin ? 'admin' : 'creator'}
     profiles={[]} events={[]} canEdit canDelete={!asAdmin} canComplete={!asAdmin} canAcknowledge={false} canViewDeliveryStatus={false}
     hasConnectedDevices={connected} mobileConnectionError={mobileConnectionError} busy={false} onClose={() => {}} onSave={onSave}
     onDelete={noop} onToggleComplete={noop} onAcknowledge={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>
@@ -141,4 +141,41 @@ test('creating a new task with notification channels enabled but no reminder tim
   }
 })
 
+test('creating a new task with reminder times selected but no notification channels warns and blocks save with channel message', async () => {
+  let renderer!: ReactTestRenderer
+  let saved = false
+  const originalFire = Swal.fire
+  let popupTitle = ''
+  let popupText = ''
+  Swal.fire = (async (options: { title?: string; text?: string }) => {
+    popupTitle = options.title ?? ''
+    popupText = options.text ?? ''
+    return { isConfirmed: true }
+  }) as typeof Swal.fire
 
+  try {
+    act(() => {
+      renderer = create(dialog(false, async () => { saved = true }, details, null))
+    })
+
+    const title = renderer.root.findByProps({ id: 'task-name' })
+    act(() => title.props.onChange({ target: { value: 'New Test Task' } }))
+
+    // Uncheck email notifications
+    const emailCheckbox = renderer.root.findAllByType('label').find((node) => node.findAll((child) => child.children.some((text) => typeof text === 'string' && text.includes('Gmail'))).length > 0)!.findByType('input')
+    act(() => emailCheckbox.props.onChange({ target: { checked: false } }))
+
+    // Submit form / save
+    await act(async () => {
+      renderer.root.findByType('form').props.onSubmit({ preventDefault: () => {} })
+      await new Promise((resolve) => setImmediate(resolve))
+    })
+
+    assert.equal(saved, false, 'Task should not be saved when notification channels are missing')
+    assert.equal(popupTitle, 'Notification channel not selected')
+    assert.match(popupText, /Choose at least 1 notification channel/)
+  } finally {
+    Swal.fire = originalFire
+    if (renderer) act(() => renderer.unmount())
+  }
+})

@@ -294,9 +294,8 @@ export function TaskDialog({
       return false
     }
     const hasReminders = draft.reminderMode === 'continuous' || draft.reminderKeys.length > 0
-    const activeNotifyLine = draft.notifyLine && draft.internalUserIds.length > 0
-    const hasChannels = Boolean(draft.notifyEmail || activeNotifyLine)
-    if (hasReminders && !hasChannels) {
+    const hasChannels = Boolean(draft.notifyEmail || draft.notifyLine)
+    if (!draft.notifyEmail && !draft.notifyLine && (hasReminders || notifyRecipients)) {
       const msg = text('กรุณาเลือกช่องทางแจ้งเตือนอย่างน้อย 1 รายการ (Gmail / มือถือ)', 'Choose at least 1 notification channel (Gmail / Mobile).')
       setError(msg)
       void Swal.fire({
@@ -741,6 +740,11 @@ export function TaskDialog({
                     })}
                   </div>
 
+                  {draft.reminderMode === 'single' && !draft.reminderKeys.length && (
+                    <p className="mt-1 text-xs font-semibold text-red-600" role="alert">
+                      {text('⚠️ กรุณาเลือกรูปแบบเวลาแจ้งเตือนล่วงหน้าอย่างน้อย 1 รายการ', '⚠️ Choose at least one reminder time.')}
+                    </p>
+                  )}
                   {hasExpiredSingleReminders && (
                     <div className="flex items-start gap-2.5 rounded-xl border border-red-300 bg-red-50/90 p-3 text-sm text-red-900" role="alert">
                       <AlertTriangle className="mt-0.5 shrink-0 text-red-600" size={18} />
@@ -894,6 +898,11 @@ export function TaskDialog({
                   )}
                 </label>
               </div>
+              {!draft.notifyEmail && !draft.notifyLine && (
+                <p className="mt-1 text-xs font-semibold text-red-600" role="alert">
+                  {text('⚠️ กรุณาเลือกช่องทางแจ้งเตือนอย่างน้อย 1 รายการ (Gmail / มือถือ)', '⚠️ Choose at least 1 notification channel (Gmail / Mobile).')}
+                </p>
+              )}
               {!task && (
                 <p className="mt-2 text-xs text-slate-500">
                   {text('เมื่อเลือกแจ้งเตือนผ่านมือถือ ผู้สร้างจะได้รับข้อความยืนยันหลังบันทึกงาน ส่วนการเตือนตามกำหนดส่งให้ผู้รับมอบหมายในระบบ', 'With mobile notifications selected, the creator receives a confirmation after saving. Scheduled reminders go to internal assignees.')}
