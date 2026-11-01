@@ -1164,8 +1164,50 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   font-weight: 500 !important;
 }
 
-.calendar-page-main .calendar-fill-month .fc .calendar-people {
-  display: none !important;
+/* Month View: Overlapping Micro-Avatars (Linear / Notion style) */
+.calendar-page-main .calendar-fill-month .fc .fc-daygrid-event .calendar-people {
+  display: inline-flex !important;
+  align-items: center !important;
+  margin-left: auto !important;
+  margin-top: 0 !important;
+  padding-left: 2px !important;
+  flex-shrink: 0 !important;
+  vertical-align: middle !important;
+}
+
+.calendar-page-main .calendar-fill-month .fc .fc-daygrid-event .calendar-people .member-avatar,
+.calendar-page-main .calendar-fill-month .fc .fc-daygrid-event .calendar-people img,
+.calendar-page-main .calendar-fill-month .fc .fc-daygrid-event .calendar-people .member-avatar-placeholder {
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 16px !important;
+  min-height: 16px !important;
+  font-size: 8px !important;
+  border: 1.5px solid #ffffff !important;
+  border-radius: 9999px !important;
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08) !important;
+  position: relative !important;
+}
+
+.calendar-page-main .calendar-fill-month .fc .fc-daygrid-event .calendar-people > * + * {
+  margin-left: -5px !important;
+}
+
+.calendar-page-main .calendar-fill-month .fc .fc-daygrid-event .calendar-people .calendar-people-more {
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 16px !important;
+  min-height: 16px !important;
+  font-size: 8px !important;
+  font-weight: 700 !important;
+  border: 1.5px solid #ffffff !important;
+  border-radius: 9999px !important;
+  background: #E8E2EE !important;
+  color: #5B4475 !important;
+  margin-left: -5px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
 
 .calendar-page-main .calendar-fill-month .fc .fc-daygrid-day-bottom {
@@ -1386,7 +1428,8 @@ body { font-size: 15px; line-height: 1.6; }
 .calendar-page-main .calendar-status-header > .semantic-meeting { border-color: #E8DCF5; background: #F8F5FC; color: #6E528B; }
 .calendar-page-main .calendar-status-header > span.status-card-pending { border-color: #F6E2C3 !important; background: #FFF9F0 !important; color: #9C580E !important; }
 .calendar-page-main .calendar-status-header > span.status-card-completed { border-color: #CBEFD9 !important; background: #F0FAF4 !important; color: #187544 !important; }
-.calendar-page-main .calendar-status-header > span.status-card-today-meetings { border-color: #E8DCF5 !important; background: #F8F5FC !important; color: #6E528B !important; }
+.calendar-page-main .calendar-status-header > span.status-card-today-meetings,
+.calendar-page-main .calendar-status-header > span.status-card-overdue { border-color: #F8D5DF !important; background: #FFF2F4 !important; color: #B82850 !important; }
 .calendar-page-main .calendar-status-header > span.status-card-pending-confirmation { border-color: #F8D5DF !important; background: #FDF5F7 !important; color: #B82850 !important; }
 .btn-primary, .btn-secondary,
 .calendar-page-main .btn-primary, .calendar-page-main .btn-secondary {

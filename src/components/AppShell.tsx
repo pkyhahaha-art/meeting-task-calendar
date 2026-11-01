@@ -6,7 +6,8 @@ import peaLogo from '../../ภาพประกอบUI/PEA Logo (1).png'
 
 import { useAuth } from '../auth/AuthProvider'
 import { useLanguage } from '../i18n/LanguageProvider'
-import { eventCreationPeriods } from '../lib/eventStats'
+import { eventAgendaPeriods } from '../lib/eventStats'
+import { expandEvent } from '../lib/recurrence'
 import { supabase } from '../lib/supabase'
 import { useConfirm } from './ConfirmDialogProvider'
 import { LanguageToggle } from './LanguageToggle'
@@ -14,23 +15,82 @@ import { MemberAvatar } from './MemberAvatar'
 import { AppFooter } from './AppFooter'
 
 
-async function countCreatedItems(start: string, end: string) {
-  const [meetings, tasks] = await Promise.all([
-    supabase.from('events').select('id', { count: 'exact', head: true }).eq('status', 'scheduled').is('deleted_at', null).gte('created_at', start).lt('created_at', end),
-    supabase.from('tasks').select('id', { count: 'exact', head: true }).neq('status', 'cancelled').is('deleted_at', null).gte('created_at', start).lt('created_at', end),
+async function countScheduledAgenda(periods: ReturnType<typeof eventAgendaPeriods>) {
+  const [
+    todayTasksRes,
+    weekTasksRes,
+    monthTasksRes,
+    eventsRes,
+    exceptionsRes,
+  ] = await Promise.all([
+    supabase.from('tasks').select('id', { count: 'exact', head: true }).neq('status', 'cancelled').is('deleted_at', null).is('recurrence_series_id', null).gte('due_date', periods.today.startDay).lt('due_date', periods.today.endDay),
+    supabase.from('tasks').select('id', { count: 'exact', head: true }).neq('status', 'cancelled').is('deleted_at', null).is('recurrence_series_id', null).gte('due_date', periods.week.startDay).lt('due_date', periods.week.endDay),
+    supabase.from('tasks').select('id', { count: 'exact', head: true }).neq('status', 'cancelled').is('deleted_at', null).is('recurrence_series_id', null).gte('due_date', periods.month.startDay).lt('due_date', periods.month.endDay),
+    supabase.from('events').select('id,start_datetime,end_datetime,recurrence_rule,recurrence_count,recurrence_until,status,deleted_at').eq('status', 'scheduled').is('deleted_at', null),
+    supabase.from('event_occurrences').select('event_id,occurrence_key').neq('status', 'scheduled'),
   ])
-  if (meetings.error) throw meetings.error
-  if (tasks.error) throw tasks.error
-  return (meetings.count ?? 0) + (tasks.count ?? 0)
+
+  if (todayTasksRes.error) throw todayTasksRes.error
+  if (weekTasksRes.error) throw weekTasksRes.error
+  if (monthTasksRes.error) throw monthTasksRes.error
+  if (eventsRes.error) throw eventsRes.error
+  if (exceptionsRes.error) throw exceptionsRes.error
+
+  const events = eventsRes.data ?? []
+  const cancelledExceptions = new Set(
+    (exceptionsRes.data ?? []).map((exc) => `${exc.event_id}:${exc.occurrence_key}`)
+  )
+
+  const countEventsBetween = (rangeStart: Date, rangeEnd: Date) => {
+    let count = 0
+    for (const evt of events) {
+      if (!evt.recurrence_rule) {
+        const start = new Date(evt.start_datetime)
+        if (start >= rangeStart && start < rangeEnd) {
+          count++
+        }
+      } else {
+        const occurrences = expandEvent(
+          {
+            id: evt.id,
+            start_datetime: evt.start_datetime,
+            end_datetime: evt.end_datetime,
+            recurrence_rule: evt.recurrence_rule,
+            recurrence_count: evt.recurrence_count,
+            recurrence_until: evt.recurrence_until,
+          },
+          rangeStart,
+          rangeEnd
+        )
+        for (const occ of occurrences) {
+          const occKey = `${evt.id}:${occ.start}`
+          if (!cancelledExceptions.has(occKey)) {
+            count++
+          }
+        }
+      }
+    }
+    return count
+  }
+
+  const todayMeetings = countEventsBetween(new Date(periods.today.start), new Date(periods.today.end))
+  const weekMeetings = countEventsBetween(new Date(periods.week.start), new Date(periods.week.end))
+  const monthMeetings = countEventsBetween(new Date(periods.month.start), new Date(periods.month.end))
+
+  return {
+    today: (todayTasksRes.count ?? 0) + todayMeetings,
+    week: (weekTasksRes.count ?? 0) + weekMeetings,
+    month: (monthTasksRes.count ?? 0) + monthMeetings,
+  }
 }
 
 function EventStatsCard({ stats, loading, error }: { stats?: { today: number; week: number; month: number }; loading: boolean; error: boolean }) {
   const { language, text } = useLanguage()
   const value = (count?: number) => error ? '–' : loading && count === undefined ? '…' : (count ?? 0).toLocaleString(language === 'th' ? 'th-TH' : 'en-GB')
   return (
-    <div className="calendar-event-stats-card" aria-label={text('จำนวน Meeting และ Task ที่สร้างและยังไม่ถูกยกเลิกหรือลบ', 'Meetings and tasks created that have not been cancelled or deleted')}>
-      <span className="calendar-created-caption sr-only">{text('รายการที่สร้าง', 'Items created')}</span>
-      {([[text('วันนี้', 'Today'), stats?.today, CalendarDays], [text('สัปดาห์นี้', 'This week'), stats?.week, CalendarRange], [text('เดือนนี้', 'This month'), stats?.month, CalendarClock]] as const).map(([label, count, Icon]) => (
+    <div className="calendar-event-stats-card" aria-label={text('จำนวนนัดหมายและงานตามกำหนดการ (วันนี้, สัปดาห์นี้, เดือนนี้)', 'Scheduled meetings and tasks (today, this week, this month)')}>
+      <span className="calendar-created-caption sr-only">{text('นัดหมายตามกำหนดการ', 'Scheduled items')}</span>
+      {([[text('นัดหมายวันนี้', 'Today'), stats?.today, CalendarDays], [text('สัปดาห์นี้', 'This week'), stats?.week, CalendarRange], [text('เดือนนี้', 'This month'), stats?.month, CalendarClock]] as const).map(([label, count, Icon]) => (
         <span key={label} className="calendar-created-period">
           <Icon className="calendar-created-icon" size={20} aria-hidden="true" />
           <span className="calendar-created-info">
@@ -57,13 +117,8 @@ export function AppShell() {
     enabled: Boolean(user && profile?.status === 'active'),
     refetchInterval: 5 * 60 * 1000,
     queryFn: async () => {
-      const periods = eventCreationPeriods()
-      const [today, week, month] = await Promise.all([
-        countCreatedItems(periods.today.start, periods.today.end),
-        countCreatedItems(periods.week.start, periods.week.end),
-        countCreatedItems(periods.month.start, periods.month.end),
-      ])
-      return { today, week, month }
+      const periods = eventAgendaPeriods()
+      return countScheduledAgenda(periods)
     },
   })
   const statsCard = <EventStatsCard stats={eventStatsQuery.data} loading={eventStatsQuery.isLoading} error={eventStatsQuery.isError} />

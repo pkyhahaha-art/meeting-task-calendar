@@ -316,15 +316,15 @@ test('search, filters, account, locale and date changes still refresh calendar o
 })
 
 
-test('status cards update interactively based on the viewed calendar period and preserve today meeting count', () => {
+test('status cards update interactively based on the viewed calendar period and show overdue count', () => {
   const page = calendarPage()
   try {
     const statusHeader = page.renderer.root.findByProps({ className: 'calendar-status-header' })
     const strongs = statusHeader.findAllByType('strong')
-    // Initial month (contains today): Timed task is pending (1), All-day task is completed (1), Meeting today is 1
+    // Initial month (contains today): Timed task is pending (1), All-day task is completed (1), Overdue count is 0
     assert.equal(strongs[0].children[0], '1')
     assert.equal(strongs[1].children[0], '1')
-    assert.equal(strongs[2].children[0], '1')
+    assert.equal(strongs[2].children[0], '0')
 
     // Navigate to a month in 2030 with no tasks (2030-05-01 to 2030-06-01)
     const futureStart = new Date('2030-05-01T00:00:00+07:00')
@@ -332,9 +332,9 @@ test('status cards update interactively based on the viewed calendar period and 
     act(() => page.calendar().props.datesSet({ start: futureStart, end: futureEnd, view: { currentStart: futureStart, currentEnd: futureEnd } }))
 
     const updatedStrongs = statusHeader.findAllByType('strong')
-    // In May 2030: 0 pending, 0 completed, but today's meetings count is preserved for today
+    // In May 2030: 0 pending, 0 completed, 0 overdue
     assert.equal(updatedStrongs[0].children[0], '0')
     assert.equal(updatedStrongs[1].children[0], '0')
-    assert.equal(updatedStrongs[2].children[0], '1')
+    assert.equal(updatedStrongs[2].children[0], '0')
   } finally { act(() => page.renderer.unmount()) }
 })

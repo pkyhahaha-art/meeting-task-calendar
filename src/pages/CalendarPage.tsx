@@ -819,8 +819,8 @@ export function CalendarPage() {
   const taskRows = useMemo(() => (tasksQuery.data ?? []).filter((task) => (showCompletedTasks || task.status !== 'completed') && `${task.title} ${task.affiliation} ${task.description}`.toLowerCase().includes(normalizedSearch)), [normalizedSearch, showCompletedTasks, tasksQuery.data])
   const cancelledAppointments = useMemo(() => new Set((exceptionsQuery.data ?? []).map((exception) => `${exception.event_id}:${new Date(exception.occurrence_key).getTime()}`)), [exceptionsQuery.data])
   const today = bangkokDate()
+  const now = useMemo(() => new Date(`${today}T00:00:00+07:00`), [today])
   const entriesForRange = useCallback((rangeStart: Date, rangeEnd: Date) => {
-    const now = new Date(`${today}T00:00:00+07:00`)
     return [
       ...(showMeetings ? eventRows.flatMap((event) => calendarMeetingOccurrences(event, rangeStart, rangeEnd).filter((occurrence) => !cancelledAppointments.has(`${event.id}:${new Date(occurrence.start).getTime()}`)).flatMap((occurrence) => {
         const isCompleted = isMeetingCompleted(completedMeetings, event.id, occurrence.start)
@@ -908,13 +908,22 @@ export function CalendarPage() {
     return { startKey, endKey }
   }, [viewPeriod])
 
+  const overdueCount = useMemo(() => {
+    return (tasksQuery.data ?? []).filter((task) => {
+      if (task.recurrence_series_id) return false
+      if (!isTaskOverdue(task.status, task.due_date, now)) return false
+      return task.due_date >= viewPeriodKeys.startKey && task.due_date <= viewPeriodKeys.endKey
+    }).length
+  }, [tasksQuery.data, viewPeriodKeys, now])
+
   const pendingCount = useMemo(() => {
     return (tasksQuery.data ?? []).filter((task) => {
       if (task.recurrence_series_id) return false
       if (task.status !== 'pending') return false
+      if (isTaskOverdue(task.status, task.due_date, now)) return false
       return task.due_date >= viewPeriodKeys.startKey && task.due_date <= viewPeriodKeys.endKey
     }).length
-  }, [tasksQuery.data, viewPeriodKeys])
+  }, [tasksQuery.data, viewPeriodKeys, now])
 
   const completedCount = useMemo(() => {
     const completedTasks = (tasksQuery.data ?? []).filter((task) => {
@@ -1173,9 +1182,18 @@ export function CalendarPage() {
         const isOverdue = Boolean(info.event.extendedProps.isOverdue)
         const Icon = isCompleted ? CheckCircle2 : (isPendingConfirmation || isOverdue) ? Clock3 : isTask ? ListTodo : CalendarDays
         const title = `${isCompleted ? text('เสร็จสิ้น: ', 'Completed: ') : ''}${info.event.title}`
-        const people = <CalendarPeople ownerId={task ? task.creator_user_id : (info.event.extendedProps.row as EventRow).owner_user_id} eventId={isTask ? undefined : (info.event.extendedProps.row as EventRow).id} start={info.event.extendedProps.occurrenceStart as string | undefined ?? info.event.start?.toISOString()} profiles={profilesQuery.data ?? []} />
+        const people = <CalendarPeople ownerId={task ? task.creator_user_id : (info.event.extendedProps.row as EventRow).owner_user_id} eventId={isTask ? undefined : (info.event.extendedProps.row as EventRow).id} start={info.event.extendedProps.occurrenceStart as string | undefined ?? info.event.start?.toISOString()} profiles={profilesQuery.data ?? []} max={2} />
         if (info.view.type === 'timeGridWeek' && !info.event.allDay) return <div className="calendar-entry-content min-w-0 px-1"><span className="flex min-w-0 items-center gap-1"><Icon size={13} className="shrink-0 calendar-entry-icon" aria-hidden="true" /><span className="truncate font-medium tabular-nums">{info.timeText.match(/^\d{1,2}:\d{2}/)?.[0] ?? info.timeText}</span></span><div className="fc-event-title">{title}</div>{people}</div>
-        return <div className="calendar-entry-content flex min-w-0 items-center gap-1.5 px-0.5"><Icon size={12} className="shrink-0 calendar-entry-icon" aria-hidden="true" /><div className="min-w-0 flex-1">{info.view.type.startsWith('timeGrid') && !info.event.allDay && <span className="block truncate font-semibold tabular-nums">{info.timeText}</span>}<div className="fc-event-title truncate">{title}</div>{people}</div></div>
+        return (
+          <div className="calendar-entry-content flex min-w-0 w-full items-center justify-between gap-1 px-0.5">
+            <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+              <Icon size={12} className="shrink-0 calendar-entry-icon" aria-hidden="true" />
+              {info.view.type.startsWith('timeGrid') && !info.event.allDay && <span className="block truncate font-semibold tabular-nums shrink-0">{info.timeText}</span>}
+              <span className="fc-event-title truncate">{title}</span>
+            </div>
+            {people}
+          </div>
+        )
       }}
       events={calendarEntries}
       headerToolbar={{ left: 'title prev,next today', center: '', right: '' }}
@@ -1270,12 +1288,12 @@ export function CalendarPage() {
               <strong>{completedCount}</strong>
             </span>
 
-            <span className="semantic-meeting status-card-today-meetings" title={text('การประชุมที่มีนัดหมายในวันนี้', 'Meetings scheduled for today')}>
+            <span className="semantic-overdue status-card-overdue" title={text('งานที่เกินกำหนดส่งในช่วงเวลาที่เลือก', 'Overdue tasks in the selected period')}>
               <span className="flex items-center gap-1.5 min-w-0">
-                <CalendarDays size={15} className="shrink-0 text-[#75638F]" aria-hidden="true" />
-                <span className="text-slate-700 font-semibold">{text('ประชุมวันนี้', 'Meetings today')}</span>
+                <Clock3 size={15} className="shrink-0 text-rose-600" aria-hidden="true" />
+                <span className="text-slate-700 font-semibold">{text('เกินกำหนด', 'Overdue')}</span>
               </span>
-              <strong>{todayEntries.filter((entry) => entry.extendedProps.kind === 'event').length}</strong>
+              <strong>{overdueCount}</strong>
             </span>
 
             <span className="semantic-pending status-card-pending-confirmation" title={text('ประชุมในช่วงเวลาที่เลือกที่ผ่านเวลาแล้วแต่ยังไม่ยืนยันเสร็จสิ้น', 'Past meetings pending confirmation in the selected period')}>
