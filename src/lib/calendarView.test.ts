@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { calendarClickedDate, calendarDayKey, calendarEntriesByDay, calendarMeetingOccurrences, calendarViewType, readCalendarPages } from './calendarView'
+import { calendarClickedDate, calendarDayKey, calendarEntriesByDay, calendarMeetingOccurrences, calendarViewType, formatCalendarDayHeader, readCalendarPages } from './calendarView'
 
 test('all four choices keep their meaning when the screen changes size', () => {
   assert.equal(calendarViewType('day', false), 'timeGridDay')
@@ -70,4 +70,42 @@ test('empty results finish and page errors are reported instead of displaying in
   await assert.rejects(readCalendarPages(async (offset) => offset
     ? { data: null, error: failure, count: null }
     : { data: [{ id: 1 }], error: null, count: 2 }), failure)
+})
+
+
+test('calendar day headers use abbreviations in both Thai and English across all views', () => {
+  // Monday 2026-11-02 to Sunday 2026-11-08
+  const monday = new Date('2026-11-02T10:00:00+07:00')
+  const tuesday = new Date('2026-11-03T10:00:00+07:00')
+  const wednesday = new Date('2026-11-04T10:00:00+07:00')
+  const thursday = new Date('2026-11-05T10:00:00+07:00')
+  const friday = new Date('2026-11-06T10:00:00+07:00')
+  const saturday = new Date('2026-11-07T10:00:00+07:00')
+  const sunday = new Date('2026-11-08T10:00:00+07:00')
+
+  // Month / Year views (multiMonthYear / dayGridMonth): day names only
+  assert.equal(formatCalendarDayHeader(monday, 'dayGridMonth', 'th'), 'จ.')
+  assert.equal(formatCalendarDayHeader(tuesday, 'dayGridMonth', 'th'), 'อ.')
+  assert.equal(formatCalendarDayHeader(wednesday, 'dayGridMonth', 'th'), 'พ.')
+  assert.equal(formatCalendarDayHeader(thursday, 'dayGridMonth', 'th'), 'พฤ.')
+  assert.equal(formatCalendarDayHeader(friday, 'dayGridMonth', 'th'), 'ศ.')
+  assert.equal(formatCalendarDayHeader(saturday, 'dayGridMonth', 'th'), 'ส.')
+  assert.equal(formatCalendarDayHeader(sunday, 'dayGridMonth', 'th'), 'อา.')
+
+  assert.equal(formatCalendarDayHeader(monday, 'multiMonthYear', 'en'), 'Mon')
+  assert.equal(formatCalendarDayHeader(tuesday, 'multiMonthYear', 'en'), 'Tue')
+  assert.equal(formatCalendarDayHeader(wednesday, 'multiMonthYear', 'en'), 'Wed')
+  assert.equal(formatCalendarDayHeader(thursday, 'multiMonthYear', 'en'), 'Thu')
+  assert.equal(formatCalendarDayHeader(friday, 'multiMonthYear', 'en'), 'Fri')
+  assert.equal(formatCalendarDayHeader(saturday, 'multiMonthYear', 'en'), 'Sat')
+  assert.equal(formatCalendarDayHeader(sunday, 'multiMonthYear', 'en'), 'Sun')
+
+  // Week / Day views: abbreviated day name + date
+  assert.equal(formatCalendarDayHeader(monday, 'timeGridWeek', 'th'), 'จ. 2/11')
+  assert.equal(formatCalendarDayHeader(thursday, 'timeGridWeek', 'th'), 'พฤ. 5/11')
+  assert.equal(formatCalendarDayHeader(monday, 'timeGridWeek', 'en'), 'Mon 2/11')
+
+  // Edge cases
+  assert.equal(formatCalendarDayHeader(null, 'dayGridMonth', 'th'), '')
+  assert.equal(formatCalendarDayHeader(undefined, 'dayGridMonth', 'th'), '')
 })

@@ -3,6 +3,42 @@ import { expandEvent, type RecurringEvent } from './recurrence'
 export type CalendarView = 'day' | 'week' | 'month' | 'year'
 
 const bangkokDayFormatter = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit' })
+const bangkokWeekdayFormatter = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Bangkok', weekday: 'short' })
+
+export const THAI_WEEKDAY_ABBR: Record<string, string> = {
+  Mon: 'จ.',
+  Tue: 'อ.',
+  Wed: 'พ.',
+  Thu: 'พฤ.',
+  Fri: 'ศ.',
+  Sat: 'ส.',
+  Sun: 'อา.',
+}
+
+export const ENGLISH_WEEKDAY_ABBR: Record<string, string> = {
+  Mon: 'Mon',
+  Tue: 'Tue',
+  Wed: 'Wed',
+  Thu: 'Thu',
+  Fri: 'Fri',
+  Sat: 'Sat',
+  Sun: 'Sun',
+}
+
+export function formatCalendarDayHeader(date: Date | string | null | undefined, viewType?: string, language: string = 'th'): string {
+  if (!date) return ''
+  const parsed = new Date(date)
+  if (Number.isNaN(parsed.getTime())) return ''
+  const enWeekday = bangkokWeekdayFormatter.format(parsed)
+  const weekday = language === 'th' ? (THAI_WEEKDAY_ABBR[enWeekday] ?? enWeekday) : (ENGLISH_WEEKDAY_ABBR[enWeekday] ?? enWeekday)
+  if (viewType === 'timeGridWeek' || viewType === 'timeGridDay') {
+    const parts = bangkokDayFormatter.formatToParts(parsed)
+    const day = parts.find((p) => p.type === 'day')?.value ?? ''
+    const month = parts.find((p) => p.type === 'month')?.value ?? ''
+    return `${weekday} ${Number(day)}/${Number(month)}`
+  }
+  return weekday
+}
 
 export function calendarViewType(view: CalendarView, compact: boolean) {
   if (view === 'day') return 'timeGridDay'

@@ -96,3 +96,49 @@ test('saving another task edit while device availability is unknown keeps mobile
     if (renderer) act(() => renderer.unmount())
   }
 })
+
+test('creating a new task with notification channels enabled but no reminder time buttons warns and blocks save', async () => {
+  let renderer!: ReactTestRenderer
+  let saved = false
+  const originalFire = Swal.fire
+  let popupTitle = ''
+  let popupText = ''
+  Swal.fire = (async (options: { title?: string; text?: string }) => {
+    popupTitle = options.title ?? ''
+    popupText = options.text ?? ''
+    return { isConfirmed: true }
+  }) as typeof Swal.fire
+
+  try {
+    act(() => {
+      renderer = create(dialog(false, async () => { saved = true }, details, null))
+    })
+
+    // Fill title
+    const title = renderer.root.findByProps({ id: 'task-name' })
+    act(() => title.props.onChange({ target: { value: 'New Test Task' } }))
+
+    // Uncheck/toggle off all reminder checkboxes so reminderKeys becomes empty
+    const checkedReminders = renderer.root
+      .findAllByType('input')
+      .filter((input) => input.props.type === 'checkbox' && input.props.checked && input.props.className === 'sr-only')
+    for (const input of checkedReminders) {
+      act(() => input.props.onChange({ target: { checked: false } }))
+    }
+
+    // Submit form / save
+    await act(async () => {
+      renderer.root.findByType('form').props.onSubmit({ preventDefault: () => {} })
+      await new Promise((resolve) => setImmediate(resolve))
+    })
+
+    assert.equal(saved, false, 'Task should not be saved when reminder times are missing')
+    assert.equal(popupTitle, 'Reminder time not selected')
+    assert.match(popupText, /Notification channel selected/)
+  } finally {
+    Swal.fire = originalFire
+    if (renderer) act(() => renderer.unmount())
+  }
+})
+
+

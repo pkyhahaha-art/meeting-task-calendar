@@ -10,7 +10,7 @@ import luxonPlugin from '@fullcalendar/luxon3'
 import thLocale from '@fullcalendar/core/locales/th'
 import enGbLocale from '@fullcalendar/core/locales/en-gb'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarDays, CalendarPlus, CheckCircle2, Clock3, FileText, Link2, ListTodo, Search } from 'lucide-react'
+import { CalendarDays, CalendarPlus, CheckCircle2, Clock3, FileText, Link2, ListTodo, Search, X } from 'lucide-react'
 import Swal from 'sweetalert2'
 
 import { useAuth } from '../auth/AuthProvider'
@@ -26,7 +26,7 @@ import { bangkokDate, isPastBangkokDate, meetingRecurrenceRule, meetingReminderK
 import { appUrl } from '../lib/appUrl'
 import { canManageMeeting } from '../lib/meetingAccess'
 import { meetingSaveId, saveMeetingWithFollowUp, type MeetingSaveAttempt } from '../lib/meetingSave'
-import { calendarClickedDate, calendarDayKey, calendarEntriesByDay, calendarMeetingOccurrences, calendarViewType, readCalendarPages, type CalendarView } from '../lib/calendarView'
+import { calendarClickedDate, calendarDayKey, calendarEntriesByDay, calendarMeetingOccurrences, calendarViewType, formatCalendarDayHeader, readCalendarPages, type CalendarView } from '../lib/calendarView'
 import {
   generateContinuousReminderDates,
   isTaskOverdue,
@@ -39,6 +39,14 @@ import {
 import { supabase } from '../lib/supabase'
 import { CalendarPeople } from '../components/MemberAvatar'
 import { checkMeetingMobileRecipients, getConnectedDevices } from '../lib/mobilePush'
+import {
+  getStoredMeetingCompletions,
+  saveStoredMeetingCompletion,
+  isMeetingCompleted,
+  isMeetingAppointmentPassed,
+  getMeetingStatus,
+  getMeetingColors,
+} from '../lib/meetingCompletion'
 
 type EventRow = Database['public']['Tables']['events']['Row']
 type GuestRow = Database['public']['Tables']['event_guests']['Row']
@@ -53,7 +61,7 @@ type TaskExternalRecipientRow = Database['public']['Tables']['task_external_reci
 type TaskInternalRecipientRow = Database['public']['Tables']['task_internal_recipients']['Row']
 type DocumentLinkRow = Database['public']['Tables']['document_links']['Row']
 type ProfileRow = Database['public']['Tables']['profiles']['Row']
-type CalendarTooltipItem = { kind: 'event' | 'task'; title: string; affiliation: string; date: Date; isOverdue: boolean }
+type CalendarTooltipItem = { kind: 'event' | 'task'; title: string; affiliation: string; date: Date; isOverdue: boolean; isCompleted?: boolean; isPendingConfirmation?: boolean }
 type CalendarTooltip = { items: CalendarTooltipItem[]; x: number; y: number }
 type RecentDocument = { id: string; kind: 'file' | 'link'; parent: 'event' | 'task'; parentId: string; name: string; addedAt: string }
 
@@ -102,13 +110,23 @@ export function CalendarPage() {
   const [showMeetings, setShowMeetings] = useState(true)
   const [showTasks, setShowTasks] = useState(true)
   const [showCompletedTasks, setShowCompletedTasks] = useState(true)
-  const [showOverdue, setShowOverdue] = useState(true)
+  const [showCompletedMeetings, setShowCompletedMeetings] = useState(true)
+  const [showOverdueTasks, setShowOverdueTasks] = useState(true)
+  const [showPendingConfirmationMeetings, setShowPendingConfirmationMeetings] = useState(true)
+  const [completedMeetings, setCompletedMeetings] = useState<Set<string>>(() => getStoredMeetingCompletions())
+
+  const toggleMeetingCompletion = useCallback((eventId: string, occurrenceStart: string) => {
+    const isCurrentCompleted = isMeetingCompleted(completedMeetings, eventId, occurrenceStart)
+    const updated = saveStoredMeetingCompletion(eventId, occurrenceStart, !isCurrentCompleted)
+    setCompletedMeetings(new Set(updated))
+  }, [completedMeetings])
   const [sideTab, setSideTab] = useState<'upcoming' | 'documents'>('upcoming')
   const [taskSaveWarning, setTaskSaveWarning] = useState('')
   const [eventSaveWarning, setEventSaveWarning] = useState('')
   const pendingMeetingSave = useRef<MeetingSaveAttempt>(null)
   const [eventDialog, setEventDialog] = useState<{ open: boolean; event: EventRow | null; date?: string; occurrenceStart?: string }>({ open: false, event: null })
   const [taskDialog, setTaskDialog] = useState<{ open: boolean; task: TaskRow | null; date?: string }>({ open: false, task: null })
+  const [yearDayDialog, setYearDayDialog] = useState<{ open: boolean; date: string; entries: any[] } | null>(null)
   const [openedEventLink, setOpenedEventLink] = useState<string | null>(null)
   const [openedTaskLink, setOpenedTaskLink] = useState<string | null>(null)
   const [calendarTooltip, setCalendarTooltip] = useState<CalendarTooltip | null>(null)
@@ -139,6 +157,13 @@ export function CalendarPage() {
     const today = bangkokDate()
     return { start: new Date(`${today.slice(0, 7)}-01T00:00:00+07:00`), end: new Date(`${today}T23:59:59.999+07:00`) }
   })
+  const [viewPeriod, setViewPeriod] = useState(() => {
+    const today = bangkokDate()
+    const start = new Date(`${today.slice(0, 7)}-01T00:00:00+07:00`)
+    const end = new Date(start)
+    end.setMonth(end.getMonth() + 1)
+    return { start, end }
+  })
 
   useEffect(() => {
     const media = window.matchMedia('(max-width: 640px)')
@@ -164,6 +189,10 @@ export function CalendarPage() {
       || mini.getDate().getMonth() !== currentDate.getMonth())) mini.gotoDate(currentDate)
     setCalendarRange((current) => current.start.getTime() === info.start.getTime() && current.end.getTime() === info.end.getTime()
       ? current : { start: info.start, end: info.end })
+    const periodStart = info.view?.currentStart || info.start
+    const periodEnd = info.view?.currentEnd || info.end
+    setViewPeriod((current) => current.start.getTime() === periodStart.getTime() && current.end.getTime() === periodEnd.getTime()
+      ? current : { start: periodStart, end: periodEnd })
   }, [])
 
   const eventsQuery = useQuery({
@@ -793,27 +822,57 @@ export function CalendarPage() {
   const entriesForRange = useCallback((rangeStart: Date, rangeEnd: Date) => {
     const now = new Date(`${today}T00:00:00+07:00`)
     return [
-    ...(showMeetings ? eventRows.flatMap((event) => calendarMeetingOccurrences(event, rangeStart, rangeEnd).filter((occurrence) => !cancelledAppointments.has(`${event.id}:${new Date(occurrence.start).getTime()}`)).map((occurrence) => {
-      const isOverdue = isPastBangkokDate(calendarDayKey(occurrence.start), now)
-      return { id: `event-${occurrence.key}`, title: event.title, start: event.all_day ? calendarDayKey(occurrence.start) : occurrence.start, end: occurrence.end ? event.all_day ? calendarDayKey(occurrence.end) : occurrence.end : undefined, allDay: event.all_day, backgroundColor: isOverdue ? '#fee2e2' : event.owner_user_id === user?.id ? '#edddf6' : '#f1e7fa', borderColor: 'transparent', textColor: isOverdue ? '#991b1b' : '#6b2170', extendedProps: { kind: 'event', row: event, isOverdue, occurrenceStart: occurrence.start } }
-    })) : []),
-    ...(showTasks ? taskRows.flatMap((task) => {
-      if (task.recurrence_series_id) return []
-      if (task.status === 'completed' && !showCompletedTasks) return []
-      const isOverdue = isTaskOverdue(task.status, task.due_date, now)
-      return [{
-        id: `task-${task.id}`,
-        title: task.title,
-        start: task.due_time ? `${task.due_date}T${task.due_time.slice(0, 5)}:00+07:00` : task.due_date,
-        allDay: !task.due_time,
-        backgroundColor: isOverdue ? '#fee2e2' : task.status === 'completed' ? '#dcf8e9' : '#fff0ce',
-        borderColor: 'transparent',
-        textColor: isOverdue ? '#991b1b' : task.status === 'completed' ? '#166534' : '#92400e',
-        extendedProps: { kind: 'task', row: task, isOverdue },
-      }]
-    }) : []),
-    ].filter((entry) => showOverdue || !entry.extendedProps.isOverdue)
-  }, [eventRows, taskRows, cancelledAppointments, showMeetings, showTasks, showCompletedTasks, showOverdue, user?.id, today])
+      ...(showMeetings ? eventRows.flatMap((event) => calendarMeetingOccurrences(event, rangeStart, rangeEnd).filter((occurrence) => !cancelledAppointments.has(`${event.id}:${new Date(occurrence.start).getTime()}`)).flatMap((occurrence) => {
+        const isCompleted = isMeetingCompleted(completedMeetings, event.id, occurrence.start)
+        const isPast = isPastBangkokDate(calendarDayKey(occurrence.start), now)
+        const isPendingConfirmation = isPast && !isCompleted
+        if (isCompleted && !showCompletedMeetings) return []
+        if (isPendingConfirmation && !showPendingConfirmationMeetings) return []
+        const meetingStatus = getMeetingStatus(isCompleted, occurrence.start, now)
+        const colors = getMeetingColors(meetingStatus, event.owner_user_id === user?.id)
+        return [{
+          id: `event-${occurrence.key}`,
+          title: event.title,
+          start: event.all_day ? calendarDayKey(occurrence.start) : occurrence.start,
+          end: occurrence.end ? event.all_day ? calendarDayKey(occurrence.end) : occurrence.end : undefined,
+          allDay: event.all_day,
+          backgroundColor: colors.backgroundColor,
+          borderColor: colors.borderColor,
+          textColor: colors.textColor,
+          extendedProps: {
+            kind: 'event',
+            row: event,
+            isOverdue: isPendingConfirmation,
+            isPendingConfirmation,
+            isCompleted,
+            occurrenceStart: occurrence.start,
+          },
+        }]
+      })) : []),
+      ...(showTasks ? taskRows.flatMap((task) => {
+        if (task.recurrence_series_id) return []
+        if (task.status === 'completed' && !showCompletedTasks) return []
+        const isOverdue = isTaskOverdue(task.status, task.due_date, now)
+        if (isOverdue && !showOverdueTasks) return []
+        return [{
+          id: `task-${task.id}`,
+          title: task.title,
+          start: task.due_time ? `${task.due_date}T${task.due_time.slice(0, 5)}:00+07:00` : task.due_date,
+          allDay: !task.due_time,
+          backgroundColor: isOverdue ? '#fee2e2' : task.status === 'completed' ? '#dcf8e9' : '#fff0ce',
+          borderColor: isOverdue ? '#fecdd3' : task.status === 'completed' ? '#bbf7d0' : '#fde68a',
+          textColor: isOverdue ? '#991b1b' : task.status === 'completed' ? '#166534' : '#92400e',
+          extendedProps: {
+            kind: 'task',
+            row: task,
+            isOverdue,
+            isCompleted: task.status === 'completed',
+            isPendingConfirmation: false,
+          },
+        }]
+      }) : []),
+    ]
+  }, [eventRows, taskRows, cancelledAppointments, showMeetings, showTasks, showCompletedTasks, showCompletedMeetings, showOverdueTasks, showPendingConfirmationMeetings, completedMeetings, user?.id, today])
   const calendarEntries = useMemo(() => entriesForRange(calendarRange.start, calendarRange.end), [entriesForRange, calendarRange])
   const entriesByDay = useMemo(() => calendarEntriesByDay(calendarEntries), [calendarEntries])
   const summaryEntries = useMemo(() => {
@@ -822,17 +881,82 @@ export function CalendarPage() {
     return entriesForRange(summaryStart, summaryEnd)
   }, [entriesForRange, today])
   const todayEntries = useMemo(() => summaryEntries.filter((entry) => calendarDayKey(entry.start) === today), [summaryEntries, today])
+  const selectedDayEntries = useMemo(() => summaryEntries.filter((entry) => calendarDayKey(entry.start) === miniSelectedDate)
+    .sort((first, second) => new Date(first.start).getTime() - new Date(second.start).getTime()), [summaryEntries, miniSelectedDate])
+  const selectedDayHeading = useMemo(() => {
+    try {
+      const date = new Date(`${miniSelectedDate}T00:00:00+07:00`)
+      return new Intl.DateTimeFormat(language === 'th' ? 'th-TH' : 'en-GB', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'Asia/Bangkok',
+      }).format(date)
+    } catch {
+      return miniSelectedDate
+    }
+  }, [miniSelectedDate, language])
   const upcomingEntries = useMemo(() => summaryEntries.filter((entry) => calendarDayKey(entry.start) >= today)
     .sort((first, second) => new Date(first.start).getTime() - new Date(second.start).getTime()).slice(0, 3), [summaryEntries, today])
   const recentDocuments = (recentDocumentsQuery.data ?? []).filter((document) => document.parent === 'event'
     ? eventsQuery.data?.some((event) => event.id === document.parentId)
     : tasksQuery.data?.some((task) => task.id === document.parentId)).slice(0, 3)
-  const pendingCount = (tasksQuery.data ?? []).filter((task) => task.status === 'pending' && !task.recurrence_series_id).length
-  const completedCount = (tasksQuery.data ?? []).filter((task) => task.status === 'completed').length
-  const openCalendarEntry = (entry: (typeof calendarEntries)[number]) => {
+  const viewPeriodKeys = useMemo(() => {
+    const startKey = calendarDayKey(viewPeriod.start)
+    const endKey = calendarDayKey(new Date(Math.max(viewPeriod.start.getTime(), viewPeriod.end.getTime() - 1)))
+    return { startKey, endKey }
+  }, [viewPeriod])
+
+  const pendingCount = useMemo(() => {
+    return (tasksQuery.data ?? []).filter((task) => {
+      if (task.recurrence_series_id) return false
+      if (task.status !== 'pending') return false
+      return task.due_date >= viewPeriodKeys.startKey && task.due_date <= viewPeriodKeys.endKey
+    }).length
+  }, [tasksQuery.data, viewPeriodKeys])
+
+  const completedCount = useMemo(() => {
+    const completedTasks = (tasksQuery.data ?? []).filter((task) => {
+      if (task.recurrence_series_id) return false
+      if (task.status !== 'completed') return false
+      return task.due_date >= viewPeriodKeys.startKey && task.due_date <= viewPeriodKeys.endKey
+    }).length
+    const completedMeetingsCount = calendarEntries.filter((entry) => {
+      if (entry.extendedProps.kind !== 'event') return false
+      if (!(entry.extendedProps as { isCompleted?: boolean }).isCompleted) return false
+      const dayKey = calendarDayKey(entry.start)
+      return dayKey >= viewPeriodKeys.startKey && dayKey <= viewPeriodKeys.endKey
+    }).length
+    return completedTasks + completedMeetingsCount
+  }, [tasksQuery.data, calendarEntries, viewPeriodKeys])
+
+  const pendingConfirmationMeetingsCount = useMemo(() => {
+    return calendarEntries.filter((entry) => {
+      if (entry.extendedProps.kind !== 'event') return false
+      if (!(entry.extendedProps as { isPendingConfirmation?: boolean }).isPendingConfirmation) return false
+      const dayKey = calendarDayKey(entry.start)
+      return dayKey >= viewPeriodKeys.startKey && dayKey <= viewPeriodKeys.endKey
+    }).length
+  }, [calendarEntries, viewPeriodKeys])
+  const entryDotClass = useCallback((entry: (typeof calendarEntries)[number]) => {
+    if (entry.extendedProps.kind === 'task') {
+      return (entry.extendedProps.row as TaskRow).status === 'completed'
+        ? 'semantic-dot semantic-completed'
+        : entry.extendedProps.isOverdue
+          ? 'semantic-dot semantic-overdue'
+          : 'semantic-dot semantic-task'
+    }
+    return (entry.extendedProps as { isCompleted?: boolean }).isCompleted
+      ? 'semantic-dot semantic-completed'
+      : (entry.extendedProps as { isPendingConfirmation?: boolean }).isPendingConfirmation
+        ? 'semantic-dot semantic-pending'
+        : 'semantic-dot semantic-meeting'
+  }, [])
+  const openCalendarEntry = useCallback((entry: (typeof calendarEntries)[number]) => {
     if (entry.extendedProps.kind === 'task') setTaskDialog({ open: true, task: entry.extendedProps.row as TaskRow })
     else setEventDialog({ open: true, event: entry.extendedProps.row as EventRow, occurrenceStart: (entry.extendedProps as { occurrenceStart?: string }).occurrenceStart })
-  }
+  }, [])
   const openRecentDocument = (document: RecentDocument) => {
     if (document.parent === 'task') {
       const task = tasksQuery.data?.find((item) => item.id === document.parentId)
@@ -843,10 +967,25 @@ export function CalendarPage() {
     }
   }
   const setCalendarTooltipAt = useCallback((items: CalendarTooltipItem[], clientX: number, clientY: number) => {
+    const tooltipWidth = 288
+    const estimatedHeight = Math.min(window.innerHeight * 0.7, 40 + items.length * 105)
+
+    let x = clientX + 16
+    if (x + tooltipWidth > window.innerWidth - 16) {
+      x = clientX - tooltipWidth - 16
+    }
+    x = Math.max(16, Math.min(x, window.innerWidth - tooltipWidth - 16))
+
+    let y = clientY + 16
+    if (y + estimatedHeight > window.innerHeight - 16) {
+      y = clientY - estimatedHeight - 16
+    }
+    y = Math.max(16, Math.min(y, window.innerHeight - estimatedHeight - 16))
+
     setCalendarTooltip({
       items,
-      x: Math.max(12, Math.min(clientX + 14, window.innerWidth - 308)),
-      y: Math.max(12, Math.min(clientY + 14, window.innerHeight - 180)),
+      x,
+      y,
     })
   }, [])
   const showCalendarTooltip = useCallback((info: EventHoveringArg) => {
@@ -859,6 +998,8 @@ export function CalendarPage() {
       affiliation: row.affiliation || '-',
       date: info.event.start,
       isOverdue: Boolean(info.event.extendedProps.isOverdue),
+      isCompleted: Boolean(info.event.extendedProps.isCompleted),
+      isPendingConfirmation: Boolean(info.event.extendedProps.isPendingConfirmation),
     }], info.jsEvent.clientX, info.jsEvent.clientY)
   }, [setCalendarTooltipAt])
   const canEditEvent = canManageMeeting(selectedEvent?.owner_user_id, user?.id, isActiveAdmin)
@@ -888,7 +1029,16 @@ export function CalendarPage() {
       firstDay={1}
       height={compactCalendar && (calendarView === 'year' || calendarView === 'week') ? 'auto' : '100%'}
       multiMonthMaxColumns={3}
-      multiMonthMinWidth={260}
+      multiMonthMinWidth={230}
+      views={{
+        multiMonthYear: {
+          dayMaxEvents: false,
+        },
+        multiMonth: {
+          dayMaxEvents: false,
+        },
+      }}
+      dayHeaderContent={(info) => formatCalendarDayHeader(info.date, info.view?.type, language)}
       slotLabelFormat={{ hour: '2-digit', minute: '2-digit', hour12: false }}
       eventTimeFormat={{ hour: '2-digit', minute: '2-digit', hour12: false }}
       scrollTime="08:00:00"
@@ -896,12 +1046,99 @@ export function CalendarPage() {
       expandRows
       fixedWeekCount={false}
       selectable
-      dateClick={(info) => { const date = calendarClickedDate(info.dateStr); void warnPastCreation(date).then((isPast) => { if (!isPast) setEventDialog({ open: true, event: null, date }) }) }}
+      dateClick={(info) => {
+        const date = calendarClickedDate(info.dateStr)
+        setMiniSelectedDate(date)
+        if (calendarView === 'year') {
+          const dayEntries = entriesByDay.get(date) ?? []
+          if (dayEntries.length === 1) {
+            openCalendarEntry(dayEntries[0])
+            return
+          }
+          if (dayEntries.length > 1) {
+            setYearDayDialog({ open: true, date, entries: dayEntries })
+            return
+          }
+        }
+        void warnPastCreation(date).then((isPast) => {
+          if (!isPast) setEventDialog({ open: true, event: null, date })
+        })
+      }}
       dayCellContent={(info) => {
         const items = (entriesByDay.get(calendarDayKey(info.date)) ?? []).map((entry) => {
           const row = entry.extendedProps.row as EventRow | TaskRow
-          return { kind: entry.extendedProps.kind as CalendarTooltipItem['kind'], title: entry.title, affiliation: row.affiliation || '-', date: info.date, isOverdue: Boolean(entry.extendedProps.isOverdue) }
+          return {
+            kind: entry.extendedProps.kind as CalendarTooltipItem['kind'],
+            title: entry.title,
+            affiliation: row.affiliation || '-',
+            date: info.date,
+            isOverdue: Boolean(entry.extendedProps.isOverdue),
+            isCompleted: Boolean(entry.extendedProps.isCompleted),
+            isPendingConfirmation: Boolean(entry.extendedProps.isPendingConfirmation),
+          }
         })
+        if (info.view?.type?.startsWith('multiMonth')) {
+          if (!items.length) {
+            return (
+              <span
+                onMouseEnter={() => setCalendarTooltip(null)}
+                onMouseLeave={() => setCalendarTooltip(null)}
+              >
+                {info.dayNumberText}
+              </span>
+            )
+          }
+
+          const hasMeeting = items.some((item) => item.kind === 'event')
+          const hasTask = items.some((item) => item.kind === 'task')
+          const hasOverdue = items.some((item) => item.isOverdue)
+          const hasPending = items.some((item) => item.isPendingConfirmation)
+          const isAllCompleted = items.length > 0 && items.every((item) => item.isCompleted)
+
+          let circleClass = ''
+          if (hasOverdue) circleClass = 'circle-status-overdue'
+          else if (hasPending) circleClass = 'circle-status-pending'
+          else if (isAllCompleted) circleClass = 'circle-status-completed'
+          else if (hasMeeting && hasTask) circleClass = 'circle-status-mixed'
+          else if (hasMeeting) circleClass = 'circle-status-meeting'
+          else if (hasTask) circleClass = 'circle-status-task'
+
+          return (
+            <span
+              className={`calendar-year-circle ${circleClass} cursor-help`}
+              onMouseEnter={(event) => setCalendarTooltipAt(items, event.clientX, event.clientY)}
+              onMouseLeave={() => setCalendarTooltip(null)}
+              onClick={(event) => {
+                event.stopPropagation()
+                setCalendarTooltip(null)
+                const dateKey = calendarDayKey(info.date)
+                setMiniSelectedDate(dateKey)
+                const dayEntries = entriesByDay.get(dateKey) ?? []
+                if (dayEntries.length === 1) {
+                  openCalendarEntry(dayEntries[0])
+                  return
+                }
+                if (dayEntries.length > 1) {
+                  setYearDayDialog({ open: true, date: dateKey, entries: dayEntries })
+                  return
+                }
+                void warnPastCreation(dateKey).then((isPast) => {
+                  if (!isPast) setEventDialog({ open: true, event: null, date: dateKey })
+                })
+              }}
+            >
+              <span className="calendar-year-number">{info.dayNumberText}</span>
+              {items.length > 1 && (
+                <span
+                  className={`calendar-micro-badge ${hasOverdue ? 'badge-overdue' : hasMeeting && hasTask ? 'badge-mixed' : hasMeeting ? 'badge-meeting' : 'badge-task'}`}
+                  aria-hidden="true"
+                >
+                  {items.length > 9 ? '9+' : items.length}
+                </span>
+              )}
+            </span>
+          )
+        }
         return <span className={items.length ? 'cursor-help' : undefined} onMouseEnter={(event) => { if (items.length) setCalendarTooltipAt(items, event.clientX, event.clientY) }} onMouseLeave={() => setCalendarTooltip(null)}>{info.dayNumberText}</span>
       }}
       eventClick={(info) => {
@@ -911,33 +1148,95 @@ export function CalendarPage() {
       }}
       eventMouseEnter={showCalendarTooltip}
       eventMouseLeave={() => setCalendarTooltip(null)}
-      eventClassNames={(info) => info.event.extendedProps.isOverdue ? 'calendar-overdue' : info.event.extendedProps.kind === 'task' ? (info.event.extendedProps.row as TaskRow).status === 'completed' ? 'calendar-task-completed' : 'calendar-task' : 'calendar-meeting'}
+      eventClassNames={(info) => {
+        if (info.event.extendedProps.kind === 'task') {
+          return (info.event.extendedProps.row as TaskRow).status === 'completed'
+            ? 'calendar-task-completed'
+            : info.event.extendedProps.isOverdue
+              ? 'calendar-overdue'
+              : 'calendar-task'
+        }
+        return info.event.extendedProps.isCompleted
+          ? 'calendar-meeting-completed'
+          : info.event.extendedProps.isPendingConfirmation
+            ? 'calendar-pending'
+            : 'calendar-meeting'
+      }}
       eventContent={(info) => {
+        if (info.view.type.startsWith('multiMonth')) {
+          return null
+        }
         const isTask = info.event.extendedProps.kind === 'task'
         const task = isTask ? info.event.extendedProps.row as TaskRow : null
-        const Icon = info.event.extendedProps.isOverdue ? Clock3 : isTask ? task?.status === 'completed' ? CheckCircle2 : ListTodo : CalendarDays
-        const title = `${task?.status === 'completed' ? text('เสร็จแล้ว: ', 'Completed: ') : ''}${info.event.title}`
+        const isCompleted = isTask ? task?.status === 'completed' : Boolean(info.event.extendedProps.isCompleted)
+        const isPendingConfirmation = Boolean(info.event.extendedProps.isPendingConfirmation)
+        const isOverdue = Boolean(info.event.extendedProps.isOverdue)
+        const Icon = isCompleted ? CheckCircle2 : (isPendingConfirmation || isOverdue) ? Clock3 : isTask ? ListTodo : CalendarDays
+        const title = `${isCompleted ? text('เสร็จสิ้น: ', 'Completed: ') : ''}${info.event.title}`
         const people = <CalendarPeople ownerId={task ? task.creator_user_id : (info.event.extendedProps.row as EventRow).owner_user_id} eventId={isTask ? undefined : (info.event.extendedProps.row as EventRow).id} start={info.event.extendedProps.occurrenceStart as string | undefined ?? info.event.start?.toISOString()} profiles={profilesQuery.data ?? []} />
-        if (info.view.type === 'timeGridWeek' && !info.event.allDay) return <div className="calendar-entry-content min-w-0 px-1"><span className="flex min-w-0 items-center gap-1"><Icon size={13} className="shrink-0" aria-hidden="true" /><span className="truncate font-medium tabular-nums">{info.timeText.match(/^\d{1,2}:\d{2}/)?.[0] ?? info.timeText}</span></span><div className="fc-event-title">{title}</div>{people}</div>
-        return <div className="calendar-entry-content flex min-w-0 items-start gap-1 px-0.5"><Icon size={12} className="mt-0.5 shrink-0" aria-hidden="true" /><div className="min-w-0 flex-1">{info.view.type.startsWith('timeGrid') && !info.event.allDay && <span className="block truncate font-semibold tabular-nums">{info.timeText}</span>}<div className="fc-event-title truncate">{title}</div>{people}</div></div>
+        if (info.view.type === 'timeGridWeek' && !info.event.allDay) return <div className="calendar-entry-content min-w-0 px-1"><span className="flex min-w-0 items-center gap-1"><Icon size={13} className="shrink-0 calendar-entry-icon" aria-hidden="true" /><span className="truncate font-medium tabular-nums">{info.timeText.match(/^\d{1,2}:\d{2}/)?.[0] ?? info.timeText}</span></span><div className="fc-event-title">{title}</div>{people}</div>
+        return <div className="calendar-entry-content flex min-w-0 items-center gap-1.5 px-0.5"><Icon size={12} className="shrink-0 calendar-entry-icon" aria-hidden="true" /><div className="min-w-0 flex-1">{info.view.type.startsWith('timeGrid') && !info.event.allDay && <span className="block truncate font-semibold tabular-nums">{info.timeText}</span>}<div className="fc-event-title truncate">{title}</div>{people}</div></div>
       }}
       events={calendarEntries}
       headerToolbar={{ left: 'title prev,next today', center: '', right: '' }}
-      dayMaxEvents={1}
-      moreLinkContent={(info) => text(`+${info.num} เพิ่มเติม`, `+${info.num} more`)}
+      dayMaxEvents={calendarView === 'year' ? false : 1}
+      moreLinkContent={(info) => info?.view?.type?.startsWith('multiMonth') ? `+${info.num}` : text(`+${info.num} เพิ่มเติม`, `+${info.num} more`)}
     />
-  ), [calendarEntries, entriesByDay, calendarView, compactCalendar, language, text, updateCalendarRange, warnPastCreation, setCalendarTooltipAt, showCalendarTooltip, profilesQuery.data])
+  ), [calendarEntries, entriesByDay, calendarView, compactCalendar, language, text, updateCalendarRange, warnPastCreation, setCalendarTooltipAt, showCalendarTooltip, profilesQuery.data, openCalendarEntry])
 
   const calendarControls = (
-<div className="mb-4 grid gap-3 lg:mb-0 lg:gap-3">
-              <div className="relative w-full max-w-md lg:max-w-none"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} /><input className="field-input pl-10 lg:px-3 lg:py-1.5 lg:pl-9 lg:text-sm" placeholder={text('ค้นหา Meeting หรือ Task', 'Search meetings or tasks')} value={search} onChange={(event) => setSearch(event.target.value)} /></div>
-              <div className="calendar-filter-options flex flex-wrap justify-start gap-1.5 text-xs font-semibold lg:flex-col lg:items-stretch lg:gap-1" aria-label={text('ตัวกรองรายการในปฏิทิน', 'Calendar filters')}>
-                <label className={`calendar-filter-option semantic-choice semantic-meeting flex min-h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-slate-300 lg:min-h-9 lg:gap-1.5 lg:px-2 lg:py-1 lg:text-xs ${showMeetings ? 'border-slate-300 bg-slate-100 text-slate-900' : 'border-slate-200 bg-white text-slate-500'}`}><input type="checkbox" className="h-4 w-4 accent-brand-600 lg:h-3.5 lg:w-3.5" checked={showMeetings} onChange={(event) => setShowMeetings(event.target.checked)} /><CalendarDays size={15} aria-hidden="true" /><span>{text('แสดง Meeting', 'Show meetings')}</span></label>
-                <label className={`calendar-filter-option semantic-choice semantic-task flex min-h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-amber-300 lg:min-h-9 lg:gap-1.5 lg:px-2 lg:py-1 lg:text-xs ${showTasks ? 'border-amber-300 bg-amber-100 text-amber-900' : 'border-slate-200 bg-white text-slate-500'}`}><input type="checkbox" className="h-4 w-4 accent-amber-600 lg:h-3.5 lg:w-3.5" checked={showTasks} onChange={(event) => setShowTasks(event.target.checked)} /><ListTodo size={15} aria-hidden="true" /><span>{text('แสดง Task', 'Show tasks')}</span></label>
-                <label className={`calendar-filter-option semantic-choice semantic-completed flex min-h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-green-300 lg:min-h-9 lg:gap-1.5 lg:px-2 lg:py-1 lg:text-xs ${showCompletedTasks ? 'border-green-300 bg-green-100 text-green-900' : 'border-slate-200 bg-white text-slate-500'}`}><input type="checkbox" className="h-4 w-4 accent-green-600 lg:h-3.5 lg:w-3.5" checked={showCompletedTasks} onChange={(event) => setShowCompletedTasks(event.target.checked)} /><CheckCircle2 size={15} aria-hidden="true" /><span>{text('แสดง Task ที่เสร็จแล้ว', 'Show completed tasks')}</span></label>
-                <label className={`calendar-filter-option semantic-choice semantic-overdue flex min-h-9 max-w-full cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-red-300 lg:whitespace-normal lg:min-h-9 lg:gap-1.5 lg:px-2 lg:py-1 lg:text-xs ${showOverdue ? 'border-red-300 bg-red-100 text-red-900' : 'border-slate-200 bg-white text-slate-500'}`}><input type="checkbox" className="h-4 w-4 shrink-0 accent-red-600 lg:h-3.5 lg:w-3.5" checked={showOverdue} onChange={(event) => setShowOverdue(event.target.checked)} /><Clock3 size={15} className="shrink-0" aria-hidden="true" /><span>{text('แสดง Task / Meeting เกินวันครบกำหนด/นัดหมาย', 'Show overdue tasks and past meetings')}</span></label>
-              </div>
-            </div>
+    <div className="mb-4 grid gap-3 lg:mb-0 lg:gap-3">
+      <div className="relative w-full max-w-md lg:max-w-none">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+        <input className="field-input pl-10 lg:px-3 lg:py-1.5 lg:pl-9 lg:text-sm" placeholder={text('ค้นหา Meeting หรือ Task', 'Search meetings or tasks')} value={search} onChange={(event) => setSearch(event.target.value)} />
+      </div>
+
+      <div className="calendar-filter-options flex flex-col gap-2.5" aria-label={text('ตัวกรองรายการในปฏิทิน', 'Calendar filters')}>
+        {/* กลุ่มที่ 1: ประเภทรายการ */}
+        <div className="space-y-1">
+          <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">{text('ประเภทรายการ', 'Item type')}</span>
+          <div className="flex flex-wrap justify-start gap-1.5 text-xs font-semibold lg:flex-col lg:items-stretch lg:gap-1">
+            <label className={`calendar-filter-option semantic-choice semantic-meeting flex min-h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-slate-300 lg:min-h-9 lg:gap-1.5 lg:px-2 lg:py-1 lg:text-xs ${showMeetings ? 'border-slate-300 bg-slate-100 text-slate-900' : 'border-slate-200 bg-white text-slate-500'}`}>
+              <input type="checkbox" className="h-4 w-4 accent-brand-600 lg:h-3.5 lg:w-3.5" checked={showMeetings} onChange={(event) => setShowMeetings(event.target.checked)} />
+              <CalendarDays size={15} aria-hidden="true" />
+              <span>{text('แสดง Meeting', 'Show meetings')}</span>
+            </label>
+            <label className={`calendar-filter-option semantic-choice semantic-task flex min-h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-amber-300 lg:min-h-9 lg:gap-1.5 lg:px-2 lg:py-1 lg:text-xs ${showTasks ? 'border-amber-300 bg-amber-100 text-amber-900' : 'border-slate-200 bg-white text-slate-500'}`}>
+              <input type="checkbox" className="h-4 w-4 accent-amber-600 lg:h-3.5 lg:w-3.5" checked={showTasks} onChange={(event) => setShowTasks(event.target.checked)} />
+              <ListTodo size={15} aria-hidden="true" />
+              <span>{text('แสดง Task', 'Show tasks')}</span>
+            </label>
+          </div>
+        </div>
+
+        {/* กลุ่มที่ 2: สถานะ */}
+        <div className="space-y-1">
+          <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">{text('สถานะ', 'Status')}</span>
+          <div className="flex flex-wrap justify-start gap-1.5 text-xs font-semibold lg:flex-col lg:items-stretch lg:gap-1">
+            <label className={`calendar-filter-option semantic-choice semantic-completed flex min-h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-green-300 lg:min-h-9 lg:gap-1.5 lg:px-2 lg:py-1 lg:text-xs ${showCompletedTasks ? 'border-green-300 bg-green-100 text-green-900' : 'border-slate-200 bg-white text-slate-500'}`}>
+              <input type="checkbox" className="h-4 w-4 accent-green-600 lg:h-3.5 lg:w-3.5" checked={showCompletedTasks} onChange={(event) => setShowCompletedTasks(event.target.checked)} />
+              <CheckCircle2 size={15} aria-hidden="true" />
+              <span>{text('แสดง Task ที่เสร็จแล้ว', 'Show completed tasks')}</span>
+            </label>
+            <label className={`calendar-filter-option semantic-choice semantic-completed flex min-h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-green-300 lg:min-h-9 lg:gap-1.5 lg:px-2 lg:py-1 lg:text-xs ${showCompletedMeetings ? 'border-green-300 bg-green-100 text-green-900' : 'border-slate-200 bg-white text-slate-500'}`}>
+              <input type="checkbox" className="h-4 w-4 accent-green-600 lg:h-3.5 lg:w-3.5" checked={showCompletedMeetings} onChange={(event) => setShowCompletedMeetings(event.target.checked)} />
+              <CheckCircle2 size={15} aria-hidden="true" />
+              <span>{text('แสดง Meeting ที่เสร็จสิ้นแล้ว', 'Show completed meetings')}</span>
+            </label>
+            <label className={`calendar-filter-option semantic-choice semantic-overdue flex min-h-9 max-w-full cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-red-300 lg:whitespace-normal lg:min-h-9 lg:gap-1.5 lg:px-2 lg:py-1 lg:text-xs ${showOverdueTasks ? 'border-red-300 bg-red-100 text-red-900' : 'border-slate-200 bg-white text-slate-500'}`}>
+              <input type="checkbox" className="h-4 w-4 shrink-0 accent-red-600 lg:h-3.5 lg:w-3.5" checked={showOverdueTasks} onChange={(event) => setShowOverdueTasks(event.target.checked)} />
+              <Clock3 size={15} className="shrink-0" aria-hidden="true" />
+              <span>{text('แสดง Task เกินกำหนด', 'Show overdue tasks')}</span>
+            </label>
+            <label className={`calendar-filter-option semantic-choice semantic-pending flex min-h-9 max-w-full cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-amber-300 lg:whitespace-normal lg:min-h-9 lg:gap-1.5 lg:px-2 lg:py-1 lg:text-xs ${showPendingConfirmationMeetings ? 'border-amber-300 bg-amber-100 text-amber-900' : 'border-slate-200 bg-white text-slate-500'}`}>
+              <input type="checkbox" className="h-4 w-4 shrink-0 accent-amber-600 lg:h-3.5 lg:w-3.5" checked={showPendingConfirmationMeetings} onChange={(event) => setShowPendingConfirmationMeetings(event.target.checked)} />
+              <Clock3 size={15} className="shrink-0" aria-hidden="true" />
+              <span>{text('แสดง Meeting รอยืนยันเสร็จสิ้น', 'Show meetings pending confirmation')}</span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 
   const calendarViewOptions = [
@@ -948,31 +1247,91 @@ export function CalendarPage() {
   ] as const
 
   return (
-    <main className="calendar-page-main mx-auto w-full p-4 sm:p-6 lg:flex lg:flex-col lg:p-3">
-      <div className="grid gap-5 lg:min-h-0 lg:flex-1 lg:grid-cols-[310px_minmax(0,1fr)] lg:gap-0">
+    <main className="calendar-page-main mx-auto w-full p-2 sm:p-2.5 lg:flex lg:flex-col lg:p-2">
+      <div className="grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[270px_minmax(0,1fr)] lg:gap-0">
         <div className="calendar-primary-column min-w-0 lg:order-2 lg:flex lg:min-h-0 lg:flex-col">
-          <div className="calendar-page-header mb-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between lg:mb-1 lg:min-h-12 lg:shrink-0">
-            <div className="calendar-title-and-status">
-              <section className="calendar-status-header" aria-label={text('สถานะงาน', 'Task status')}>
-                <span className="calendar-status-title">{text('สถานะงาน', 'Task status')}</span>
-                <span className="semantic-pending"><Clock3 size={14} aria-hidden="true" /><span>{text('รอดำเนินการ', 'Pending')}</span><strong>{pendingCount}</strong></span>
-                <span className="semantic-completed"><CheckCircle2 size={14} aria-hidden="true" /><span>{text('เสร็จแล้ว', 'Completed')}</span><strong>{completedCount}</strong></span>
-                <span className="semantic-meeting"><CalendarDays size={14} aria-hidden="true" /><span>{text('ประชุมวันนี้', 'Meetings today')}</span><strong>{todayEntries.filter((entry) => entry.extendedProps.kind === 'event').length}</strong></span>
-              </section>
+          {/* Row 1: The 4 Status Cards across the top (matching reference mockup) */}
+          <section className="calendar-status-header" aria-label={text('สถานะงานและการประชุม', 'Task and meeting status')}>
+            <span className="calendar-status-title sr-only">{text('สถานะงานและการประชุม', 'Task and meeting status')}</span>
+
+            <span className="semantic-pending status-card-pending" title={text('งานที่ยังไม่เสร็จในช่วงเวลาที่เลือก', 'Pending tasks in the selected period')}>
+              <span className="flex items-center gap-1.5 min-w-0">
+                <Clock3 size={15} className="shrink-0 text-amber-600" aria-hidden="true" />
+                <span className="text-slate-700 font-semibold">{text('รอดำเนินการ', 'Pending')}</span>
+              </span>
+              <strong>{pendingCount}</strong>
+            </span>
+
+            <span className="semantic-completed status-card-completed" title={text('งานและการประชุมที่เสร็จสิ้นในช่วงเวลาที่เลือก', 'Completed tasks and meetings in the selected period')}>
+              <span className="flex items-center gap-1.5 min-w-0">
+                <CheckCircle2 size={15} className="shrink-0 text-emerald-600" aria-hidden="true" />
+                <span className="text-slate-700 font-semibold">{text('เสร็จแล้ว', 'Completed')}</span>
+              </span>
+              <strong>{completedCount}</strong>
+            </span>
+
+            <span className="semantic-meeting status-card-today-meetings" title={text('การประชุมที่มีนัดหมายในวันนี้', 'Meetings scheduled for today')}>
+              <span className="flex items-center gap-1.5 min-w-0">
+                <CalendarDays size={15} className="shrink-0 text-[#75638F]" aria-hidden="true" />
+                <span className="text-slate-700 font-semibold">{text('ประชุมวันนี้', 'Meetings today')}</span>
+              </span>
+              <strong>{todayEntries.filter((entry) => entry.extendedProps.kind === 'event').length}</strong>
+            </span>
+
+            <span className="semantic-pending status-card-pending-confirmation" title={text('ประชุมในช่วงเวลาที่เลือกที่ผ่านเวลาแล้วแต่ยังไม่ยืนยันเสร็จสิ้น', 'Past meetings pending confirmation in the selected period')}>
+              <span className="flex items-center gap-1.5 min-w-0">
+                <Clock3 size={15} className="shrink-0 text-rose-600" aria-hidden="true" />
+                <span className="text-slate-700 font-semibold">{text('ประชุมรอยืนยัน', 'Meetings pending confirmation')}</span>
+              </span>
+              <strong>{pendingConfirmationMeetingsCount}</strong>
+            </span>
+          </section>
+
+          {/* Row 2: Controls Toolbar (Segmented View Switcher on left, Action Buttons on right) */}
+          <div className="calendar-page-header mb-2 flex items-center justify-between gap-3 lg:mb-2 lg:shrink-0">
+            <div className="calendar-view-segmented inline-flex items-center gap-1 rounded-xl bg-[#F2EDF7] p-1 border border-[#E6DEF0]">
+              <select
+                aria-label={text('มุมมองปฏิทิน', 'Calendar view')}
+                value={calendarView}
+                onChange={(event) => setCalendarView(event.target.value as CalendarView)}
+                className="sr-only"
+              >
+                {calendarViewOptions.map((view) => <option key={view.value} value={view.value}>{view.label}</option>)}
+              </select>
+              {calendarViewOptions.map((view) => {
+                const isActive = calendarView === view.value
+                return (
+                  <button
+                    key={view.value}
+                    type="button"
+                    aria-pressed={isActive}
+                    onClick={() => setCalendarView(view.value as CalendarView)}
+                    className={`min-h-8 rounded-lg px-3 py-1 text-xs font-bold transition ${isActive ? 'bg-[#75638F] text-white shadow-sm' : 'text-[#6B5287] hover:bg-white/60 hover:text-[#4A3266]'}`}
+                  >
+                    {view.label}
+                  </button>
+                )
+              })}
             </div>
-            <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end lg:gap-1.5">
-              <label className="calendar-view-switcher w-full sm:w-auto">
-                <CalendarDays size={17} aria-hidden="true" />
-                <select aria-label={text('มุมมองปฏิทิน', 'Calendar view')} value={calendarView} onChange={(event) => setCalendarView(event.target.value as CalendarView)}>
-                  {calendarViewOptions.map((view) => <option key={view.value} value={view.value}>{view.label}</option>)}
-                </select>
-              </label>
-              <div className="flex flex-wrap gap-2 lg:gap-1.5"><button className="btn-secondary semantic-task-action lg:min-h-9 lg:px-3 lg:py-1.5 lg:text-sm" onClick={() => setTaskDialog({ open: true, task: null })}><ListTodo size={16} />{text('เพิ่ม Task', 'Add task')}</button><button className="btn-primary lg:min-h-9 lg:px-3 lg:py-1.5 lg:text-sm" onClick={() => setEventDialog({ open: true, event: null })}><CalendarPlus size={16} />{text('เพิ่ม Meeting', 'Add meeting')}</button></div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                className="btn-secondary semantic-task-action inline-flex min-h-9 items-center justify-center gap-1.5 rounded-xl border border-[#75638F] bg-white px-3.5 py-1.5 text-xs font-bold text-[#75638F] shadow-sm transition hover:bg-[#75638F]/10"
+                onClick={() => setTaskDialog({ open: true, task: null })}
+              >
+                <ListTodo size={15} />{text('เพิ่ม Task', 'Add task')}
+              </button>
+              <button
+                className="btn-primary inline-flex min-h-9 items-center justify-center gap-1.5 rounded-xl border border-[#75638F] bg-[#75638F] px-3.5 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#64517C]"
+                onClick={() => setEventDialog({ open: true, event: null })}
+              >
+                <CalendarPlus size={15} />{text('เพิ่ม Meeting', 'Add meeting')}
+              </button>
             </div>
           </div>
           <div className="min-w-0 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
             <div className="lg:hidden">{calendarControls}</div>
-            {(eventsQuery.isError || tasksQuery.isError || profilesQuery.isError || exceptionsQuery.isError) && <p className="mb-3 rounded-md bg-red-50 p-3 text-sm text-red-700">{text('โหลดข้อมูลไม่สำเร็จ กรุณาตรวจสอบว่าได้รัน migration ล่าสุดแล้ว', 'Could not load data. Check that the latest migrations have been applied.')}</p>}
+            {(eventsQuery.isError || tasksQuery.isError || profilesQuery.isError || exceptionsQuery.isError) && <p className="mb-2 rounded-md bg-red-50 p-2.5 text-xs text-red-700">{text('โหลดข้อมูลไม่สำเร็จ กรุณาตรวจสอบว่าได้รัน migration ล่าสุดแล้ว', 'Could not load data. Check that the latest migrations have been applied.')}</p>}
             <div ref={calendarContainerRef} className={`calendar-fill calendar-fill-${calendarView} relative lg:min-h-0 lg:flex-1`}>
               {calendar}
               {calendarTooltip && <div role="tooltip" className="pointer-events-none fixed z-50 max-h-[70vh] w-72 overflow-y-auto rounded-md border border-slate-200 bg-white p-3 shadow-xl" style={{ left: calendarTooltip.x, top: calendarTooltip.y }}>
@@ -982,21 +1341,30 @@ export function CalendarPage() {
                     <div><dt className="inline font-semibold text-slate-500">{text('ชื่อ: ', 'Title: ')}</dt><dd className="inline break-words">{item.title}</dd></div>
                     <div><dt className="inline font-semibold text-slate-500">{text('หน่วยงาน: ', 'Department: ')}</dt><dd className="inline break-words">{item.affiliation}</dd></div>
                     <div><dt className="inline font-semibold text-slate-500">{item.kind === 'task' ? text('วันครบกำหนด: ', 'Due date: ') : text('วันนัดหมาย: ', 'Meeting date: ')}</dt><dd className="inline">{calendarDateLabel(item.date, language)}</dd></div>
-                    {item.isOverdue && <p className="pt-1 font-semibold text-red-600">{item.kind === 'task' ? text('เกินวันครบกำหนดแล้ว', 'Past the due date') : text('เลยวันนัดหมายแล้ว', 'Past the meeting date')}</p>}
+                    {item.kind === 'task' ? (
+                      item.isCompleted ? (
+                        <p className="pt-1 font-semibold text-emerald-600">{text('เสร็จสิ้นแล้ว', 'Completed')}</p>
+                      ) : item.isOverdue ? (
+                        <p className="pt-1 font-semibold text-red-600">{text('เกินวันครบกำหนดแล้ว', 'Past the due date')}</p>
+                      ) : null
+                    ) : (
+                      item.isCompleted ? (
+                        <p className="pt-1 font-semibold text-emerald-600">{text('เสร็จสิ้นการประชุมแล้ว', 'Meeting completed')}</p>
+                      ) : item.isPendingConfirmation ? (
+                        <p className="pt-1 font-semibold text-amber-700">{text('เลยวันนัดหมายแล้ว (รอยืนยันเสร็จสิ้น)', 'Past meeting date (pending confirmation)')}</p>
+                      ) : null
+                    )}
                   </dl>
                 </section>)}
               </div>}
             </div>
           </div>
         </div>
-        <aside className="calendar-sidebar grid content-start gap-4 sm:grid-cols-2 lg:order-1 lg:flex lg:min-h-0 lg:flex-col lg:gap-0 lg:overflow-y-auto lg:border lg:border-slate-200 lg:bg-slate-50" aria-label={text('สรุปปฏิทิน', 'Calendar summary')}>
-          <div className="calendar-sidebar-heading sm:col-span-2 lg:col-span-1">
-            <CalendarDays size={20} aria-hidden="true" />
-            <span><strong>{text('ปฏิทิน', 'My Calendar')}</strong><small>{text('การประชุมและงาน', 'Meetings & tasks')}</small></span>
-          </div>
-          <section className="mini-calendar-card card p-4 sm:col-span-2 lg:col-span-1 lg:shrink-0" aria-label={text('เลือกวันที่ในปฏิทิน', 'Choose a calendar date')}>
+        <aside className="calendar-sidebar grid content-start gap-3 sm:grid-cols-2 lg:order-1 lg:flex lg:min-h-0 lg:flex-col lg:gap-2 lg:overflow-y-auto lg:border lg:border-slate-200 lg:bg-slate-50" aria-label={text('สรุปปฏิทิน', 'Calendar summary')}>
+          <section className="mini-calendar-card card p-3 sm:p-3.5 sm:col-span-2 lg:col-span-1 lg:shrink-0" aria-label={text('เลือกวันที่ในปฏิทิน', 'Choose a calendar date')}>
             <FullCalendar ref={miniCalendarRef} plugins={[dayGridPlugin, interactionPlugin, luxonPlugin]} initialView="dayGridMonth"
               locale={language === 'th' ? thLocale : enGbLocale} timeZone="Asia/Bangkok" firstDay={1} height="auto"
+              dayHeaderContent={(info) => formatCalendarDayHeader(info.date, info.view?.type, language)}
               headerToolbar={{ left: 'title', center: '', right: 'prev,next' }} fixedWeekCount={false} showNonCurrentDates
               dayCellClassNames={(info) => calendarDayKey(info.date) === miniSelectedDate ? ['mini-calendar-selected'] : []}
               dayCellContent={(info) => <button type="button" className="mini-calendar-date" aria-label={calendarDateLabel(info.date, language)}
@@ -1008,29 +1376,104 @@ export function CalendarPage() {
                 }}>{info.dayNumberText}</button>} />
           </section>
           <section className="calendar-filter-panel hidden lg:block">{calendarControls}</section>
-          <section className="card p-4 lg:shrink-0 lg:p-2">
-            <div className="mb-3 flex items-center justify-between lg:mb-1"><h2 className="font-bold text-brand-900">{text('นัดหมายวันนี้', "Today's appointments")}</h2><span className="rounded-full bg-slate-50 px-2.5 py-1 text-sm font-bold text-brand-700 lg:px-2 lg:py-0.5 lg:text-sm">{todayEntries.length}</span></div>
-            {todayEntries.length ? <div className="space-y-2 lg:space-y-0.5">{todayEntries.slice(0, 4).map((entry) =>
-              <button key={entry.id} type="button" onClick={() => openCalendarEntry(entry)} className="flex w-full min-w-0 items-start gap-2 rounded-md bg-slate-50/70 p-3 text-left hover:bg-slate-100 lg:gap-1.5 lg:p-1.5"><span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${entry.extendedProps.isOverdue ? 'semantic-dot semantic-overdue' : entry.extendedProps.kind === 'task' ? (entry.extendedProps.row as TaskRow).status === 'completed' ? 'semantic-dot semantic-completed' : 'semantic-dot semantic-task' : 'semantic-dot semantic-meeting'}`} /><span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-800 lg:text-sm">{entry.title}</span><span className="text-xs text-slate-500 lg:text-sm">{entry.extendedProps.kind === 'task' ? text('งาน', 'Task') : text('การประชุม', 'Meeting')}</span></span></button>
-            )}</div> : <p className="rounded-md bg-slate-50/70 p-3 text-sm text-slate-500">{text('วันนี้ยังไม่มีรายการในปฏิทิน', 'No calendar items today.')}</p>}
-          </section>
-          <section className="card p-4 sm:col-span-2 lg:col-span-1 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-            <h2 className="sr-only">{text('รายการถัดไปและเอกสารล่าสุด', 'Upcoming items and recent documents')}</h2>
-            <div className="mb-3 flex rounded-md bg-slate-50 p-1 text-xs font-bold">
-              <button type="button" aria-pressed={sideTab === 'upcoming'} onClick={() => setSideTab('upcoming')} className={`flex-1 rounded-lg px-2 py-2 transition ${sideTab === 'upcoming' ? 'bg-white text-brand-900 shadow-sm' : 'text-slate-500 hover:text-brand-700'}`}>{text('รายการถัดไป', 'Upcoming')}</button>
-              <button type="button" aria-pressed={sideTab === 'documents'} onClick={() => setSideTab('documents')} className={`flex-1 rounded-lg px-2 py-2 transition ${sideTab === 'documents' ? 'bg-white text-brand-900 shadow-sm' : 'text-slate-500 hover:text-brand-700'}`}>{text('เอกสารล่าสุด', 'Recent documents')}</button>
+          <section className="card p-3 lg:shrink-0 lg:p-2.5" aria-label={text('รายการของวันที่', 'Schedule for date')}>
+            <div className="mb-2 flex items-center justify-between">
+              <div>
+                <h2 className="font-extrabold text-[#29233A] text-xs leading-tight">{text('รายการของวันที่', 'Schedule for')}</h2>
+                <p className="text-[11px] font-medium text-slate-500 mt-0.5">{selectedDayHeading}</p>
+              </div>
+              <span className="rounded-full bg-[#F3EEF9] px-2 py-0.5 text-xs font-bold text-[#75638F] shrink-0 border border-[#E7DCF4]">
+                {selectedDayEntries.length} {text('รายการ', 'items')}
+              </span>
             </div>
-            {sideTab === 'upcoming' ? upcomingEntries.length ? <div className="space-y-2">{upcomingEntries.map((entry) =>
-              <button key={entry.id} type="button" onClick={() => openCalendarEntry(entry)} className="flex w-full items-start gap-3 rounded-md border border-slate-50 p-2.5 text-left hover:bg-slate-50"><span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${entry.extendedProps.isOverdue ? 'semantic-dot semantic-overdue' : entry.extendedProps.kind === 'task' ? (entry.extendedProps.row as TaskRow).status === 'completed' ? 'semantic-dot semantic-completed' : 'semantic-dot semantic-task' : 'semantic-dot semantic-meeting'}`} /><span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-800">{entry.title}</span><span className="text-xs text-slate-500">{calendarDateLabel(new Date(entry.start), language)}</span></span></button>
-            )}</div> : <p className="text-sm text-slate-500">{text('ยังไม่มีรายการถัดไป', 'No upcoming items.')}</p>
-              : recentDocumentsQuery.isLoading ? <p className="text-sm text-slate-500">{text('กำลังโหลดเอกสาร…', 'Loading documents…')}</p>
-                : recentDocumentsQuery.isError ? <p className="text-sm text-red-600">{text('โหลดเอกสารไม่สำเร็จ', 'Could not load documents.')}</p>
-                  : recentDocuments.length ? <div className="space-y-2">{recentDocuments.map((document) =>
-                    <button key={document.id} type="button" onClick={() => openRecentDocument(document)} className="flex w-full items-start gap-2.5 rounded-md border border-slate-50 p-2.5 text-left hover:bg-slate-50">
-                      <span className="mt-0.5 text-brand-600">{document.kind === 'link' ? <Link2 size={18} /> : <FileText size={18} />}</span>
-                      <span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-800">{document.name}</span><span className="text-xs text-slate-500">{document.parent === 'event' ? text('การประชุม', 'Meeting') : text('งาน', 'Task')} · {calendarDateLabel(new Date(document.addedAt), language)}</span></span>
+            {selectedDayEntries.length ? (
+              <div className="calendar-sidebar-scroll-box max-h-[170px] overflow-y-auto space-y-1.5 pr-0.5">
+                {selectedDayEntries.map((entry) => {
+                  const isTask = entry.extendedProps.kind === 'task'
+                  const task = isTask ? entry.extendedProps.row as TaskRow : null
+                  const event = !isTask ? entry.extendedProps.row as EventRow : null
+                  const isCompleted = isTask ? task?.status === 'completed' : Boolean(entry.extendedProps.isCompleted)
+                  const isOverdue = Boolean(entry.extendedProps.isOverdue)
+                  const barColor = isCompleted ? 'bg-emerald-500' : isOverdue ? 'bg-rose-500' : isTask ? 'bg-blue-500' : 'bg-[#75638F]'
+                  const badgeClass = isCompleted ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : isOverdue ? 'bg-rose-50 text-rose-700 border-rose-200' : isTask ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-[#F4EEF9] text-[#6B5087] border-[#E7DCF4]'
+                  const badgeLabel = isTask ? text('งาน', 'Task') : text('ประชุม', 'Meeting')
+
+                  let timeStr = text('ทั้งวัน', 'All day')
+                  if (!entry.allDay && entry.start) {
+                    const timeMatch = new Date(entry.start).toLocaleTimeString(language === 'th' ? 'th-TH' : 'en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Bangkok' })
+                    if (timeMatch) timeStr = timeMatch
+                  }
+                  const loc = !isTask && event?.location ? event.location : (event?.affiliation || task?.affiliation || '')
+
+                  return (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      onClick={() => openCalendarEntry(entry)}
+                      className="group flex w-full min-w-0 items-start gap-2 rounded-xl border border-slate-100 bg-white p-2 text-left shadow-2xs hover:border-[#E8E1EE] hover:bg-[#FAF8FD] transition"
+                    >
+                      <span className={`mt-0.5 h-7 w-1 shrink-0 rounded-full ${barColor}`} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="font-bold tabular-nums text-[11px] text-slate-600">{timeStr}</span>
+                          <span className={`rounded px-1.5 py-0.2 text-[9px] font-semibold border ${badgeClass}`}>{badgeLabel}</span>
+                        </div>
+                        <span className="block truncate text-xs font-bold text-slate-800 group-hover:text-[#75638F]">{entry.title}</span>
+                        {loc && <span className="block truncate text-[10px] text-slate-500">{loc}</span>}
+                      </div>
                     </button>
-                  )}</div> : <p className="text-sm text-slate-500">{text('ยังไม่มีเอกสารที่เปิดดูได้', 'No documents are available to open.')}</p>}
+                  )
+                })}
+              </div>
+            ) : (
+              <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50/50 p-2 text-center text-xs text-slate-400">
+                {text('วันนี้ยังไม่มีรายการในปฏิทิน', 'No calendar items today.')}
+              </p>
+            )}
+          </section>
+          <section className="card p-3 sm:col-span-2 lg:col-span-1 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:p-2">
+            <h2 className="sr-only">{text('รายการถัดไปและเอกสารล่าสุด', 'Upcoming items and recent documents')}</h2>
+            <div className="mb-2 flex rounded-md bg-slate-50 p-1 text-xs font-bold">
+              <button type="button" aria-pressed={sideTab === 'upcoming'} onClick={() => setSideTab('upcoming')} className={`flex-1 rounded-md px-2 py-1.5 transition ${sideTab === 'upcoming' ? 'bg-white text-brand-900 shadow-sm' : 'text-slate-500 hover:text-brand-700'}`}>{text('รายการถัดไป', 'Upcoming')}</button>
+              <button type="button" aria-pressed={sideTab === 'documents'} onClick={() => setSideTab('documents')} className={`flex-1 rounded-md px-2 py-1.5 transition ${sideTab === 'documents' ? 'bg-white text-brand-900 shadow-sm' : 'text-slate-500 hover:text-brand-700'}`}>{text('เอกสารล่าสุด', 'Recent documents')}</button>
+            </div>
+            <div className="calendar-sidebar-scroll-box max-h-[180px] lg:max-h-[220px] overflow-y-auto pr-0.5">
+              {sideTab === 'upcoming' ? (
+                upcomingEntries.length ? (
+                  <div className="space-y-1.5">
+                    {upcomingEntries.map((entry) => (
+                      <button key={entry.id} type="button" onClick={() => openCalendarEntry(entry)} className="flex w-full items-start gap-2 rounded-md border border-slate-50 p-2 text-left hover:bg-slate-50 transition">
+                        <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${entryDotClass(entry)}`} />
+                        <span className="min-w-0">
+                          <span className="block truncate text-xs font-semibold text-slate-800">{entry.title}</span>
+                          <span className="text-[11px] text-slate-500">{calendarDateLabel(new Date(entry.start), language)}</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500 p-2">{text('ยังไม่มีรายการถัดไป', 'No upcoming items.')}</p>
+                )
+              ) : recentDocumentsQuery.isLoading ? (
+                <p className="text-xs text-slate-500 p-2">{text('กำลังโหลดเอกสาร…', 'Loading documents…')}</p>
+              ) : recentDocumentsQuery.isError ? (
+                <p className="text-xs text-red-600 p-2">{text('โหลดเอกสารไม่สำเร็จ', 'Could not load documents.')}</p>
+              ) : recentDocuments.length ? (
+                <div className="space-y-1.5">
+                  {recentDocuments.map((document) => (
+                    <button key={document.id} type="button" onClick={() => openRecentDocument(document)} className="flex w-full items-start gap-2 rounded-md border border-slate-50 p-2 text-left hover:bg-slate-50 transition">
+                      <span className="mt-0.5 text-brand-600">{document.kind === 'link' ? <Link2 size={15} /> : <FileText size={15} />}</span>
+                      <span className="min-w-0">
+                        <span className="block truncate text-xs font-semibold text-slate-800">{document.name}</span>
+                        <span className="text-[11px] text-slate-500">{document.parent === 'event' ? text('การประชุม', 'Meeting') : text('งาน', 'Task')} · {calendarDateLabel(new Date(document.addedAt), language)}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500 p-2">{text('ยังไม่มีเอกสารที่เปิดดูได้', 'No documents are available to open.')}</p>
+              )}
+            </div>
           </section>
         </aside>
       </div>
@@ -1038,12 +1481,165 @@ export function CalendarPage() {
       {taskSaveWarning && <div className="ui-toast fixed bottom-4 right-4 max-w-md rounded-md bg-amber-100 px-4 py-3 text-sm text-amber-950 shadow-lg" role="alert"><p>{taskSaveWarning}</p><button type="button" className="mt-2 font-semibold underline" onClick={() => setTaskSaveWarning('')}>{text('ปิด', 'Close')}</button></div>}
       {eventSaveWarning && <div className="ui-toast fixed bottom-4 right-4 max-w-md rounded-md bg-amber-100 px-4 py-3 text-sm text-amber-950 shadow-lg" role="alert"><p>{eventSaveWarning}</p><button type="button" className="mt-2 font-semibold underline" onClick={() => setEventSaveWarning('')}>{text('ปิด', 'Close')}</button></div>}
 
+      {yearDayDialog && (
+        <div className="ui-dialog-backdrop fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="year-day-dialog-title">
+          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs" onClick={() => setYearDayDialog(null)} />
+          <section className="ui-dialog-panel relative z-10 w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-slate-100">
+            <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 id="year-day-dialog-title" className="text-base font-bold text-[#29233A]">
+                  {calendarDateLabel(new Date(`${yearDayDialog.date}T00:00:00+07:00`), language)}
+                </h3>
+                <p className="text-xs text-slate-500 font-medium">
+                  {text(`มี ${yearDayDialog.entries.length} รายการ (กดเลือกรายการเพื่อจัดการหรือแก้ไข)`, `${yearDayDialog.entries.length} items (click to view or edit)`)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setYearDayDialog(null)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition"
+                aria-label={text('ปิด', 'Close')}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+              {yearDayDialog.entries.map((entry) => {
+                const isTask = entry.extendedProps.kind === 'task'
+                const task = isTask ? entry.extendedProps.row as TaskRow : null
+                const event = !isTask ? entry.extendedProps.row as EventRow : null
+                const isCompleted = isTask ? task?.status === 'completed' : Boolean(entry.extendedProps.isCompleted)
+                const isOverdue = Boolean(entry.extendedProps.isOverdue)
+                const Icon = isCompleted ? CheckCircle2 : (isOverdue || Boolean(entry.extendedProps.isPendingConfirmation)) ? Clock3 : isTask ? ListTodo : CalendarDays
+                const barColor = isCompleted ? 'bg-emerald-500' : isOverdue ? 'bg-rose-500' : isTask ? 'bg-amber-500' : 'bg-[#75638F]'
+                const badgeClass = isCompleted ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : isOverdue ? 'bg-rose-50 text-rose-700 border-rose-200' : isTask ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-[#F4EEF9] text-[#6B5087] border-[#E7DCF4]'
+                const badgeLabel = isTask ? text('งาน', 'Task') : text('ประชุม', 'Meeting')
+
+                let timeStr = text('ทั้งวัน', 'All day')
+                if (!entry.allDay && entry.start) {
+                  const timeMatch = new Date(entry.start).toLocaleTimeString(language === 'th' ? 'th-TH' : 'en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Bangkok' })
+                  if (timeMatch) timeStr = timeMatch
+                }
+                const loc = !isTask && event?.location ? event.location : (event?.affiliation || task?.affiliation || '')
+
+                return (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    onClick={() => {
+                      setYearDayDialog(null)
+                      openCalendarEntry(entry)
+                    }}
+                    className="group flex w-full items-start gap-3 rounded-xl border border-slate-100 bg-white p-3 text-left shadow-2xs hover:border-[#75638F] hover:bg-[#FAF8FD] transition"
+                  >
+                    <span className={`mt-0.5 h-8 w-1.5 shrink-0 rounded-full ${barColor}`} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold tabular-nums text-xs text-slate-600 flex items-center gap-1">
+                          <Icon size={13} className="shrink-0 text-slate-500" />
+                          {timeStr}
+                        </span>
+                        <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold border ${badgeClass}`}>{badgeLabel}</span>
+                      </div>
+                      <span className="mt-1 block truncate text-sm font-bold text-slate-800 group-hover:text-[#75638F]">{entry.title}</span>
+                      {loc && <span className="block truncate text-xs text-slate-500">{loc}</span>}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="mt-4 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = yearDayDialog.date
+                    setYearDayDialog(null)
+                    void warnPastCreation(d).then((isPast) => {
+                      if (!isPast) setEventDialog({ open: true, event: null, date: d })
+                    })
+                  }}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-[#75638F] hover:underline"
+                >
+                  <CalendarPlus size={14} />
+                  {text('+ เพิ่มประชุม', '+ Add meeting')}
+                </button>
+                <span className="text-slate-300">·</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = yearDayDialog.date
+                    setYearDayDialog(null)
+                    setTaskDialog({ open: true, task: null, date: d })
+                  }}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 hover:underline"
+                >
+                  <ListTodo size={14} />
+                  {text('+ เพิ่ม Task', '+ Add task')}
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => setYearDayDialog(null)}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                {text('ปิด', 'Close')}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
       <EventDialog
         defaultAffiliation={profileAffiliation(profile)}
         profiles={profilesQuery.data ?? []} profilesAvailable={Boolean(profilesQuery.data)} currentUserEmail={user?.email} currentUserId={user?.id} onJoin={(scope) => joinMeetingMutation.mutateAsync(scope)}
         onChangeToOccurrence={() => changeAttendanceMutation.mutateAsync()}
         onCheckJoinTime={async () => { const { data, error } = await supabase.rpc('meeting_join_server_time'); if (error || !data) throw error ?? new Error('Server time unavailable'); return new Date(data).getTime() }}
         open={eventDialog.open} event={selectedEvent} details={eventDetailsQuery.data} selectedDate={eventDialog.date} occurrenceStart={eventDialog.occurrenceStart}
+        isOccurrenceCompleted={selectedEvent && (selectedEventOccurrenceStart || selectedEvent.start_datetime) ? isMeetingCompleted(completedMeetings, selectedEvent.id, selectedEventOccurrenceStart || selectedEvent.start_datetime) : false}
+        onToggleCompleteMeeting={selectedEvent && (selectedEventOccurrenceStart || selectedEvent.start_datetime) ? async () => {
+          const occStart = selectedEventOccurrenceStart || selectedEvent.start_datetime
+          const isDone = isMeetingCompleted(completedMeetings, selectedEvent.id, occStart)
+          if (!isDone && !isMeetingAppointmentPassed(selectedEvent, occStart)) {
+            await Swal.fire({
+              icon: 'warning',
+              customClass: { popup: 'semantic-meeting-dialog' },
+              title: text('ไม่สามารถกดเสร็จสิ้นการประชุมที่ยังไม่ถึงเวลานัดหมายได้', 'Cannot complete a meeting before its scheduled appointment time.'),
+              text: text('การประชุมจะสามารถกดยืนยันเสร็จสิ้นได้เมื่อถึงเวลานัดหมาย', 'You can mark the meeting complete once its scheduled appointment time arrives.'),
+            })
+            return
+          }
+          const isRecurring = Boolean(selectedEvent.recurrence_rule)
+          const confirmed = await confirm({
+            title: isDone
+              ? text('เปิดการประชุมอีกครั้ง?', 'Reopen meeting?')
+              : isRecurring
+                ? text('ยืนยันเสร็จสิ้นการประชุม (เฉพาะนัดนี้)?', 'Confirm meeting is complete (this occurrence only)?')
+                : text('ยืนยันว่าการประชุมเสร็จสิ้นแล้ว?', 'Confirm meeting is complete?'),
+            message: isDone
+              ? (isRecurring
+                ? text(`การประชุม “${selectedEvent.title}” จะกลับมาเป็นสถานะปกติ/รอยืนยัน เฉพาะนัดนี้`, `Meeting “${selectedEvent.title}” will return to its previous status for this occurrence only.`)
+                : text(`การประชุม “${selectedEvent.title}” จะกลับมาเป็นสถานะปกติ/รอยืนยัน`, `Meeting “${selectedEvent.title}” will return to its previous status.`))
+              : (isRecurring
+                ? text(`การประชุม “${selectedEvent.title}” จะถูกบันทึกเสร็จสิ้นเฉพาะนัดนี้ โดยไม่กระทบนัดวันอื่นในอนาคต`, `Meeting “${selectedEvent.title}” will be marked complete for this occurrence only without affecting other dates in the series.`)
+                : text(`การประชุม “${selectedEvent.title}” จะถูกเปลี่ยนเป็นเสร็จสิ้น (สีเขียว)`, `Meeting “${selectedEvent.title}” will be marked as complete (green).`)),
+            confirmLabel: isDone ? text('เปิดการประชุมอีกครั้ง', 'Reopen') : text('ยืนยันเสร็จสิ้น', 'Confirm complete'),
+          })
+          if (confirmed) {
+            toggleMeetingCompletion(selectedEvent.id, occStart)
+            await Swal.fire({
+              icon: 'success',
+              customClass: { popup: 'semantic-meeting-dialog' },
+              title: text('สำเร็จ', 'Success'),
+              text: isDone ? text('เปิดการประชุมอีกครั้งแล้ว', 'Meeting reopened.') : text('บันทึกเสร็จสิ้นการประชุมแล้ว', 'Meeting marked as complete.'),
+              timer: 1500,
+              showConfirmButton: false,
+            })
+            setEventDialog({ open: false, event: null })
+          }
+        } : undefined}
         canEdit={canEditEvent} canDelete={canDeleteEvent} canViewDeliveryStatus={canViewEventDeliveryStatus} hasConnectedDevices={hasConnectedDevices && (!selectedEvent || selectedEvent.owner_user_id === user?.id)} checkMobileRecipients={checkMobileRecipients} busy={busy || eventDetailsQuery.isLoading || appointmentMutation.isPending}
         onClose={() => { pendingMeetingSave.current = null; setEventDialog({ open: false, event: null }) }}
         onSave={(draft, notifyRecipients, scope) => eventMutation.mutateAsync({ draft, event: selectedEvent, notifyRecipients, scope, occurrenceStart: selectedEventOccurrenceStart })}

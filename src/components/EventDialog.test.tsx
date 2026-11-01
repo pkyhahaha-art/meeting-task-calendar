@@ -665,3 +665,191 @@ test('a pending date move blocks normal saves and form submission until it is ca
     act(() => renderer.unmount())
   }
 })
+
+test('meeting completion button is compact with tooltip and handles appointment timing properly', async () => {
+  let toggled = 0
+  const onToggle = async () => { toggled++ }
+
+  // 1. Future meeting (event start in 2030)
+  const futureEvent = { ...event, start_datetime: '2030-10-03T09:00:00.000Z' }
+  let renderer!: ReactTestRenderer
+  act(() => {
+    renderer = create(
+      <LanguageProvider>
+        <EventDialog
+          open
+          event={futureEvent}
+          details={details}
+          canEdit={true}
+          canViewDeliveryStatus={false}
+          busy={false}
+          onToggleCompleteMeeting={onToggle}
+          onClose={noop}
+          onSave={noop}
+          onDelete={noop}
+          onDeleteAttachment={noop}
+          onRetryNotification={noop}
+        />
+      </LanguageProvider>
+    )
+  })
+
+  const completeButton = () => renderer.root.findAllByType('button').find((btn) => btn.children.includes('Mark meeting complete'))!
+  assert.ok(completeButton(), 'Complete button should be rendered')
+  assert.equal(completeButton().props['aria-disabled'], true, 'Complete button aria-disabled must be true for future meeting')
+  assert.equal(completeButton().props.title, 'Cannot complete a meeting before its scheduled appointment time.')
+  // Compact layout: No inline text cluttering the button row
+  assert.equal(renderer.root.findAllByType('span').some((span) => span.children.includes('Appointment not reached yet')), false)
+  // Clicking calls onToggle (which in CalendarPage shows warning popup before start time)
+  await act(async () => { completeButton().props.onClick() })
+  assert.equal(toggled, 1)
+  act(() => renderer.unmount())
+
+  // 2. Past non-recurring meeting (event start in 2020)
+  const pastEvent = { ...event, start_datetime: '2020-10-03T09:00:00.000Z' }
+  act(() => {
+    renderer = create(
+      <LanguageProvider>
+        <EventDialog
+          open
+          event={pastEvent}
+          details={details}
+          canEdit={true}
+          canViewDeliveryStatus={false}
+          busy={false}
+          onToggleCompleteMeeting={onToggle}
+          onClose={noop}
+          onSave={noop}
+          onDelete={noop}
+          onDeleteAttachment={noop}
+          onRetryNotification={noop}
+        />
+      </LanguageProvider>
+    )
+  })
+  assert.equal(completeButton().props['aria-disabled'], false, 'Complete button must not be aria-disabled for past meeting')
+  assert.equal(completeButton().props.title, 'Mark meeting complete')
+  await act(async () => { completeButton().props.onClick() })
+  assert.equal(toggled, 2)
+  act(() => renderer.unmount())
+
+  // 3. Past recurring meeting (event has recurrence_rule)
+  const recurringPastEvent = { ...event, recurrence_rule: 'FREQ=DAILY', start_datetime: '2020-10-03T09:00:00.000Z' }
+  act(() => {
+    renderer = create(
+      <LanguageProvider>
+        <EventDialog
+          open
+          event={recurringPastEvent}
+          occurrenceStart="2020-10-03T09:00:00.000Z"
+          details={details}
+          canEdit={true}
+          canViewDeliveryStatus={false}
+          busy={false}
+          onToggleCompleteMeeting={onToggle}
+          onClose={noop}
+          onSave={noop}
+          onDelete={noop}
+          onDeleteAttachment={noop}
+          onRetryNotification={noop}
+        />
+      </LanguageProvider>
+    )
+  })
+  assert.equal(completeButton().props['aria-disabled'], false)
+  assert.equal(completeButton().props.title, 'Mark this occurrence complete (this occurrence only)')
+  act(() => renderer.unmount())
+
+  // 4. Already completed meeting can be reopened
+  act(() => {
+    renderer = create(
+      <LanguageProvider>
+        <EventDialog
+          open
+          event={futureEvent}
+          details={details}
+          canEdit={true}
+          canViewDeliveryStatus={false}
+          busy={false}
+          isOccurrenceCompleted={true}
+          onToggleCompleteMeeting={onToggle}
+          onClose={noop}
+          onSave={noop}
+          onDelete={noop}
+          onDeleteAttachment={noop}
+          onRetryNotification={noop}
+        />
+      </LanguageProvider>
+    )
+  })
+  const reopenButton = renderer.root.findAllByType('button').find((btn) => btn.children.includes('Reopen meeting'))!
+  assert.ok(reopenButton, 'Reopen button should be rendered')
+  assert.equal(reopenButton.props['aria-disabled'], false, 'Reopen button should not be aria-disabled')
+  act(() => renderer.unmount())
+})
+
+test('creating a new meeting with notification channels enabled but no reminder time buttons warns and blocks save', async () => {
+  let renderer!: ReactTestRenderer
+  let saved = false
+  const originalFire = Swal.fire
+  let popupTitle = ''
+  let popupText = ''
+  Swal.fire = (async (options: { title?: string; text?: string }) => {
+    popupTitle = options.title ?? ''
+    popupText = options.text ?? ''
+    return { isConfirmed: true }
+  }) as typeof Swal.fire
+
+  try {
+    act(() => {
+      renderer = create(
+        <LanguageProvider>
+          <EventDialog
+            open
+            event={null}
+            selectedDate="2035-10-15"
+            canEdit
+            canViewDeliveryStatus={false}
+            busy={false}
+            onClose={() => {}}
+            onSave={async () => {
+              saved = true
+            }}
+            onDelete={noop}
+            onDeleteAttachment={noop}
+            onRetryNotification={noop}
+          />
+        </LanguageProvider>
+      )
+    })
+
+    // Fill title
+    const titleInput = renderer.root.findByProps({ id: 'title' })
+    act(() => titleInput.props.onChange({ target: { value: 'New Test Meeting' } }))
+
+    // Uncheck/toggle off all reminder checkboxes so reminderKeys becomes empty
+    const checkedReminders = renderer.root
+      .findAllByType('input')
+      .filter((input) => input.props.type === 'checkbox' && input.props.checked && input.props.className === 'sr-only')
+    for (const input of checkedReminders) {
+      act(() => input.props.onChange({ target: { checked: false } }))
+    }
+
+    // Attempt to submit form / save
+    await act(async () => {
+      renderer.root.findByType('form').props.onSubmit({ preventDefault: () => {} })
+      await new Promise((resolve) => setImmediate(resolve))
+    })
+
+    // Assert that saving was blocked and warning popup was triggered
+    assert.equal(saved, false, 'Meeting should not be saved when reminder times are missing')
+    assert.equal(popupTitle, 'Reminder time not selected')
+    assert.match(popupText, /Notification channel selected/)
+  } finally {
+    Swal.fire = originalFire
+    if (renderer) act(() => renderer.unmount())
+  }
+})
+
+
+

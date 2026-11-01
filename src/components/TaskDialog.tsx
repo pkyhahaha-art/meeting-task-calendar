@@ -295,8 +295,29 @@ export function TaskDialog({
     }
     const hasReminders = draft.reminderMode === 'continuous' || draft.reminderKeys.length > 0
     const activeNotifyLine = draft.notifyLine && draft.internalUserIds.length > 0
-    if (hasReminders && !draft.notifyEmail && !activeNotifyLine) {
-      setError(text('กรุณาเลือกช่องทางแจ้งเตือนอย่างน้อย 1 ช่องทาง', 'Choose at least one notification channel.'))
+    const hasChannels = Boolean(draft.notifyEmail || activeNotifyLine)
+    if (hasReminders && !hasChannels) {
+      const msg = text('กรุณาเลือกช่องทางแจ้งเตือนอย่างน้อย 1 ช่องทาง', 'Choose at least one notification channel.')
+      setError(msg)
+      void Swal.fire({
+        icon: 'warning',
+        customClass: { popup: 'semantic-task-dialog' },
+        title: text('ยังไม่ได้เลือกช่องทางแจ้งเตือน', 'Notification channel not selected'),
+        text: msg,
+        confirmButtonText: text('ตกลง', 'OK'),
+      })
+      return false
+    }
+    if (!task && hasChannels && !hasReminders) {
+      const msg = text('กรุณาเลือกรูปแบบเวลาแจ้งเตือนล่วงหน้าอย่างน้อย 1 รายการ', 'Choose at least one reminder time.')
+      setError(msg)
+      void Swal.fire({
+        icon: 'warning',
+        customClass: { popup: 'semantic-task-dialog' },
+        title: text('ยังไม่ได้เลือกเวลาแจ้งเตือน', 'Reminder time not selected'),
+        text: text('คุณได้เลือกช่องทางแจ้งเตือนไว้ กรุณาเลือกรูปแบบเวลาแจ้งเตือนล่วงหน้าอย่างน้อย 1 รายการ', 'Notification channel selected. Please choose at least one reminder time.'),
+        confirmButtonText: text('ตกลง', 'OK'),
+      })
       return false
     }
     setError('')

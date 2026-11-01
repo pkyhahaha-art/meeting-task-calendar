@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlertTriangle, Bell, CalendarClock, ChevronDown, Download, FileText, Loader2, Mail, Paperclip, Plus, Repeat2, Smartphone, Sparkles, Trash2, UserPlus, X } from 'lucide-react'
+import { AlertTriangle, Bell, CalendarClock, CheckCircle2, ChevronDown, Download, FileText, Loader2, Mail, Paperclip, Plus, Repeat2, Smartphone, Sparkles, Trash2, UserPlus, X } from 'lucide-react'
 import Swal from 'sweetalert2'
 import { useLanguage } from '../i18n/LanguageProvider'
 import type { Database } from '../lib/database.types'
@@ -34,6 +34,7 @@ import { TimeSelect } from './TimeSelect'
 import { SaveActionMenu } from './SaveActionMenu'
 import { NotificationDeliveryStatus, type DeliveryStatusRow } from './NotificationDeliveryStatus'
 import { expandEvent } from '../lib/recurrence'
+import { isMeetingAppointmentPassed } from '../lib/meetingCompletion'
 
 type EventRow = Database['public']['Tables']['events']['Row']
 type ProfileRow = Database['public']['Tables']['profiles']['Row']
@@ -120,6 +121,8 @@ export function EventDialog({
   selectedDate,
   defaultAffiliation = '',
   occurrenceStart,
+  isOccurrenceCompleted = false,
+  onToggleCompleteMeeting,
   canEdit,
   canDelete = canEdit,
   canViewDeliveryStatus,
@@ -146,6 +149,8 @@ export function EventDialog({
   selectedDate?: string
   defaultAffiliation?: string
   occurrenceStart?: string
+  isOccurrenceCompleted?: boolean
+  onToggleCompleteMeeting?: () => Promise<void>
   canEdit: boolean
   canDelete?: boolean
   busy: boolean
@@ -200,6 +205,7 @@ export function EventDialog({
       || joinedHistory.some((range) => (!range.from || viewedStart >= new Date(range.from).getTime()) && viewedStart < new Date(range.until).getTime())))
   const joinedOccurrence = Boolean(joinedEmail && details?.occurrenceGuestEmails.some((email) => email.toLowerCase() === joinedEmail))
   const joinedViewedAppointment = occurrenceStart ? joinedOccurrence : joinedSeries
+  const isAppointmentPassed = isMeetingAppointmentPassed(event, occurrenceStart)
 
   const joinMeeting = async () => {
     if (!event || !onJoin || !onCheckJoinTime || checkingJoin.current) return
@@ -223,7 +229,8 @@ export function EventDialog({
     if (joinedViewedAppointment) {
       const recurring = Boolean(event.recurrence_rule)
       const switchingToOccurrence = recurring && joinedSeries
-      const notice = await Swal.fire({ icon: 'info', customClass: { popup: 'semantic-meeting-dialog' }, title: text('คุณได้ถูกเชิญเข้าร่วมประชุมนี้แล้ว', 'You have already been invited to this meeting.'),
+      const notice = await Swal.fire({
+        icon: 'info', customClass: { popup: 'semantic-meeting-dialog' }, title: text('คุณได้ถูกเชิญเข้าร่วมประชุมนี้แล้ว', 'You have already been invited to this meeting.'),
         text: recurring ? (switchingToOccurrence
           ? text('คุณต้องการเปลี่ยนเป็นเข้าร่วมเฉพาะนัดนี้หรือไม่? การเข้าร่วมนัดอื่นที่ยังไม่ถึงจะถูกยกเลิก', 'Switch to this occurrence only? Your attendance at other future occurrences will be cancelled.')
           : text('คุณต้องการเปลี่ยนเป็นเข้าร่วมประชุมทั้งชุดตั้งแต่นัดนี้เป็นต้นไปหรือไม่?', 'Switch to this and future occurrences?')) : undefined,
@@ -326,28 +333,28 @@ export function EventDialog({
       initialRecurrence.count && initialRecurrence.count > 0
         ? 'count'
         : initialRecurrence.until && initialRecurrence.until !== initialEndOfYear
-        ? 'until_date'
-        : 'end_of_year',
+          ? 'until_date'
+          : 'end_of_year',
     )
     setDraft(
       event
         ? {
-            title: event.title,
-            description: useOccurrenceValues && details?.occurrenceOverride?.description !== undefined ? details.occurrenceOverride.description : event.description,
-            location: useOccurrenceValues && details?.occurrenceOverride?.location !== undefined ? details.occurrenceOverride.location : event.location,
-            affiliation: event.affiliation,
-            all_day: event.all_day,
-            date: bangkokDate(new Date(event.start_datetime)),
-            start: localTime(event.start_datetime) || '09:00',
-            end: event.all_day ? '' : (localTime(event.end_datetime) || ''),
-            recurrence: initialRecurrence,
-            guestEmails: useOccurrenceValues ? (details?.occurrenceGuestEmails.length ? details.occurrenceGuestEmails : ['']) : (details?.guestEmails.length ? details.guestEmails : ['']),
-            reminderKeys: details?.reminderKeys ?? [],
-            sendImmediate: false,
-            notifyEmail: event.email_notifications_enabled,
-            notifyLine: event.mobile_notifications_enabled,
-            files: [],
-          }
+          title: event.title,
+          description: useOccurrenceValues && details?.occurrenceOverride?.description !== undefined ? details.occurrenceOverride.description : event.description,
+          location: useOccurrenceValues && details?.occurrenceOverride?.location !== undefined ? details.occurrenceOverride.location : event.location,
+          affiliation: event.affiliation,
+          all_day: event.all_day,
+          date: bangkokDate(new Date(event.start_datetime)),
+          start: localTime(event.start_datetime) || '09:00',
+          end: event.all_day ? '' : (localTime(event.end_datetime) || ''),
+          recurrence: initialRecurrence,
+          guestEmails: useOccurrenceValues ? (details?.occurrenceGuestEmails.length ? details.occurrenceGuestEmails : ['']) : (details?.guestEmails.length ? details.guestEmails : ['']),
+          reminderKeys: details?.reminderKeys ?? [],
+          sendImmediate: false,
+          notifyEmail: event.email_notifications_enabled,
+          notifyLine: event.mobile_notifications_enabled,
+          files: [],
+        }
         : { ...blankDraft(selectedDate), affiliation: defaultAffiliation },
     )
   }, [event, details, selectedDate, occurrenceStart, open, defaultAffiliation])
@@ -399,19 +406,19 @@ export function EventDialog({
     setDraft((current) =>
       scope === 'occurrence'
         ? {
-            ...current,
-            description: details?.occurrenceOverride?.description ?? event.description,
-            location: details?.occurrenceOverride?.location ?? event.location,
-            guestEmails: details ? (details.occurrenceGuestEmails.length ? details.occurrenceGuestEmails : ['']) : [''],
-            files: [],
-          }
+          ...current,
+          description: details?.occurrenceOverride?.description ?? event.description,
+          location: details?.occurrenceOverride?.location ?? event.location,
+          guestEmails: details ? (details.occurrenceGuestEmails.length ? details.occurrenceGuestEmails : ['']) : [''],
+          files: [],
+        }
         : {
-            ...current,
-            description: event.description,
-            location: event.location,
-            guestEmails: details?.guestEmails.length ? details.guestEmails : [''],
-            files: [],
-          },
+          ...current,
+          description: event.description,
+          location: event.location,
+          guestEmails: details?.guestEmails.length ? details.guestEmails : [''],
+          files: [],
+        },
     )
   }
 
@@ -420,7 +427,8 @@ export function EventDialog({
   const previewEnd = new Date(reminderStart)
   previewEnd.setUTCFullYear(previewEnd.getUTCFullYear() + 1)
   const recurrencePreview = draft.recurrence.frequency !== 'none' && !Number.isNaN(reminderStart.getTime())
-    ? expandEvent({ id: 'preview', start_datetime: reminderStart.toISOString(), end_datetime: null,
+    ? expandEvent({
+      id: 'preview', start_datetime: reminderStart.toISOString(), end_datetime: null,
       recurrence_rule: meetingRecurrenceRule(draft.recurrence), recurrence_count: draft.recurrence.count,
       recurrence_until: draft.recurrence.until ? `${draft.recurrence.until}T23:59:59.999+07:00` : null,
     }, reminderStart, previewEnd).slice(0, 4)
@@ -550,7 +558,27 @@ export function EventDialog({
       return false
     }
     if (!isOccurrenceEdit && draft.reminderKeys.length && !draft.notifyEmail && !draft.notifyLine) {
-      setError(text('กรุณาเลือกช่องทางแจ้งเตือนอย่างน้อย 1 ช่องทาง', 'Choose at least one notification channel.'))
+      const msg = text('กรุณาเลือกช่องทางแจ้งเตือนอย่างน้อย 1 ช่องทาง', 'Choose at least one notification channel.')
+      setError(msg)
+      void Swal.fire({
+        icon: 'warning',
+        customClass: { popup: 'semantic-meeting-dialog' },
+        title: text('ยังไม่ได้เลือกช่องทางแจ้งเตือน', 'Notification channel not selected'),
+        text: msg,
+        confirmButtonText: text('ตกลง', 'OK'),
+      })
+      return false
+    }
+    if (!isOccurrenceEdit && !event && (draft.notifyEmail || draft.notifyLine) && !draft.reminderKeys.length) {
+      const msg = text('กรุณาเลือกรูปแบบเวลาแจ้งเตือนล่วงหน้าอย่างน้อย 1 รายการ', 'Choose at least one reminder time.')
+      setError(msg)
+      void Swal.fire({
+        icon: 'warning',
+        customClass: { popup: 'semantic-meeting-dialog' },
+        title: text('ยังไม่ได้เลือกเวลาแจ้งเตือน', 'Reminder time not selected'),
+        text: text('คุณได้เลือกช่องทางแจ้งเตือนไว้ กรุณาเลือกรูปแบบเวลาแจ้งเตือนล่วงหน้าอย่างน้อย 1 รายการ', 'Notification channel selected. Please choose at least one reminder time.'),
+        confirmButtonText: text('ตกลง', 'OK'),
+      })
       return false
     }
     setError('')
@@ -590,10 +618,10 @@ export function EventDialog({
   const isViewingLaterOccurrence = Boolean(event && viewedOccurrenceDate && viewedOccurrenceDate !== bangkokDate(new Date(event.start_datetime)))
   const occurrenceDateTime = occurrenceStart
     ? new Intl.DateTimeFormat(language === 'th' ? 'th-TH' : 'en-GB', {
-        dateStyle: 'medium',
-        timeStyle: event?.all_day ? undefined : 'short',
-        timeZone: 'Asia/Bangkok',
-      }).format(new Date(occurrenceStart))
+      dateStyle: 'medium',
+      timeStyle: event?.all_day ? undefined : 'short',
+      timeZone: 'Asia/Bangkok',
+    }).format(new Date(occurrenceStart))
     : ''
   const reminderStatus = (status: OccurrenceReminder['status']) =>
     text(
@@ -788,33 +816,30 @@ export function EventDialog({
                           <button
                             type="button"
                             onClick={() => setWeekdaysShortcut('weekdays')}
-                            className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${
-                              draft.recurrence.weekdays.length === 5 && ['MO', 'TU', 'WE', 'TH', 'FR'].every((d) => draft.recurrence.weekdays.includes(d as MeetingWeekday))
+                            className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${draft.recurrence.weekdays.length === 5 && ['MO', 'TU', 'WE', 'TH', 'FR'].every((d) => draft.recurrence.weekdays.includes(d as MeetingWeekday))
                                 ? 'bg-brand-600 text-white shadow-sm'
                                 : 'border border-slate-300 bg-white text-slate-700 hover:bg-brand-50'
-                            }`}
+                              }`}
                           >
                             {text('⭐ วันทำงาน (จ.-ศ.)', '⭐ Weekdays (Mon-Fri)')}
                           </button>
                           <button
                             type="button"
                             onClick={() => setWeekdaysShortcut('daily')}
-                            className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${
-                              draft.recurrence.weekdays.length === 7
+                            className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${draft.recurrence.weekdays.length === 7
                                 ? 'bg-brand-600 text-white shadow-sm'
                                 : 'border border-slate-300 bg-white text-slate-700 hover:bg-brand-50'
-                            }`}
+                              }`}
                           >
                             {text('🔄 ทุกวัน (จ.-อา.)', '🔄 Every day (Mon-Sun)')}
                           </button>
                           <button
                             type="button"
                             onClick={() => setWeekdaysShortcut('today')}
-                            className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${
-                              draft.recurrence.weekdays.length === 1 && draft.recurrence.weekdays[0] === currentWeekday
+                            className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${draft.recurrence.weekdays.length === 1 && draft.recurrence.weekdays[0] === currentWeekday
                                 ? 'bg-brand-600 text-white shadow-sm'
                                 : 'border border-slate-300 bg-white text-slate-700 hover:bg-brand-50'
-                            }`}
+                              }`}
                           >
                             {text(`📅 วันนี้ (${weekdayThaiShort[currentWeekday]}.)`, `📅 Today (${weekdayEnglishShort[currentWeekday]})`)}
                           </button>
@@ -833,11 +858,10 @@ export function EventDialog({
                                 key={day}
                                 type="button"
                                 onClick={() => toggleWeekday(day)}
-                                className={`flex h-10 w-10 items-center justify-center rounded-xl text-sm font-bold transition-all ${
-                                  selected
+                                className={`flex h-10 w-10 items-center justify-center rounded-xl text-sm font-bold transition-all ${selected
                                     ? 'bg-brand-600 text-white shadow-md shadow-brand-600/25 ring-2 ring-brand-500 ring-offset-1'
                                     : 'border border-slate-200 bg-white text-slate-700 hover:border-brand-300 hover:bg-brand-50'
-                                }`}
+                                  }`}
                                 title={text(weekdayThaiFull[day], weekdayEnglishFull[day])}
                               >
                                 {text(weekdayThaiShort[day], weekdayEnglishShort[day])}
@@ -1073,15 +1097,14 @@ export function EventDialog({
                     return (
                       <label
                         key={option.key}
-                        className={`cursor-pointer select-none rounded-full border px-3 py-2 text-sm transition-colors ${
-                          isChecked && isPast
+                        className={`cursor-pointer select-none rounded-full border px-3 py-2 text-sm transition-colors ${isChecked && isPast
                             ? 'border-red-500 bg-red-50 font-medium text-red-800'
                             : isChecked
-                            ? 'border-brand-600 bg-brand-50 font-medium text-brand-700'
-                            : isPast
-                            ? 'border-slate-200 bg-slate-100 text-slate-400 opacity-60'
-                            : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                        }`}
+                              ? 'border-brand-600 bg-brand-50 font-medium text-brand-700'
+                              : isPast
+                                ? 'border-slate-200 bg-slate-100 text-slate-400 opacity-60'
+                                : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
                       >
                         <input
                           type="checkbox"
@@ -1152,7 +1175,7 @@ export function EventDialog({
                       </span>
                     )}
                   </label>
-                  <span tabIndex={0} aria-label={mobileTooltip} className="group relative inline-flex h-6 w-6 cursor-help items-center justify-center rounded-full border border-slate-300 text-xs font-bold text-slate-500">i<span role="tooltip" className="ui-tooltip absolute bottom-full right-0 z-20 mb-2 hidden w-64 rounded-lg bg-slate-800 p-2 text-xs font-normal text-white shadow-lg group-hover:block group-focus:block">{mobileTooltip}</span></span></div>
+                    <span tabIndex={0} aria-label={mobileTooltip} className="group relative inline-flex h-6 w-6 cursor-help items-center justify-center rounded-full border border-slate-300 text-xs font-bold text-slate-500">i<span role="tooltip" className="ui-tooltip absolute bottom-full right-0 z-20 mb-2 hidden w-64 rounded-lg bg-slate-800 p-2 text-xs font-normal text-white shadow-lg group-hover:block group-focus:block">{mobileTooltip}</span></span></div>
                 </div>
                 {!mobileAvailable ? (
                   <p className="text-xs text-amber-700">
@@ -1348,19 +1371,51 @@ export function EventDialog({
           {hasPendingMove && <p role="status" aria-live="polite" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">{pendingMoveMessage}</p>}
 
           <div className="flex flex-wrap justify-between gap-2 border-t border-slate-100 pt-4">
-            {event && canDelete ? (
-              <button
-                type="button"
-                onClick={() => void onDelete(isOccurrenceEdit ? 'occurrence' : 'series').catch(() => setError(text('ลบนัดไม่ได้ กรุณาลองใหม่', 'Could not delete the appointment. Please try again.')))}
-                className="btn-secondary border-red-200 text-red-600 hover:bg-red-50"
-                disabled={busy}
-              >
-                <Trash2 size={17} />
-                {isOccurrenceEdit ? text('ลบเฉพาะนัดนี้', 'Delete this appointment only') : text(event.recurrence_rule ? 'ลบทั้งชุด' : 'ลบ', event.recurrence_rule ? 'Delete the series' : 'Delete')}
-              </button>
-            ) : (
-              <span />
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              {event && canDelete ? (
+                <button
+                  type="button"
+                  onClick={() => void onDelete(isOccurrenceEdit ? 'occurrence' : 'series').catch(() => setError(text('ลบนัดไม่ได้ กรุณาลองใหม่', 'Could not delete the appointment. Please try again.')))}
+                  className="btn-secondary border-red-200 text-red-600 hover:bg-red-50"
+                  disabled={busy}
+                >
+                  <Trash2 size={17} />
+                  {isOccurrenceEdit ? text('ลบเฉพาะนัดนี้', 'Delete this appointment only') : text(event.recurrence_rule ? 'ลบทั้งชุด' : 'ลบ', event.recurrence_rule ? 'Delete the series' : 'Delete')}
+                </button>
+              ) : null}
+              {event && canEdit && onToggleCompleteMeeting && (
+                <span
+                  className="inline-flex"
+                  title={
+                    !isOccurrenceCompleted && !isAppointmentPassed
+                      ? text('ไม่สามารถกดเสร็จสิ้นการประชุมที่ยังไม่ถึงเวลานัดหมายได้', 'Cannot complete a meeting before its scheduled appointment time.')
+                      : event.recurrence_rule
+                        ? text('เสร็จสิ้นการประชุม (เฉพาะนัดนี้ - ไม่กระทบนัดอื่น)', 'Mark this occurrence complete (this occurrence only)')
+                        : text('เสร็จสิ้นการประชุม', 'Mark meeting complete')
+                  }
+                >
+                  <button
+                    type="button"
+                    onClick={() => void onToggleCompleteMeeting()}
+                    className={`btn-secondary ${isOccurrenceCompleted ? 'border-amber-300 text-amber-800 hover:bg-amber-50' : isAppointmentPassed ? 'border-green-300 text-green-800 hover:bg-green-50' : 'border-slate-200 text-slate-400 bg-slate-50 cursor-not-allowed opacity-60'}`}
+                    disabled={busy}
+                    aria-disabled={!isOccurrenceCompleted && !isAppointmentPassed}
+                    title={
+                      !isOccurrenceCompleted && !isAppointmentPassed
+                        ? text('ไม่สามารถกดเสร็จสิ้นการประชุมที่ยังไม่ถึงเวลานัดหมายได้', 'Cannot complete a meeting before its scheduled appointment time.')
+                        : event.recurrence_rule
+                          ? text('เสร็จสิ้นการประชุม (เฉพาะนัดนี้ - ไม่กระทบนัดอื่น)', 'Mark this occurrence complete (this occurrence only)')
+                          : text('เสร็จสิ้นการประชุม', 'Mark meeting complete')
+                    }
+                  >
+                    <CheckCircle2 size={17} />
+                    {isOccurrenceCompleted
+                      ? text('เปิดการประชุมอีกครั้ง', 'Reopen meeting')
+                      : text('เสร็จสิ้นการประชุม', 'Mark meeting complete')}
+                  </button>
+                </span>
+              )}
+            </div>
             <div className="ml-auto flex flex-wrap gap-2">
               {event && event.owner_user_id !== currentUserId && onJoin && details && <button type="button" className="btn-primary" disabled={busy} onClick={() => void joinMeeting()}><UserPlus size={17} />{text('เข้าร่วมประชุมนี้', 'Join this meeting')}</button>}
               {event && event.owner_user_id !== currentUserId && joinedViewedAppointment && <span className="inline-flex items-center rounded-xl bg-green-50 px-3 py-2 text-sm font-semibold text-green-800">{joinedSeries ? text('คุณเข้าร่วมแล้ว', 'You joined') : text('คุณเข้าร่วมนัดนี้แล้ว', 'You joined this occurrence')}</span>}
