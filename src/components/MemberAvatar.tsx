@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import Swal from 'sweetalert2'
 import { useAuth } from '../auth/AuthProvider'
 import { useLanguage } from '../i18n/LanguageProvider'
 import { supabase } from '../lib/supabase'
@@ -14,7 +15,10 @@ export function useAvatarDirectory() {
   return useQuery({ queryKey: ['member-avatars', user?.id], enabled: Boolean(user), staleTime: 40 * 60 * 1000, refetchInterval: 40 * 60 * 1000, retry: false,
     queryFn: async () => {
       const { data, error } = await supabase.from('member_avatars').select('*')
-      if (error) throw error
+      if (error) {
+        console.warn('Could not load member avatars directory:', error.message)
+        return {} as Record<string, string>
+      }
       return Object.fromEntries(await Promise.all(data.map(async row => {
         const signed = await supabase.storage.from('member-avatars').createSignedUrl(row.storage_path, 3600)
         return [row.user_id, signed.data?.signedUrl ?? '']
@@ -41,7 +45,16 @@ export function ProfileAvatarEditor() {
     if (!file || !user || busy) return
     setMessage('')
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) {
-      setMessage(text('เลือกรูป JPG, PNG หรือ WebP ขนาดไม่เกิน 5 MB', 'Choose a JPG, PNG or WebP up to 5 MB.')); return
+      const msg = text('เลือกรูป JPG, PNG หรือ WebP ขนาดไม่เกิน 5 MB', 'Choose a JPG, PNG or WebP up to 5 MB.')
+      setMessage(msg)
+      void Swal.fire({
+        icon: 'warning',
+        title: text('ไฟล์รูปภาพไม่ถูกต้อง', 'Invalid image file'),
+        text: msg,
+        confirmButtonText: text('ตกลง', 'OK'),
+        confirmButtonColor: '#75638F',
+      })
+      return
     }
     setBusy(true)
     let bitmap: ImageBitmap | undefined
@@ -59,7 +72,24 @@ export function ProfileAvatarEditor() {
       if (saved.error) throw saved.error
       await cache.invalidateQueries({ queryKey: ['member-avatars'] })
       setMessage(text('บันทึกรูปแล้ว', 'Photo saved.'))
-    } catch { setMessage(text('บันทึกรูปไม่สำเร็จ กรุณาลองใหม่ หากยังไม่ได้ให้ติดต่อผู้ดูแลระบบ', 'Could not save your photo. Retry or contact the administrator.')) }
+      void Swal.fire({
+        icon: 'success',
+        title: text('อัปโหลดรูปภาพแล้ว', 'Photo uploaded'),
+        text: text('บันทึกรูปโปรไฟล์เรียบร้อยแล้ว', 'Profile photo updated successfully.'),
+        confirmButtonText: text('ตกลง', 'OK'),
+        confirmButtonColor: '#75638F',
+      })
+    } catch {
+      const err = text('บันทึกรูปไม่สำเร็จ กรุณาลองใหม่ หากยังไม่ได้ให้ติดต่อผู้ดูแลระบบ', 'Could not save your photo. Retry or contact the administrator.')
+      setMessage(err)
+      void Swal.fire({
+        icon: 'error',
+        title: text('บันทึกรูปไม่สำเร็จ', 'Upload failed'),
+        text: err,
+        confirmButtonText: text('ตกลง', 'OK'),
+        confirmButtonColor: '#75638F',
+      })
+    }
     finally { bitmap?.close(); await cache.invalidateQueries({ queryKey: ['member-avatars'] }); setBusy(false) }
   }
   const remove = async () => {
@@ -70,13 +100,29 @@ export function ProfileAvatarEditor() {
       const record = await supabase.from('member_avatars').delete().eq('user_id', user.id); if (record.error) throw record.error
       await cache.invalidateQueries({ queryKey: ['member-avatars'] })
       setMessage(text('ลบรูปแล้ว', 'Photo removed.'))
-    } catch { setMessage(text('ลบรูปไม่สำเร็จ กรุณาลองใหม่', 'Could not remove photo. Please retry.')) }
+      void Swal.fire({
+        icon: 'success',
+        title: text('ลบรูปภาพแล้ว', 'Photo removed'),
+        confirmButtonText: text('ตกลง', 'OK'),
+        confirmButtonColor: '#75638F',
+      })
+    } catch {
+      const err = text('ลบรูปไม่สำเร็จ กรุณาลองใหม่', 'Could not remove photo. Please retry.')
+      setMessage(err)
+      void Swal.fire({
+        icon: 'error',
+        title: text('ลบรูปไม่สำเร็จ', 'Could not remove photo'),
+        text: err,
+        confirmButtonText: text('ตกลง', 'OK'),
+        confirmButtonColor: '#75638F',
+      })
+    }
     finally { await cache.invalidateQueries({ queryKey: ['member-avatars'] }); setBusy(false) }
   }
   return <div className="profile-avatar-editor">
     {user && <MemberAvatar id={user.id} name={profile?.full_name || user.email || '?'} size={72} />}
     <div><p className="font-semibold">{text('รูปโปรไฟล์', 'Profile photo')}</p><p className="mb-2 text-xs text-slate-500">{text('JPG, PNG หรือ WebP ไม่เกิน 5 MB · รูปจะถูกครอบเป็นสี่เหลี่ยมตรงกลาง', 'JPG, PNG or WebP, up to 5 MB · Center cropped')}</p>
-      <label className="btn-secondary cursor-pointer focus-within:ring-2 focus-within:ring-brand-400">{busy ? text('กำลังบันทึก…', 'Saving…') : text('เพิ่ม / เปลี่ยนรูป', 'Upload / change photo')}<input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" disabled={busy || avatars.isError} onChange={event => { void save(event.target.files?.[0]); event.target.value = '' }} /></label>
+      <label className="btn-secondary cursor-pointer focus-within:ring-2 focus-within:ring-brand-400">{busy ? text('กำลังบันทึก…', 'Saving…') : text('เพิ่ม / เปลี่ยนรูป', 'Upload / change photo')}<input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={event => { void save(event.target.files?.[0]); event.target.value = '' }} /></label>
       {user && avatars.data?.[user.id] && <button className="btn-secondary ml-2" disabled={busy} onClick={() => void remove()}>{text('ลบรูป', 'Remove')}</button>}
       {avatars.isError && <p role="status" className="mt-2 text-sm text-amber-700">{text('การอัปโหลดรูปยังไม่พร้อมใช้งาน กรุณาติดต่อผู้ดูแลระบบ', 'Photo upload is unavailable. Contact the administrator.')}</p>}
       {message && <p role="status" className="mt-2 text-sm">{message}</p>}

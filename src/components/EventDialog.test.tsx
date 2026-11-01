@@ -851,5 +851,62 @@ test('creating a new meeting with notification channels enabled but no reminder 
   }
 })
 
+test('creating a new meeting with reminder times selected but no notification channels warns and blocks save with channel message', async () => {
+  let renderer!: ReactTestRenderer
+  let saved = false
+  const originalFire = Swal.fire
+  let popupTitle = ''
+  let popupText = ''
+  Swal.fire = (async (options: { title?: string; text?: string }) => {
+    popupTitle = options.title ?? ''
+    popupText = options.text ?? ''
+    return { isConfirmed: true }
+  }) as typeof Swal.fire
+
+  try {
+    act(() => {
+      renderer = create(
+        <LanguageProvider>
+          <EventDialog
+            open
+            event={null}
+            selectedDate="2035-10-15"
+            canEdit
+            canViewDeliveryStatus={false}
+            busy={false}
+            onClose={() => {}}
+            onSave={async () => {
+              saved = true
+            }}
+            onDelete={noop}
+            onDeleteAttachment={noop}
+            onRetryNotification={noop}
+          />
+        </LanguageProvider>
+      )
+    })
+
+    const titleInput = renderer.root.findByProps({ id: 'title' })
+    act(() => titleInput.props.onChange({ target: { value: 'New Test Meeting' } }))
+
+    // Uncheck email and line notifications
+    act(() => checkbox(renderer, 'Gmail / Email').props.onChange({ target: { checked: false } }))
+    act(() => checkbox(renderer, 'Mobile notification').props.onChange({ target: { checked: false } }))
+
+    // Attempt to save
+    await act(async () => {
+      renderer.root.findByType('form').props.onSubmit({ preventDefault: () => {} })
+      await new Promise((resolve) => setImmediate(resolve))
+    })
+
+    assert.equal(saved, false, 'Meeting should not be saved when channels are missing')
+    assert.equal(popupTitle, 'Notification channel not selected')
+    assert.match(popupText, /Choose at least 1 notification channel/)
+  } finally {
+    Swal.fire = originalFire
+    if (renderer) act(() => renderer.unmount())
+  }
+})
+
 
 

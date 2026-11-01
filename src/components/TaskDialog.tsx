@@ -297,7 +297,7 @@ export function TaskDialog({
     const activeNotifyLine = draft.notifyLine && draft.internalUserIds.length > 0
     const hasChannels = Boolean(draft.notifyEmail || activeNotifyLine)
     if (hasReminders && !hasChannels) {
-      const msg = text('กรุณาเลือกช่องทางแจ้งเตือนอย่างน้อย 1 ช่องทาง', 'Choose at least one notification channel.')
+      const msg = text('กรุณาเลือกช่องทางแจ้งเตือนอย่างน้อย 1 รายการ (Gmail / มือถือ)', 'Choose at least 1 notification channel (Gmail / Mobile).')
       setError(msg)
       void Swal.fire({
         icon: 'warning',

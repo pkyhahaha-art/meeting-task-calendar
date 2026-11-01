@@ -534,6 +534,18 @@ export function EventDialog({
       setError(text('กรุณาเลือกรอบการทำซ้ำรายสัปดาห์ที่กำหนด', 'Choose an available weekly repeat interval.'))
       return false
     }
+    if (!isOccurrenceEdit && !draft.notifyEmail && !draft.notifyLine && (draft.reminderKeys.length > 0 || draft.sendImmediate)) {
+      const msg = text('กรุณาเลือกช่องทางแจ้งเตือนอย่างน้อย 1 รายการ (Gmail / มือถือ)', 'Choose at least 1 notification channel (Gmail / Mobile).')
+      setError(msg)
+      void Swal.fire({
+        icon: 'warning',
+        customClass: { popup: 'semantic-meeting-dialog' },
+        title: text('ยังไม่ได้เลือกช่องทางแจ้งเตือน', 'Notification channel not selected'),
+        text: msg,
+        confirmButtonText: text('ตกลง', 'OK'),
+      })
+      return false
+    }
     if (!isOccurrenceEdit && draft.sendImmediate && !draft.notifyEmail) {
       setError(text('การส่งคำเชิญทันทีต้องเปิดการแจ้งเตือนทาง Email', 'Sending an invitation immediately requires Email notifications.'))
       return false
@@ -555,18 +567,6 @@ export function EventDialog({
     const attachmentError = validateAttachments(draft.files, attachmentCountForScope)
     if (attachmentError) {
       setError(attachmentError)
-      return false
-    }
-    if (!isOccurrenceEdit && draft.reminderKeys.length && !draft.notifyEmail && !draft.notifyLine) {
-      const msg = text('กรุณาเลือกช่องทางแจ้งเตือนอย่างน้อย 1 ช่องทาง', 'Choose at least one notification channel.')
-      setError(msg)
-      void Swal.fire({
-        icon: 'warning',
-        customClass: { popup: 'semantic-meeting-dialog' },
-        title: text('ยังไม่ได้เลือกช่องทางแจ้งเตือน', 'Notification channel not selected'),
-        text: msg,
-        confirmButtonText: text('ตกลง', 'OK'),
-      })
       return false
     }
     if (!isOccurrenceEdit && !event && (draft.notifyEmail || draft.notifyLine) && !draft.reminderKeys.length) {
