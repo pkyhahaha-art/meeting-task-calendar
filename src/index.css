@@ -1322,9 +1322,9 @@ body { font-size: 15px; line-height: 1.6; }
 }
 
 .calendar-people .member-avatar:hover {
-  transform: scale(2.25) !important;
-  z-index: 50 !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.28), 0 0 0 1.5px #ffffff !important;
+  transform: scale(4.2) !important;
+  z-index: 70 !important;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.38), 0 0 0 2.5px #ffffff !important;
 }
 
 .calendar-people .calendar-people-more {
@@ -1334,9 +1334,9 @@ body { font-size: 15px; line-height: 1.6; }
 }
 
 .calendar-people .calendar-people-more:hover {
-  transform: scale(1.4) !important;
-  z-index: 50 !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2), 0 0 0 1.5px #ffffff !important;
+  transform: scale(2) !important;
+  z-index: 60 !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25), 0 0 0 2px #ffffff !important;
 }
 
 .calendar-page-main .fc-event:has(.calendar-people .member-avatar:hover),
@@ -1344,9 +1344,12 @@ body { font-size: 15px; line-height: 1.6; }
 .calendar-page-main .fc-timegrid-event:has(.calendar-people .member-avatar:hover),
 .calendar-page-main .fc-timegrid-event:has(.calendar-people .member-avatar:hover) .fc-event-main,
 .calendar-page-main .fc-daygrid-event:has(.calendar-people .member-avatar:hover),
-.calendar-page-main .fc-daygrid-event:has(.calendar-people .member-avatar:hover) .fc-event-main {
+.calendar-page-main .fc-daygrid-event:has(.calendar-people .member-avatar:hover) .fc-event-main,
+.calendar-page-main .fc-daygrid-day-frame:has(.calendar-people .member-avatar:hover),
+.calendar-page-main .fc-daygrid-day-events:has(.calendar-people .member-avatar:hover),
+.calendar-page-main .fc-daygrid-day:has(.calendar-people .member-avatar:hover) {
   overflow: visible !important;
-  z-index: 40 !important;
+  z-index: 50 !important;
 }
 .calendar-people-more { display: inline-flex; min-width: 20px; height: 20px; align-items: center; justify-content: center; border-radius: 50%; background: #fff; color: #625d77; font-size: 10px; }
 .calendar-app-rail nav a > svg { width: 21px; height: 21px; stroke-width: 2; }
