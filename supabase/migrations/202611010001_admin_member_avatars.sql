@@ -26,3 +26,4 @@ with check (bucket_id = 'member-avatars' and public.is_active_user() and (name =
 
 create policy member_avatar_files_delete on storage.objects for delete to authenticated
 using (bucket_id = 'member-avatars' and public.is_active_user() and (name = auth.uid()::text || '/avatar.webp' or public.is_admin()));
+

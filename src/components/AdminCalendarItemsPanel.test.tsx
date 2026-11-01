@@ -18,6 +18,7 @@ const item = (id: string, entity: 'task' | 'meeting' = 'task', recurring = false
 })
 const key = (row: Pick<AdminCalendarItem, 'entity' | 'id'>) => `${row.entity}:${row.id}`
 const delay = () => new Promise<void>(resolve => setTimeout(resolve, 15))
+const exportedXlsx: unknown[][] = []
 
 async function harness(rows: AdminCalendarItem[], { count = rows.length, occurrenceRows = [] as AdminMeetingOccurrence[], loadFails = false,
   allPreview = { taskCount: 126, meetingCount: 81, totalCount: 207, snapshot: 'fixture-snapshot' } as AdminCalendarTrashPreview } = {}) {
@@ -40,6 +41,7 @@ async function harness(rows: AdminCalendarItem[], { count = rows.length, occurre
     './ConfirmDialogProvider': { useConfirm: () => async (options: { title: string; message: string }) => { confirmations.push(options); return approved } },
     './AdminReportControls': controls,
     '../lib/adminReports': { reportDateBounds, reportPageSize },
+    '../lib/excelExport': { downloadXlsx: (name: string, headers: string[], rows: unknown[][], sheet: string) => { exportedXlsx.push([name, headers, rows, sheet]) } },
     '../lib/adminCalendarItems': { adminItemKey: key,
       loadAdminCalendarItems: async (filters: AdminCalendarFilters, page: number) => {
         calls.push({ name: 'list', args: [filters, page] }); if (loadFails || (removedAll && refreshFailsAfterAll)) throw new Error('Offline')
@@ -287,5 +289,22 @@ test('switching Admin accounts closes global confirmation without previewing or 
     assert.equal(h.renderer.root.findAllByProps({ role: 'dialog' }).length, 0)
     assert.equal(h.calls.filter(call => call.name === 'preview-all').length, 1)
     assert.equal(h.calls.some(call => call.name === 'trash-all'), false)
+  } finally { h.unmount() }
+})
+test('Export Excel exports all visible rows when none selected, and only selected rows when chosen', async () => {
+  const h = await harness([item('A'), item('B', 'meeting')])
+  try {
+    assert.ok(h.button('Export Excel (ทั้งหมด 2)'))
+    await h.click('Export Excel')
+    assert.equal(exportedXlsx.length, 1)
+    assert.equal(String(exportedXlsx[0][0]).includes('calendar-items-all-in-table'), true)
+    assert.equal((exportedXlsx[0][2] as unknown[]).length, 2)
+
+    await h.selectAll()
+    assert.ok(h.button('Export Excel (2 ที่เลือก)'))
+    await h.click('Export Excel')
+    assert.equal(exportedXlsx.length, 2)
+    assert.equal(String(exportedXlsx[1][0]).includes('calendar-items-selected'), true)
+    assert.equal((exportedXlsx[1][2] as unknown[]).length, 2)
   } finally { h.unmount() }
 })

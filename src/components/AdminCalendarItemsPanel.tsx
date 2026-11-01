@@ -1,10 +1,11 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarDays, Loader2, Pencil, RefreshCw, Trash2 } from 'lucide-react'
+import { CalendarDays, Download, Loader2, Pencil, RefreshCw, Trash2 } from 'lucide-react'
 import { useConfirm } from './ConfirmDialogProvider'
 import { AdminTrashAllDialog } from './AdminTrashAllDialog'
 import { AdminFilter, AdminPager, AdminStatus, adminDate } from './AdminReportControls'
 import { reportDateBounds, reportPageSize, type AdminProfile } from '../lib/adminReports'
+import { downloadXlsx } from '../lib/excelExport'
 import { adminItemKey, cancelAdminMeetingOccurrence, loadAdminCalendarItems, loadAdminMeetingOccurrences, trashAdminCalendarItems,
   type AdminCalendarFilters, type AdminCalendarItem } from '../lib/adminCalendarItems'
 
@@ -96,6 +97,41 @@ export function AdminCalendarItemsPanel({ adminUserId, members }: { adminUserId:
     catch { setMessage({ error: true, text: `${result} แต่โหลดข้อมูลล่าสุดไม่สำเร็จ กรุณากดโหลดรายการใหม่` }) }
     finally { saving.current = false; setWorking(false) }
   }
+  const exportExcel = () => {
+    const targets = picked.length > 0 ? picked : rows
+    if (!targets.length) return
+    const headers = [
+      'ประเภท',
+      'ชื่องาน/ประชุม',
+      'ผู้สร้าง',
+      'อีเมลผู้สร้าง',
+      'หน่วยงาน',
+      'วันประชุม / ครบกำหนด',
+      'เวลาสิ้นสุด',
+      'สถานะ',
+      'วันที่สร้าง',
+      'รหัสรายการ',
+    ]
+    const dataRows = targets.map(item => [
+      item.entity === 'task'
+        ? (isLegacyTaskSeries(item) ? 'Task ทำซ้ำเดิม' : 'Task')
+        : (isMeetingSeries(item) ? 'Meeting ทำซ้ำ' : 'Meeting'),
+      item.title,
+      item.creator_name || 'ไม่ระบุชื่อ',
+      item.creator_email,
+      item.affiliation || '—',
+      item.entity === 'meeting'
+        ? adminDate(item.start_datetime)
+        : (item.due_date ? adminDate(`${item.due_date}T${item.due_time || '00:00:00'}+07:00`) : '—'),
+      item.entity === 'meeting' && item.end_datetime ? adminDate(item.end_datetime) : '—',
+      statusLabel[item.status] || item.status,
+      adminDate(item.created_at),
+      item.id,
+    ])
+    const scope = picked.length > 0 ? 'selected' : 'all-in-table'
+    const todayStr = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10)
+    downloadXlsx(`calendar-items-${scope}-${todayStr}.xlsx`, headers, dataRows, 'CalendarItems')
+  }
   return <><section className="ui-panel card overflow-hidden border-purple-100" aria-labelledby="admin-items-title" aria-hidden={trashAllOpen || undefined}>
     <div className="flex items-center justify-between gap-4 border-b border-purple-100 bg-purple-50/50 p-4 sm:p-6">
       <div className="min-w-0 space-y-3">
@@ -117,7 +153,19 @@ export function AdminCalendarItemsPanel({ adminUserId, members }: { adminUserId:
       <div className="rounded-2xl border border-amber-100 bg-amber-50/50 p-3 sm:p-4"><label className="field-label" htmlFor="admin-trash-reason">เหตุผลที่ Admin ลบรายการ</label><textarea id="admin-trash-reason" className="field-input bg-white" rows={2} maxLength={500} disabled={working} value={reason} onChange={e => setReason(e.target.value)} placeholder="เช่น ผู้สร้างไม่สามารถลบรายการซ้ำได้" /><p className="mt-1 text-xs text-slate-500">กรอกเหตุผลก่อนลบ ระบบจะบันทึกผู้ดำเนินการและรายการที่ลบ</p></div>
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-purple-50/70 px-3 py-2">
         <label className="flex min-h-11 items-center gap-2 text-sm font-semibold"><input type="checkbox" disabled={blocked || items.isError || !rows.length} checked={Boolean(rows.length) && picked.length === rows.length} onChange={e => setSelected(e.target.checked ? rows.map(adminItemKey) : [])} />เลือกทั้งหมดในหน้านี้ ({rows.length})</label>
-        <button type="button" className="btn-secondary text-red-700" disabled={blocked || items.isError || !picked.length || !validReason} onClick={() => void trash(picked)}>{working ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}ย้ายที่เลือกเข้าถังขยะ ({picked.length})</button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={blocked || items.isError || !rows.length}
+            onClick={exportExcel}
+            title={picked.length > 0 ? 'ส่งออก Excel เฉพาะรายการที่เลือก' : 'ส่งออก Excel ทุกรายการในตาราง'}
+          >
+            <Download size={16} />
+            Export Excel {picked.length > 0 ? `(${picked.length} ที่เลือก)` : `(ทั้งหมด ${rows.length})`}
+          </button>
+          <button type="button" className="btn-secondary text-red-700" disabled={blocked || items.isError || !picked.length || !validReason} onClick={() => void trash(picked)}>{working ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}ย้ายที่เลือกเข้าถังขยะ ({picked.length})</button>
+        </div>
       </div>
       {message && <p role={message.error ? 'alert' : 'status'} className={`rounded-xl p-3 text-sm ${message.error ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-800'}`}>{message.text}</p>}
     </div>

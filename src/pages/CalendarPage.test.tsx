@@ -55,8 +55,8 @@ function calendarPage() {
   const mocks: Record<string, unknown> = {
     react: React,
     '@fullcalendar/react': Calendar,
-    '@tanstack/react-query': { useQuery: (options: { queryKey: string[]; enabled?: boolean; queryFn: () => Promise<unknown> }) => { queries.set(options.queryKey[0], options); return { data: queryData[options.queryKey[0]], isError: queryErrors.has(options.queryKey[0]), isLoading: false } }, useMutation: (options: { mutationFn?: (args: Record<string, unknown>) => Promise<unknown> }) => { mutationOptions.push(options); return { isPending: false, isError: false, mutateAsync: async (args: Record<string, unknown>) => { mutations.push(args) } } }, useQueryClient: () => ({ invalidateQueries: async () => {} }) },
-    'react-router-dom': { useLocation: () => ({ search: routeSearch }), useNavigate: () => () => {}, useOutletContext: () => ({}) },
+    '@tanstack/react-query': { useQuery: (options: { queryKey: string[]; enabled?: boolean; queryFn: () => Promise<unknown> }) => { queries.set(options.queryKey[0], options); return { data: queryData[options.queryKey[0]], isError: queryErrors.has(options.queryKey[0]), isLoading: false } }, useMutation: (options: { mutationFn?: (args: Record<string, unknown>) => Promise<unknown> }) => { mutationOptions.push(options); return { isPending: false, isError: false, mutateAsync: async (args: Record<string, unknown>) => { mutations.push(args) } } }, useQueryClient: () => ({ invalidateQueries: async () => { } }) },
+    'react-router-dom': { useLocation: () => ({ search: routeSearch }), useNavigate: () => () => { }, useOutletContext: () => ({}) },
     '../auth/AuthProvider': { useAuth: () => ({ user: { id: userId }, profile: { role, status } }) },
     '../i18n/LanguageProvider': { useLanguage: () => ({ language, text }) },
     '../components/ConfirmDialogProvider': { useConfirm: () => confirm },
@@ -70,7 +70,7 @@ function calendarPage() {
   }
   vm.runInContext(ts.transpileModule(readFileSync(new URL('./CalendarPage.tsx', import.meta.url), 'utf8'),
     { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText,
-  vm.createContext({ exports, require: (name: string) => mocks[name] || (name.endsWith('.png') ? 'fixture.png' : name.startsWith('@fullcalendar/') ? {} : require(name.startsWith('../lib/') ? `../lib/${name.split('/').at(-1)}` : name)), window: { matchMedia: () => media, innerWidth: 1200, innerHeight: 800 }, console, URLSearchParams }))
+    vm.createContext({ exports, require: (name: string) => mocks[name] || (name.endsWith('.png') ? 'fixture.png' : name.startsWith('@fullcalendar/') ? {} : require(name.startsWith('../lib/') ? `../lib/${name.split('/').at(-1)}` : name)), window: { matchMedia: () => media, innerWidth: 1200, innerHeight: 800 }, console, URLSearchParams }))
   let renderer!: ReactTestRenderer
   act(() => { renderer = create(React.createElement(exports.CalendarPage!)) })
   const calendar = () => renderer.root.findByProps({ 'data-testid': 'calendar-fixture' })
@@ -97,7 +97,7 @@ test('mini calendar navigates the main calendar and follows its current date acr
     const target = new Date('2031-01-15T04:00:00Z')
     const control = mini().props.dayCellContent({ date: target, dayNumberText: '15' })
     assert.equal(control.type, 'button')
-    act(() => control.props.onClick({ stopPropagation() {} }))
+    act(() => control.props.onClick({ stopPropagation() { } }))
     assert.deepEqual(page.navigation.at(-1), { mini: false, date: '2031-01-15' })
     assert.equal(mini().props.dayCellClassNames({ date: target })[0], 'mini-calendar-selected')
     const next = new Date('2032-02-17T04:00:00Z')

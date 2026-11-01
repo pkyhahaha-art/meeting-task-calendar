@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Ban, Camera, CheckCircle2, Download, Loader2, MailCheck, RefreshCw, ShieldCheck, Trash2, Users } from 'lucide-react'
+import { Ban, Camera, CheckCircle2, Download, Loader2, MailCheck, Pencil, RefreshCw, ShieldCheck, Trash2, Users } from 'lucide-react'
 import { Navigate } from 'react-router-dom'
 import Swal from 'sweetalert2'
 import { useAuth } from '../auth/AuthProvider'
@@ -15,6 +15,7 @@ import { loadAdminOverview, loadAdminProfiles, loadLatestSystemLog } from '../li
 import { AdminFilter, AdminPager, AdminStatus, adminDate } from '../components/AdminReportControls'
 import { AdminHistoryPanel } from '../components/AdminHistoryPanel'
 import { AdminCalendarItemsPanel } from '../components/AdminCalendarItemsPanel'
+import { AdminEditMemberDialog } from '../components/AdminEditMemberDialog'
 
 const statusText = { pending_verification: 'รอยืนยัน Gmail', active: 'ใช้งานอยู่', disabled: 'ระงับแล้ว' }
 const emptyFilters: MemberFilters = { search: '', status: '', unit: '', department: '', missing: false }
@@ -28,6 +29,7 @@ export function AdminPage() {
   const avatarsDirectory = useAvatarDirectory()
   const [working, setWorking] = useState<string | null>(null)
   const [avatarWorking, setAvatarWorking] = useState<string | null>(null)
+  const [editingMember, setEditingMember] = useState<AdminProfile | null>(null)
   const [message, setMessage] = useState('')
   const [area, setArea] = useState<'overview' | 'items'>('overview')
   const [filters, setFilters] = useState(emptyFilters)
@@ -127,6 +129,18 @@ export function AdminPage() {
     }
   }
 
+  const handleMemberSaved = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['admin-profiles'] })
+    await queryClient.invalidateQueries({ queryKey: ['assignable-profiles'] })
+    void Swal.fire({
+      icon: 'success',
+      title: text('บันทึกข้อมูลแล้ว', 'Profile updated'),
+      text: text('แก้ไขข้อมูลสมาชิกเรียบร้อยแล้ว', 'Member profile updated successfully.'),
+      confirmButtonText: text('ตกลง', 'OK'),
+      confirmButtonColor: '#75638F',
+    })
+  }
+
   const exportMembers = () => {
     downloadCsv('members-filtered.csv', ['ชื่อ', 'รหัสพนักงาน', 'Gmail', 'หน่วยงาน', 'แผนก', 'สิทธิ์', 'สถานะ', 'วันที่สมัคร', 'ยืนยัน Gmail'], filtered.map((account) => [account.full_name, account.employee_id, account.email, normalizeOrganizationUnit(account.organization_unit), account.department || (departmentsFor(account.organization_unit).length ? unspecifiedDepartment : ''), account.role, statusText[account.status], adminDate(account.created_at), adminDate(account.email_verified_at)]))
   }
@@ -220,6 +234,15 @@ export function AdminPage() {
                 {text('ลบรูป', 'Remove')}
               </button>
             )}
+            <button
+              type="button"
+              className="btn-secondary text-xs"
+              title={text('แก้ไขข้อมูลสมาชิก', 'Edit member profile')}
+              onClick={() => setEditingMember(account)}
+            >
+              <Pencil size={14} />
+              {text('แก้ไขข้อมูล', 'Edit')}
+            </button>
             {!account.email_verified_at && <button type="button" className="btn-secondary text-xs" disabled={Boolean(working)} onClick={() => void resendVerification(account)}>{working === account.id ? <Loader2 size={16} className="animate-spin" /> : <MailCheck size={16} />}ส่งอีเมลยืนยันใหม่</button>}
             {account.status === 'active' ? <button type="button" className="btn-secondary text-xs text-red-700" disabled={Boolean(working) || account.id === user?.id} title={account.id === user?.id ? 'ไม่สามารถระงับบัญชีของตัวเอง' : undefined} onClick={() => void changeStatus(account, 'disabled')}><Ban size={16} />ระงับบัญชี</button> : account.status === 'disabled' ? <button type="button" className="btn-secondary text-xs text-green-700" disabled={Boolean(working)} onClick={() => void changeStatus(account, 'active')}><CheckCircle2 size={16} />เปิดใช้งาน</button> : null}
           </div>
@@ -237,5 +260,12 @@ export function AdminPage() {
     <section className="ui-panel card space-y-2 p-4"><h2 className="font-bold">งานระบบล่าสุด · ทุกช่วงเวลา</h2>{latestSystem.isPending ? <p role="status" className="text-sm text-slate-500">กำลังตรวจงานระบบ…</p> : latestSystem.isError ? <p role="alert" className="text-sm text-red-700">ตรวจงานระบบไม่ได้ กรุณาโหลดภาพรวมใหม่</p> : latestSystem.data ? <p className="text-sm text-slate-600">{latestSystem.data.job_name} · <AdminStatus value={latestSystem.data.status} /> · {adminDate(latestSystem.data.created_at)} · ประมวลผล {latestSystem.data.processed_count} รายการ</p> : <p className="text-sm text-slate-500">ยังไม่มีประวัติงานระบบ</p>}</section>
     <AdminHistoryPanel members={members} dates={dates} />
     </>}
+    {editingMember && (
+      <AdminEditMemberDialog
+        account={editingMember}
+        onClose={() => setEditingMember(null)}
+        onSaved={handleMemberSaved}
+      />
+    )}
   </main>
 }
