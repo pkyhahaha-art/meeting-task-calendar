@@ -888,8 +888,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .calendar-page-main .calendar-view-switcher { display: flex; min-height: 2.6rem; align-items: center; gap: .55rem; border: 1px solid #E3DDE9; border-radius: 10px; background: #fff; padding: 0 .75rem; color: #6258bf; }
 .calendar-page-main .calendar-view-switcher select { min-width: 7.75rem; border: 0; outline: 0; background: transparent; color: #403b5a; font-size: .9rem; font-weight: 500; cursor: pointer; }
 .calendar-page-main .calendar-view-switcher:focus-within { outline: 2px solid rgb(109 93 245 / 24%); outline-offset: 2px; }
-.calendar-page-main .calendar-fill .fc .fc-col-header-cell { background: #fff; }
-.calendar-page-main .calendar-fill .fc .fc-col-header-cell-cushion { padding: .75rem .3rem; color: #343249; font-weight: 600; }
+.calendar-page-main .calendar-fill .fc .fc-col-header-cell { background: #FCFAFF; }
+.calendar-page-main .calendar-fill .fc .fc-col-header-cell-cushion { padding: 2px 2px !important; font-size: 11px !important; line-height: 1.4 !important; color: #343249; font-weight: 600; }
+.calendar-page-main .calendar-fill .fc .fc-scrollgrid-section-header > th { height: 22px !important; min-height: 22px !important; padding: 0 !important; }
 .calendar-page-main .calendar-fill .fc .fc-daygrid-day-number { padding: .45rem .55rem; color: #555368; font-size: .82rem; }
 .calendar-page-main .calendar-fill .fc .fc-day-today { background: #F3EFF7 !important; }
 .calendar-page-main .calendar-fill .fc .fc-day-today .fc-daygrid-day-number { background: #75638F; color: white; }
@@ -1125,45 +1126,45 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 }
 
 .calendar-page-main .calendar-fill-month .fc .fc-daygrid-day-top {
-  height: 20px !important;
-  min-height: 20px !important;
+  height: 16px !important;
+  min-height: 16px !important;
   display: flex !important;
   align-items: center !important;
-  padding: 1px 5px 0 !important;
+  padding: 1px 4px 0 !important;
 }
 
 .calendar-page-main .calendar-fill-month .fc .fc-daygrid-day-number {
-  padding: 1px 3px !important;
-  font-size: 11px !important;
-  line-height: 16px !important;
+  padding: 0 2px !important;
+  font-size: 10px !important;
+  line-height: 14px !important;
   color: #555368 !important;
 }
 
 .calendar-page-main .calendar-fill-month .fc .fc-day-today .fc-daygrid-day-number {
-  width: 20px !important;
-  height: 20px !important;
+  width: 17px !important;
+  height: 17px !important;
   border-radius: 9999px !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
   background: #75638F !important;
   color: #fff !important;
-  font-size: 11px !important;
+  font-size: 10px !important;
   font-weight: 700 !important;
   padding: 0 !important;
 }
 
 .calendar-page-main .calendar-fill-month .fc .fc-daygrid-event {
-  min-height: 19px !important;
-  height: 19px !important;
+  min-height: 16px !important;
+  height: 16px !important;
   margin-inline: 2px !important;
   margin-block: 1px !important;
-  padding: 1px 5px !important;
+  padding: 0 4px !important;
 }
 
 .calendar-page-main .calendar-fill-month .fc .fc-daygrid-event .fc-event-title {
-  font-size: 11px !important;
-  line-height: 16px !important;
+  font-size: 10px !important;
+  line-height: 15px !important;
   white-space: nowrap !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;
@@ -1264,11 +1265,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .calendar-page-main .calendar-fill .fc .fc-event .calendar-entry-content > svg,
 .calendar-page-main .calendar-fill .fc .fc-event .calendar-entry-icon {
   display: block !important;
-  width: 11px !important;
-  height: 11px !important;
-  flex: 0 0 11px !important;
+  width: 10px !important;
+  height: 10px !important;
+  flex: 0 0 10px !important;
   margin-top: 0 !important;
-  stroke-width: 2.3 !important;
+  stroke-width: 2.2 !important;
 }
 
 /* Distinct, prominent darker icon colors matching status semantics */
@@ -1682,12 +1683,61 @@ body { font-size: 15px; line-height: 1.6; }
 .calendar-page-main .calendar-fill-day .fc-timegrid .fc-daygrid-day-events { min-height: 0; }
 
 @media (max-width: 640px) {
+  .calendar-page-main .calendar-status-header > span:not(.calendar-status-title) {
+    min-height: 38px !important;
+    height: 38px !important;
+    padding: .25rem .5rem !important;
+    font-size: .75rem !important;
+    border-radius: 10px !important;
+  }
+  .calendar-page-main .calendar-status-header strong {
+    font-size: .95rem !important;
+    margin-left: .25rem !important;
+  }
   .calendar-page-main .calendar-page-header {
-    flex-wrap: wrap !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
     gap: .5rem !important;
+  }
+  .calendar-page-main .calendar-page-header .calendar-view-segmented {
+    width: 100% !important;
+    display: flex !important;
+  }
+  .calendar-page-main .calendar-page-header .calendar-view-segmented button {
+    flex: 1 1 0 !important;
+    text-align: center !important;
+    justify-content: center !important;
+  }
+  .calendar-page-main .calendar-page-header > div:last-child {
+    display: flex !important;
+    width: 100% !important;
+    gap: .5rem !important;
+  }
+  .calendar-page-main .calendar-page-header .btn-primary,
+  .calendar-page-main .calendar-page-header .btn-secondary {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    justify-content: center !important;
+  }
+  .calendar-page-main .calendar-fill .fc .fc-toolbar.fc-header-toolbar {
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+  .calendar-page-main .calendar-fill .fc .fc-toolbar-chunk {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    gap: 6px !important;
+  }
+  .calendar-page-main .calendar-fill .fc .fc-toolbar-title {
+    font-size: 1.05rem !important;
   }
   .calendar-page-main .calendar-fill-day .fc .fc-timegrid-col-events {
     margin-inline: 4px;
+  }
+  .calendar-page-main .calendar-fill .fc .fc-timegrid-slot {
+    height: 2.2rem !important;
   }
 }
 

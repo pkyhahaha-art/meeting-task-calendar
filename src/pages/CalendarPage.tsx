@@ -10,7 +10,7 @@ import luxonPlugin from '@fullcalendar/luxon3'
 import thLocale from '@fullcalendar/core/locales/th'
 import enGbLocale from '@fullcalendar/core/locales/en-gb'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarDays, CalendarPlus, CheckCircle2, Clock3, FileText, Link2, ListTodo, Search, X } from 'lucide-react'
+import { CalendarDays, CalendarPlus, CheckCircle2, ChevronDown, Clock3, FileText, Link2, ListTodo, Search, X } from 'lucide-react'
 import Swal from 'sweetalert2'
 
 import { useAuth } from '../auth/AuthProvider'
@@ -151,12 +151,17 @@ export function CalendarPage() {
     observer.observe(container)
     return () => { observer.disconnect(); cancelAnimationFrame(frame) }
   }, [])
+  const userInteractedViewRef = useRef(false)
   const [calendarView, setCalendarView] = useState<CalendarView>(() => {
     if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches) {
       return 'day'
     }
     return 'month'
   })
+  const handleSelectView = useCallback((view: CalendarView) => {
+    userInteractedViewRef.current = true
+    setCalendarView(view)
+  }, [])
   const [compactCalendar, setCompactCalendar] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches)
   const [calendarRange, setCalendarRange] = useState(() => {
     const today = bangkokDate()
@@ -172,7 +177,12 @@ export function CalendarPage() {
 
   useEffect(() => {
     const media = window.matchMedia('(max-width: 767px)')
-    const resize = () => setCompactCalendar(media.matches)
+    const resize = () => {
+      setCompactCalendar(media.matches)
+      if (!userInteractedViewRef.current) {
+        setCalendarView(media.matches ? 'day' : 'month')
+      }
+    }
     media.addEventListener('change', resize)
     return () => media.removeEventListener('change', resize)
   }, [])
@@ -1330,7 +1340,7 @@ export function CalendarPage() {
               <select
                 aria-label={text('มุมมองปฏิทิน', 'Calendar view')}
                 value={calendarView}
-                onChange={(event) => setCalendarView(event.target.value as CalendarView)}
+                onChange={(event) => handleSelectView(event.target.value as CalendarView)}
                 className="sr-only"
               >
                 {calendarViewOptions.map((view) => <option key={view.value} value={view.value}>{view.label}</option>)}
@@ -1342,7 +1352,7 @@ export function CalendarPage() {
                     key={view.value}
                     type="button"
                     aria-pressed={isActive}
-                    onClick={() => setCalendarView(view.value as CalendarView)}
+                    onClick={() => handleSelectView(view.value as CalendarView)}
                     className={`min-h-8 rounded-lg px-3 py-1 text-xs font-bold transition ${isActive ? 'bg-[#75638F] text-white shadow-sm' : 'text-[#6B5287] hover:bg-white/60 hover:text-[#4A3266]'}`}
                   >
                     {view.label}
@@ -1367,7 +1377,23 @@ export function CalendarPage() {
             </div>
           </div>
           <div className="min-w-0 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
-            <div className="lg:hidden">{calendarControls}</div>
+            <div className="lg:hidden mb-2">
+              <details className="group rounded-xl border border-[#DBD2E5] bg-white p-2.5 shadow-sm">
+                <summary className="flex cursor-pointer list-none items-center justify-between text-xs font-bold text-[#6B5287] select-none">
+                  <span className="flex items-center gap-1.5">
+                    <Search size={14} className="text-[#75638F]" />
+                    <span>{text('ค้นหาและตัวกรอง', 'Search & filters')}</span>
+                    {Boolean(search || !showMeetings || !showTasks || showCompletedTasks || showCompletedMeetings || showOverdueTasks || showPendingConfirmationMeetings) && (
+                      <span className="h-2 w-2 rounded-full bg-brand-500" />
+                    )}
+                  </span>
+                  <ChevronDown size={15} className="transition-transform group-open:rotate-180 text-slate-400" />
+                </summary>
+                <div className="mt-2.5 pt-2.5 border-t border-slate-100">
+                  {calendarControls}
+                </div>
+              </details>
+            </div>
             {(eventsQuery.isError || tasksQuery.isError || profilesQuery.isError || exceptionsQuery.isError) && <p className="mb-2 rounded-md bg-red-50 p-2.5 text-xs text-red-700">{text('โหลดข้อมูลไม่สำเร็จ กรุณาตรวจสอบว่าได้รัน migration ล่าสุดแล้ว', 'Could not load data. Check that the latest migrations have been applied.')}</p>}
             <div ref={calendarContainerRef} className={`calendar-fill calendar-fill-${calendarView} relative lg:min-h-0 lg:flex-1`}>
               {calendar}
