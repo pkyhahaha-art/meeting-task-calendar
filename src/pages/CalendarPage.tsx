@@ -151,8 +151,13 @@ export function CalendarPage() {
     observer.observe(container)
     return () => { observer.disconnect(); cancelAnimationFrame(frame) }
   }, [])
-  const [calendarView, setCalendarView] = useState<CalendarView>('month')
-  const [compactCalendar, setCompactCalendar] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches)
+  const [calendarView, setCalendarView] = useState<CalendarView>(() => {
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches) {
+      return 'day'
+    }
+    return 'month'
+  })
+  const [compactCalendar, setCompactCalendar] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches)
   const [calendarRange, setCalendarRange] = useState(() => {
     const today = bangkokDate()
     return { start: new Date(`${today.slice(0, 7)}-01T00:00:00+07:00`), end: new Date(`${today}T23:59:59.999+07:00`) }
@@ -166,7 +171,7 @@ export function CalendarPage() {
   })
 
   useEffect(() => {
-    const media = window.matchMedia('(max-width: 640px)')
+    const media = window.matchMedia('(max-width: 767px)')
     const resize = () => setCompactCalendar(media.matches)
     media.addEventListener('change', resize)
     return () => media.removeEventListener('change', resize)
@@ -1184,6 +1189,20 @@ export function CalendarPage() {
         const title = `${isCompleted ? text('เสร็จสิ้น: ', 'Completed: ') : ''}${info.event.title}`
         const people = <CalendarPeople ownerId={task ? task.creator_user_id : (info.event.extendedProps.row as EventRow).owner_user_id} eventId={isTask ? undefined : (info.event.extendedProps.row as EventRow).id} start={info.event.extendedProps.occurrenceStart as string | undefined ?? info.event.start?.toISOString()} profiles={profilesQuery.data ?? []} max={2} />
         if (info.view.type === 'timeGridWeek' && !info.event.allDay) return <div className="calendar-entry-content min-w-0 px-1"><span className="flex min-w-0 items-center gap-1"><Icon size={13} className="shrink-0 calendar-entry-icon" aria-hidden="true" /><span className="truncate font-medium tabular-nums">{info.timeText.match(/^\d{1,2}:\d{2}/)?.[0] ?? info.timeText}</span></span><div className="fc-event-title">{title}</div>{people}</div>
+        if (info.view.type === 'timeGridDay' && !info.event.allDay) {
+          return (
+            <div className="calendar-entry-content min-w-0 px-1 py-0.5">
+              <div className="flex min-w-0 items-center justify-between gap-1 mb-0.5">
+                <span className="flex min-w-0 items-center gap-1">
+                  <Icon size={13} className="shrink-0 calendar-entry-icon" aria-hidden="true" />
+                  <span className="truncate font-semibold tabular-nums text-xs">{info.timeText}</span>
+                </span>
+                {people}
+              </div>
+              <div className="fc-event-title font-medium leading-snug">{title}</div>
+            </div>
+          )
+        }
         return (
           <div className="calendar-entry-content flex min-w-0 w-full items-center justify-between gap-1 px-0.5">
             <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">

@@ -1681,6 +1681,16 @@ body { font-size: 15px; line-height: 1.6; }
 .calendar-page-main .calendar-fill-day .fc-timegrid .fc-daygrid-day-top { display: none; }
 .calendar-page-main .calendar-fill-day .fc-timegrid .fc-daygrid-day-events { min-height: 0; }
 
+@media (max-width: 640px) {
+  .calendar-page-main .calendar-page-header {
+    flex-wrap: wrap !important;
+    gap: .5rem !important;
+  }
+  .calendar-page-main .calendar-fill-day .fc .fc-timegrid-col-events {
+    margin-inline: 4px;
+  }
+}
+
 /* Sidebar-only polish. The existing hover, keyboard and touch expansion rules stay intact. */
 .calendar-app-rail {
   transition-duration: 200ms;

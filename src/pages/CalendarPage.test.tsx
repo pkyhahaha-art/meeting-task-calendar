@@ -9,7 +9,7 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { bangkokDate } from '../lib/eventForm'
 import * as calendarView from '../lib/calendarView'
 
-function calendarPage() {
+function calendarPage(options: { mobile?: boolean } = {}) {
   const today = bangkokDate()
   let currentDay = today
   let userId = 'owner'
@@ -33,7 +33,7 @@ function calendarPage() {
   const navigation: { mini: boolean; date: string | Date }[] = []
   const changes: { view: string; date: Date }[] = []
   const listeners = new Set<() => void>()
-  const media = { matches: false, addEventListener: (_: string, listener: () => void) => listeners.add(listener), removeEventListener: (_: string, listener: () => void) => listeners.delete(listener) }
+  const media = { matches: Boolean(options.mobile), addEventListener: (_: string, listener: () => void) => listeners.add(listener), removeEventListener: (_: string, listener: () => void) => listeners.delete(listener) }
   const meetings = [
     { id: 'today', title: 'Meeting today', start_datetime: `${today}T09:00:00+07:00`, end_datetime: `${today}T10:00:00+07:00`, all_day: false, recurrence_rule: null, owner_user_id: 'owner', affiliation: 'PEA' },
     { id: 'annual', title: 'Annual meeting', start_datetime: '2026-09-21T02:00:00Z', end_datetime: '2026-09-21T03:00:00Z', all_day: false, recurrence_rule: 'FREQ=YEARLY', recurrence_count: 6, owner_user_id: 'owner', affiliation: 'PEA' },
@@ -336,5 +336,13 @@ test('status cards update interactively based on the viewed calendar period and 
     assert.equal(updatedStrongs[0].children[0], '0')
     assert.equal(updatedStrongs[1].children[0], '0')
     assert.equal(updatedStrongs[2].children[0], '0')
+  } finally { act(() => page.renderer.unmount()) }
+})
+
+test('mobile screen defaults to day calendar view and timeGridDay', () => {
+  const page = calendarPage({ mobile: true })
+  try {
+    assert.equal(page.viewSelect().props.value, 'day')
+    assert.equal(page.calendar().props.initialView, 'timeGridDay')
   } finally { act(() => page.renderer.unmount()) }
 })
