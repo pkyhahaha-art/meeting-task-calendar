@@ -888,9 +888,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .calendar-page-main .calendar-view-switcher { display: flex; min-height: 2.6rem; align-items: center; gap: .55rem; border: 1px solid #E3DDE9; border-radius: 10px; background: #fff; padding: 0 .75rem; color: #6258bf; }
 .calendar-page-main .calendar-view-switcher select { min-width: 7.75rem; border: 0; outline: 0; background: transparent; color: #403b5a; font-size: .9rem; font-weight: 500; cursor: pointer; }
 .calendar-page-main .calendar-view-switcher:focus-within { outline: 2px solid rgb(109 93 245 / 24%); outline-offset: 2px; }
-.calendar-page-main .calendar-fill .fc .fc-col-header-cell { background: #FCFAFF; }
-.calendar-page-main .calendar-fill .fc .fc-col-header-cell-cushion { padding: 2px 2px !important; font-size: 11px !important; line-height: 1.4 !important; color: #343249; font-weight: 600; }
-.calendar-page-main .calendar-fill .fc .fc-scrollgrid-section-header > th { height: 22px !important; min-height: 22px !important; padding: 0 !important; }
+.calendar-page-main .calendar-fill .fc .fc-col-header-cell { background: #EDE5F5 !important; border-bottom: 2px solid #D5C7E2 !important; }
+.calendar-page-main .calendar-fill .fc .fc-col-header-cell-cushion { display: inline-flex !important; align-items: center !important; justify-content: center !important; padding: 3px 2px !important; font-size: 11.5px !important; line-height: 1.3 !important; color: #483163 !important; font-weight: 700 !important; letter-spacing: 0.02em !important; }
+.calendar-page-main .calendar-fill .fc .fc-scrollgrid-section-header > th { background: #EDE5F5 !important; height: 24px !important; min-height: 24px !important; padding: 0 !important; border-bottom: 2px solid #D5C7E2 !important; }
 .calendar-page-main .calendar-fill .fc .fc-daygrid-day-number { padding: .45rem .55rem; color: #555368; font-size: .82rem; }
 .calendar-page-main .calendar-fill .fc .fc-day-today { background: #F3EFF7 !important; }
 .calendar-page-main .calendar-fill .fc .fc-day-today .fc-daygrid-day-number { background: #75638F; color: white; }
@@ -1155,16 +1155,16 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 }
 
 .calendar-page-main .calendar-fill-month .fc .fc-daygrid-event {
-  min-height: 16px !important;
-  height: 16px !important;
+  min-height: 15px !important;
+  height: 15px !important;
   margin-inline: 2px !important;
   margin-block: 1px !important;
-  padding: 0 4px !important;
+  padding: 0 3px !important;
 }
 
 .calendar-page-main .calendar-fill-month .fc .fc-daygrid-event .fc-event-title {
-  font-size: 10px !important;
-  line-height: 15px !important;
+  font-size: 9px !important;
+  line-height: 14px !important;
   white-space: nowrap !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;
@@ -1265,9 +1265,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .calendar-page-main .calendar-fill .fc .fc-event .calendar-entry-content > svg,
 .calendar-page-main .calendar-fill .fc .fc-event .calendar-entry-icon {
   display: block !important;
-  width: 10px !important;
-  height: 10px !important;
-  flex: 0 0 10px !important;
+  width: 9.5px !important;
+  height: 9.5px !important;
+  flex: 0 0 9.5px !important;
   margin-top: 0 !important;
   stroke-width: 2.2 !important;
 }
@@ -1434,7 +1434,7 @@ body { font-size: 15px; line-height: 1.6; }
 .calendar-page-main .calendar-sidebar { background: #F2EEF6; }
 .calendar-page-main .calendar-status-header > span:not(.calendar-status-title) { border-color: #DBD2E5; background: #FDFBFF; }
 .calendar-page-main .calendar-fill .fc .fc-day-today { background: #EDE6F3 !important; }
-.calendar-page-main .calendar-fill .fc .fc-col-header-cell { background: #FCFAFF; }
+.calendar-page-main .calendar-fill .fc .fc-col-header-cell { background: #EDE5F5 !important; }
 .calendar-page-main .calendar-fill .fc .fc-day-other { background: #FBF9FD; }
 .calendar-app-topbar .calendar-event-stats-card { background: #F2EEF6; border-color: #DBD2E5; }
 .calendar-page-main .mini-calendar-card { padding-inline: .5rem; }
