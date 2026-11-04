@@ -35,7 +35,7 @@ interface MeetingSummaryDialogProps {
   cancelledAppointments?: Set<string>
 }
 
-const ITEMS_PER_A4_PAGE = 5
+const ITEMS_PER_A4_PAGE = 6
 
 export function MeetingSummaryDialog({
   open,
@@ -285,7 +285,7 @@ export function MeetingSummaryDialog({
       lines.push(`   📍 สถานที่: ${m.location}`)
       lines.push(`   🏢 หน่วยงาน: ${m.affiliation}`)
       if (showDescription && m.description) {
-        lines.push(`   📝 รายละเอียด: ${m.description}`)
+        lines.push(`   📝 รายละเอียด: ${m.description.replace(/\s+/g, ' ').trim()}`)
       }
       lines.push('')
     })
@@ -489,7 +489,7 @@ export function MeetingSummaryDialog({
                     onChange={(e) => setShowDescription(e.target.checked)}
                     className="rounded border-slate-300 text-purple-600 focus:ring-purple-500"
                   />
-                  <span>{text('แสดงรายละเอียดในการ์ดสรุป', 'Show description on cards')}</span>
+                  <span>{text('แสดงรายละเอียดแบบสรุปสั้นๆ', 'Show compact description')}</span>
                 </label>
               </div>
             </div>
@@ -644,16 +644,16 @@ export function MeetingSummaryDialog({
                 {/* 1. TOP HEADER SECTION */}
                 <div>
                   <div className="flex items-center justify-between pb-3 border-b border-purple-200/60">
-                    <div className="flex items-center gap-3.5">
-                      {/* PEA Official Round Emblem */}
+                    <div className="flex items-center gap-4">
+                      {/* PEA Official Round Emblem (Enlarged) */}
                       <img
                         src={`${import.meta.env?.BASE_URL ?? '/'}email-assets/pea-logo.png`}
                         alt="PEA Emblem"
-                        className="w-14 h-14 object-contain shrink-0"
+                        className="w-[72px] h-[72px] object-contain shrink-0 drop-shadow-xs"
                         crossOrigin="anonymous"
                       />
                       {/* Vertical line divider */}
-                      <div className="h-10 w-[2px] bg-[#611667]/40" />
+                      <div className="h-12 w-[2px] bg-[#611667]/40" />
                       <div>
                         <h1 className="text-3xl font-extrabold tracking-tight text-[#4c1553] leading-none">
                           สรุปการประชุม
@@ -677,94 +677,96 @@ export function MeetingSummaryDialog({
                 </div>
 
                 {/* 2. MEETING CARDS TIMELINE SECTION */}
-                <div className="my-6 relative flex-1">
+                <div className="my-5 relative flex-1">
                   {selectedMeetings.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-64 text-purple-400">
                       <Calendar size={48} className="mb-2 opacity-40" />
                       <p className="text-sm font-medium">โปรดติ๊กเลือกนัดหมายประชุมที่ต้องการสรุป</p>
                     </div>
                   ) : (
-                    <div className="relative pl-10 space-y-4">
+                    <div className="relative pl-9 space-y-2.5">
                       {/* Vertical Purple Timeline Line */}
-                      <div className="absolute left-[14px] top-4 bottom-4 w-[3px] bg-gradient-to-b from-[#7a227f] via-[#9e3fa5] to-[#c074c7] rounded-full" />
+                      <div className="absolute left-[13px] top-3 bottom-3 w-[2.5px] bg-gradient-to-b from-[#7a227f] via-[#9e3fa5] to-[#c074c7] rounded-full" />
 
                       {selectedMeetings.map((meeting) => (
                         <div key={meeting.id} className="relative group">
                           {/* Timeline Node Badge (Calendar Icon) */}
-                          <div className="absolute -left-10 top-2.5 flex h-7 w-7 items-center justify-center rounded-full bg-[#7a227f] text-white shadow-md border-2 border-white">
-                            <Calendar size={13} strokeWidth={2.5} />
+                          <div className="absolute -left-9 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-[#7a227f] text-white shadow-xs border-2 border-white">
+                            <Calendar size={11} strokeWidth={2.5} />
                           </div>
 
                           {/* Meeting Card Container */}
-                          <div className="rounded-xl overflow-hidden border border-purple-200 shadow-sm bg-white transition">
+                          <div className="rounded-xl overflow-hidden border border-purple-200/90 shadow-2xs bg-white transition">
                             {/* Card Header (Deep Purple Strip) */}
-                            <div className="bg-gradient-to-r from-[#712276] via-[#7d2783] to-[#913297] text-white px-4 py-2 flex items-center justify-between">
-                              <h3 className="font-bold text-[13.5px] tracking-tight leading-snug">
+                            <div className="bg-gradient-to-r from-[#712276] via-[#7d2783] to-[#913297] text-white px-3.5 py-1.5 flex items-center justify-between">
+                              <h3 className="font-bold text-[13px] tracking-tight leading-snug">
                                 {meeting.title}
                               </h3>
                             </div>
 
                             {/* Card Body: 4 Columns (วันที่, เวลา, สถานที่, หน่วยงานผู้รับผิดชอบ) */}
-                            <div className="p-3 bg-white">
+                            <div className="px-3 py-2 bg-white">
                               <div className="grid grid-cols-4 gap-2 text-xs">
                                 {/* Col 1: วันที่ */}
-                                <div className="space-y-0.5">
-                                  <div className="flex items-center gap-1.5 text-purple-900 font-bold text-[11px]">
-                                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-purple-100 text-purple-800 shrink-0">
-                                      <Calendar size={11} />
+                                <div className="space-y-0.5 min-w-0">
+                                  <div className="flex items-center gap-1.5 text-purple-900 font-bold text-[10.5px]">
+                                    <span className="flex h-4.5 w-4.5 items-center justify-center rounded-full bg-purple-100 text-purple-800 shrink-0">
+                                      <Calendar size={10} />
                                     </span>
                                     <span>วันที่</span>
                                   </div>
-                                  <p className="text-[12px] font-semibold text-slate-800 pl-6.5 leading-tight">
+                                  <p className="text-[11.5px] font-semibold text-slate-800 pl-6 leading-tight truncate">
                                     {meeting.thaiDate}
                                   </p>
                                 </div>
 
                                 {/* Col 2: เวลา */}
-                                <div className="space-y-0.5">
-                                  <div className="flex items-center gap-1.5 text-purple-900 font-bold text-[11px]">
-                                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-purple-100 text-purple-800 shrink-0">
-                                      <Clock size={11} />
+                                <div className="space-y-0.5 min-w-0">
+                                  <div className="flex items-center gap-1.5 text-purple-900 font-bold text-[10.5px]">
+                                    <span className="flex h-4.5 w-4.5 items-center justify-center rounded-full bg-purple-100 text-purple-800 shrink-0">
+                                      <Clock size={10} />
                                     </span>
                                     <span>เวลา</span>
                                   </div>
-                                  <p className="text-[12px] font-semibold text-slate-800 pl-6.5 leading-tight">
+                                  <p className="text-[11.5px] font-semibold text-slate-800 pl-6 leading-tight truncate">
                                     {meeting.timeText}
                                   </p>
                                 </div>
 
                                 {/* Col 3: สถานที่ */}
-                                <div className="space-y-0.5">
-                                  <div className="flex items-center gap-1.5 text-purple-900 font-bold text-[11px]">
-                                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-purple-100 text-purple-800 shrink-0">
-                                      <MapPin size={11} />
+                                <div className="space-y-0.5 min-w-0">
+                                  <div className="flex items-center gap-1.5 text-purple-900 font-bold text-[10.5px]">
+                                    <span className="flex h-4.5 w-4.5 items-center justify-center rounded-full bg-purple-100 text-purple-800 shrink-0">
+                                      <MapPin size={10} />
                                     </span>
                                     <span>สถานที่</span>
                                   </div>
-                                  <p className="text-[11.5px] font-medium text-slate-700 pl-6.5 leading-tight line-clamp-2">
+                                  <p className="text-[11px] font-medium text-slate-700 pl-6 leading-tight truncate" title={meeting.location}>
                                     {meeting.location}
                                   </p>
                                 </div>
 
                                 {/* Col 4: หน่วยงานผู้รับผิดชอบ */}
-                                <div className="space-y-0.5">
-                                  <div className="flex items-center gap-1.5 text-purple-900 font-bold text-[11px]">
-                                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-purple-100 text-purple-800 shrink-0">
-                                      <Users size={11} />
+                                <div className="space-y-0.5 min-w-0">
+                                  <div className="flex items-center gap-1.5 text-purple-900 font-bold text-[10.5px]">
+                                    <span className="flex h-4.5 w-4.5 items-center justify-center rounded-full bg-purple-100 text-purple-800 shrink-0">
+                                      <Users size={10} />
                                     </span>
                                     <span>หน่วยงาน</span>
                                   </div>
-                                  <p className="text-[12px] font-semibold text-slate-800 pl-6.5 leading-tight">
+                                  <p className="text-[11.5px] font-semibold text-slate-800 pl-6 leading-tight truncate">
                                     {meeting.affiliation}
                                   </p>
                                 </div>
                               </div>
 
-                              {/* Optional: Description row */}
+                              {/* Compact Short Description row (concise 1-line summary) */}
                               {showDescription && meeting.description && (
-                                <div className="mt-2.5 pt-2 border-t border-purple-50 flex items-start gap-1.5 text-[11px] text-slate-600 bg-purple-50/40 px-2.5 py-1.5 rounded-lg">
-                                  <FileText size={12} className="shrink-0 text-purple-700 mt-0.5" />
-                                  <span className="leading-snug">{meeting.description}</span>
+                                <div className="mt-1.5 pt-1.5 border-t border-purple-100/70 flex items-center gap-1.5 text-[10.5px] text-slate-600 bg-purple-50/40 px-2 py-0.5 rounded-md min-w-0">
+                                  <FileText size={11} className="shrink-0 text-purple-700" />
+                                  <span className="truncate leading-tight font-normal text-slate-700" title={meeting.description}>
+                                    {meeting.description.replace(/\s+/g, ' ').trim()}
+                                  </span>
                                 </div>
                               )}
                             </div>
