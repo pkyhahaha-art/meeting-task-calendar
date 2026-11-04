@@ -338,7 +338,7 @@ export function CalendarPage() {
         if (error) throw error
         return data
       })()
-      const [guests, reminders, attachments, notificationDeliveries, occurrence, addedOccurrenceGuests, exclusions, selectedReminders, scopedAcknowledgements] = await Promise.all([
+      const [guests, reminders, attachments, notificationDeliveries, occurrence, addedOccurrenceGuests, exclusions, selectedReminders, scopedAcknowledgements, documentLinks] = await Promise.all([
         supabase.from('event_guests').select('*').eq('event_id', eventId).is('occurrence_id', null).is('revoked_at', null).returns<GuestRow[]>(),
         (() => {
           const templates = supabase.from('reminders').select('*').eq('event_id', eventId).is('occurrence_id', null)
@@ -353,11 +353,13 @@ export function CalendarPage() {
         occurrenceExclusions,
         occurrenceReminders,
         occurrenceAcknowledgements,
+        supabase.from('document_links').select('*').eq('event_id', eventId).order('created_at').returns<DocumentLinkRow[]>(),
       ])
       if (guests.error) throw guests.error
       if (reminders.error) throw reminders.error
       if (attachments.error) throw attachments.error
       if (notificationDeliveries.error) throw notificationDeliveries.error
+      if (documentLinks.error) throw documentLinks.error
       const excludedEmails = new Set(exclusions.map((exclusion) => exclusion.email.toLowerCase()))
       const viewedStart = new Date(selectedEventOccurrenceStart ?? selectedEvent!.start_datetime).getTime()
       const guestHistory = (guest: GuestRow): Array<{ from: string | null; until: string }> =>
@@ -391,7 +393,7 @@ export function CalendarPage() {
       const cutoffChangesAttendance = guests.data.some((guest) => !memberInOccurrence(guest))
       const hasOccurrenceChanges = Boolean(cutoffChangesAttendance || occurrenceOverride?.description !== undefined || occurrenceOverride?.location !== undefined || addedOccurrenceGuests.length || exclusions.length || occurrenceAttachments.some((file) => file.scope === 'occurrence'))
       const acknowledgementByEmail = new Map(scopedAcknowledgements.map((row) => [row.email.toLowerCase(), row.acknowledged_at]))
-      return { guestEmails: guests.data.map((guest) => guest.email), guestJoinFrom: Object.fromEntries(guests.data.filter((guest) => guest.self_join_from).map((guest) => [guest.email.toLowerCase(), guest.self_join_from!])), guestJoinUntil: Object.fromEntries(guests.data.filter((guest) => guest.self_join_until).map((guest) => [guest.email.toLowerCase(), guest.self_join_until!])), guestJoinHistory: Object.fromEntries(guests.data.map((guest) => [guest.email.toLowerCase(), guestHistory(guest)])), occurrenceGuestEmails: effectiveGuests.map((guest) => guest.email), guestAcknowledgements: Object.fromEntries(effectiveGuests.map((guest) => [guest.email.toLowerCase(), acknowledgementByEmail.get(guest.email.toLowerCase()) ?? ((guest.self_join_from || guest.self_join_until || guestHistory(guest).length) ? null : guest.acknowledged_at)])), reminderKeys: keys, attachments: attachmentViews, occurrenceId: occurrence?.id ?? null, occurrenceOverride, hasOccurrenceChanges, occurrenceReminders: selectedReminders, occurrenceNotificationDeliveries: notificationDeliveries.data.filter((delivery) => delivery.reminder_id && selectedReminderIds.has(delivery.reminder_id)), notificationDeliveries: notificationDeliveries.data.filter((delivery) => !delivery.reminder_id) }
+      return { guestEmails: guests.data.map((guest) => guest.email), guestJoinFrom: Object.fromEntries(guests.data.filter((guest) => guest.self_join_from).map((guest) => [guest.email.toLowerCase(), guest.self_join_from!])), guestJoinUntil: Object.fromEntries(guests.data.filter((guest) => guest.self_join_until).map((guest) => [guest.email.toLowerCase(), guest.self_join_until!])), guestJoinHistory: Object.fromEntries(guests.data.map((guest) => [guest.email.toLowerCase(), guestHistory(guest)])), occurrenceGuestEmails: effectiveGuests.map((guest) => guest.email), guestAcknowledgements: Object.fromEntries(effectiveGuests.map((guest) => [guest.email.toLowerCase(), acknowledgementByEmail.get(guest.email.toLowerCase()) ?? ((guest.self_join_from || guest.self_join_until || guestHistory(guest).length) ? null : guest.acknowledged_at)])), reminderKeys: keys, attachments: attachmentViews, documentLinks: documentLinks.data ?? [], occurrenceId: occurrence?.id ?? null, occurrenceOverride, hasOccurrenceChanges, occurrenceReminders: selectedReminders, occurrenceNotificationDeliveries: notificationDeliveries.data.filter((delivery) => delivery.reminder_id && selectedReminderIds.has(delivery.reminder_id)), notificationDeliveries: notificationDeliveries.data.filter((delivery) => !delivery.reminder_id) }
     },
   })
 
@@ -514,6 +516,22 @@ export function CalendarPage() {
         if (error || !data) throw error ?? new Error('ไม่สามารถบันทึกการประชุมได้')
         return data
       }, async (savedEventId) => {
+        const validLinks = (draft.driveLinks ?? []).filter((l) => l.url.trim())
+        const { error: deleteLinksError } = await supabase.from('document_links').delete().eq('event_id', savedEventId)
+        if (deleteLinksError) console.warn('Could not clear existing drive links:', deleteLinksError.message)
+        if (validLinks.length) {
+          const { error: insertLinksError } = await supabase.from('document_links').insert(
+            validLinks.map((link) => ({
+              event_id: savedEventId,
+              display_name: link.displayName.trim() || 'ลิงก์ Google Drive',
+              url: link.url.trim(),
+              provider: 'google_drive' as const,
+              added_by: user!.id,
+            }))
+          )
+          if (insertLinksError) console.warn('Could not insert drive links:', insertLinksError.message)
+        }
+
         for (const file of draft.files) {
           const storagePath = `${eventUserId}/${savedEventId}/${crypto.randomUUID()}-${safeFileName(file.name)}`
           const uploaded = await supabase.storage.from('meeting-documents').upload(storagePath, file, { contentType: file.type, upsert: false })
@@ -1197,7 +1215,7 @@ export function CalendarPage() {
         const isOverdue = Boolean(info.event.extendedProps.isOverdue)
         const Icon = isCompleted ? CheckCircle2 : (isPendingConfirmation || isOverdue) ? Clock3 : isTask ? ListTodo : CalendarDays
         const title = `${isCompleted ? text('เสร็จสิ้น: ', 'Completed: ') : ''}${info.event.title}`
-        const people = <CalendarPeople ownerId={task ? task.creator_user_id : (info.event.extendedProps.row as EventRow).owner_user_id} eventId={isTask ? undefined : (info.event.extendedProps.row as EventRow).id} start={info.event.extendedProps.occurrenceStart as string | undefined ?? info.event.start?.toISOString()} profiles={profilesQuery.data ?? []} max={2} />
+        const people = <CalendarPeople ownerId={task ? task.creator_user_id : (info.event.extendedProps.row as EventRow).owner_user_id} eventId={isTask ? undefined : (info.event.extendedProps.row as EventRow).id} start={info.event.extendedProps.occurrenceStart as string | undefined ?? info.event.start?.toISOString()} profiles={profilesQuery.data ?? []} creatorName={task ? task.creator_name : (info.event.extendedProps.row as EventRow).creator_name} calendarOwnerEmail={task ? null : (info.event.extendedProps.row as EventRow).calendar_owner_email} max={2} />
         if (info.view.type === 'timeGridWeek' && !info.event.allDay) return <div className="calendar-entry-content min-w-0 px-1"><span className="flex min-w-0 items-center gap-1"><Icon size={12} className="shrink-0 calendar-entry-icon" aria-hidden="true" /><span className="truncate font-medium tabular-nums text-[10.5px]">{info.timeText.match(/^\d{1,2}:\d{2}/)?.[0] ?? info.timeText}</span></span><div className="fc-event-title text-[10.5px]">{title}</div>{people}</div>
         if (info.view.type === 'timeGridDay' && !info.event.allDay) {
           return (

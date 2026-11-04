@@ -69,6 +69,8 @@ export interface Database {
           suppress_guest_notifications: boolean
           mobile_notifications_enabled: boolean
           email_notifications_enabled: boolean
+          google_event_id?: string | null
+          calendar_owner_email?: string | null
           created_at: string
           updated_at: string
         }
@@ -93,6 +95,8 @@ export interface Database {
           suppress_guest_notifications?: boolean
           mobile_notifications_enabled?: boolean
           email_notifications_enabled?: boolean
+          google_event_id?: string | null
+          calendar_owner_email?: string | null
         }
         Update: Partial<Database['public']['Tables']['events']['Insert']>
         Relationships: []

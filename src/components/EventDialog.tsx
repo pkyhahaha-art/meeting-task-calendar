@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlertTriangle, Bell, CalendarClock, CheckCircle2, ChevronDown, Download, FileText, Loader2, Mail, Paperclip, Plus, Repeat2, Smartphone, Sparkles, Trash2, UserPlus, X } from 'lucide-react'
+import { AlertTriangle, Bell, CalendarClock, CheckCircle2, ChevronDown, Download, ExternalLink, FileText, Link2, Loader2, Mail, Paperclip, Plus, Repeat2, Smartphone, Sparkles, Trash2, UserPlus, X } from 'lucide-react'
 import Swal from 'sweetalert2'
 import { useLanguage } from '../i18n/LanguageProvider'
 import type { Database } from '../lib/database.types'
@@ -40,6 +40,7 @@ type EventRow = Database['public']['Tables']['events']['Row']
 type ProfileRow = Database['public']['Tables']['profiles']['Row']
 type AttachmentRow = Database['public']['Tables']['attachments']['Row']
 type AttachmentView = AttachmentRow & { signedUrl: string }
+export type DriveLinkDraft = { displayName: string; url: string }
 export type OccurrenceReminder = Pick<Database['public']['Tables']['reminders']['Row'], 'id' | 'scheduled_at' | 'channel_email' | 'channel_line' | 'status'>
 export type EventDetails = {
   guestEmails: string[]
@@ -50,6 +51,7 @@ export type EventDetails = {
   guestAcknowledgements: Record<string, string | null>
   reminderKeys: ReminderKey[]
   attachments: AttachmentView[]
+  documentLinks?: Database['public']['Tables']['document_links']['Row'][]
   occurrenceId: string | null
   occurrenceOverride: { description?: string; location?: string } | null
   hasOccurrenceChanges: boolean
@@ -68,6 +70,7 @@ export type EventDraft = Pick<EventRow, 'title' | 'description' | 'location' | '
   notifyEmail: boolean
   notifyLine: boolean
   files: File[]
+  driveLinks: DriveLinkDraft[]
 }
 
 const blankDraft = (date?: string): EventDraft => {
@@ -91,6 +94,7 @@ const blankDraft = (date?: string): EventDraft => {
     notifyEmail: true,
     notifyLine: false,
     files: [],
+    driveLinks: [],
   }
 }
 
@@ -354,6 +358,7 @@ export function EventDialog({
           notifyEmail: event.email_notifications_enabled,
           notifyLine: event.mobile_notifications_enabled,
           files: [],
+          driveLinks: details?.documentLinks?.map((l) => ({ displayName: l.display_name, url: l.url })) ?? [],
         }
         : { ...blankDraft(selectedDate), affiliation: defaultAffiliation },
     )
@@ -390,6 +395,7 @@ export function EventDialog({
     setDraft((current) => ({ ...current, [key]: value }))
   }
   const setGuestEmail = (index: number, value: string) => set('guestEmails', draft.guestEmails.map((email, itemIndex) => (itemIndex === index ? value : email)))
+  const setDriveLink = (index: number, value: DriveLinkDraft) => set('driveLinks', draft.driveLinks.map((item, itemIndex) => (itemIndex === index ? value : item)))
   const toggleReminder = (key: ReminderKey) => set('reminderKeys', draft.reminderKeys.includes(key) ? draft.reminderKeys.filter((item) => item !== key) : [...draft.reminderKeys, key])
 
   const canEditOccurrence = Boolean(event?.recurrence_rule && occurrenceStart && details?.occurrenceId && new Date(occurrenceStart).getTime() > Date.now())
@@ -714,7 +720,7 @@ export function EventDialog({
               </h3>
               <div>
                 <label className="field-label" htmlFor="title">{text('ชื่อการประชุม *', 'Meeting title *')}</label>
-                <input id="title" className="field-input" value={draft.title} onChange={(e) => set('title', e.target.value)} maxLength={180} disabled={isOccurrenceEdit} />
+                <input id="title" className="field-input" value={draft.title} onChange={(e) => set('title', e.target.value)} maxLength={300} disabled={isOccurrenceEdit} />
               </div>
               <div>
                 <label className="field-label" htmlFor="event-affiliation">{text('หน่วยงาน / สังกัด', 'Department / affiliation')}</label>
@@ -1268,6 +1274,94 @@ export function EventDialog({
                     {text('สูงสุด 5 ไฟล์ ไฟล์ละไม่เกิน 10 MB: PDF, Office, JPG และ PNG', 'Up to 5 files, 10 MB each: PDF, Office, JPG, and PNG.')}
                   </p>
                 </>
+              )}
+
+              {(!canEdit ? draft.driveLinks.length > 0 : true) && (
+                <div className="space-y-2 border-t border-slate-200 pt-3">
+                  <h4 className="flex items-center gap-2 font-semibold text-slate-800">
+                    <Link2 size={18} className="text-brand-600" />
+                    {text('ลิงก์ Google Drive', 'Google Drive links')}
+                  </h4>
+
+                  {!canEdit && (
+                    <div className="space-y-2">
+                      {draft.driveLinks.map((link, index) => (
+                        <div key={index} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Link2 size={16} className="text-brand-600 shrink-0" />
+                            <span className="truncate font-medium text-slate-700">{link.displayName || link.url}</span>
+                          </div>
+                          {link.url.trim() && (
+                            <a
+                              href={link.url.trim()}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="btn-secondary shrink-0 inline-flex items-center gap-1.5 text-brand-600 hover:text-brand-700"
+                            >
+                              <ExternalLink size={15} />
+                              <span>{text('เปิดลิงก์', 'Open link')}</span>
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {canEdit && (
+                    <>
+                      {draft.driveLinks.map((link, index) => (
+                        <div key={index} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                          <input
+                            className="field-input flex-1 min-w-0"
+                            placeholder={text('ชื่อเอกสาร (เช่น โฟลเดอร์ Google Drive)', 'Document name')}
+                            value={link.displayName}
+                            onChange={(e) => setDriveLink(index, { ...link, displayName: e.target.value })}
+                          />
+                          <input
+                            type="url"
+                            className="field-input flex-[1.5] min-w-0"
+                            placeholder="https://drive.google.com/..."
+                            value={link.url}
+                            onChange={(e) => setDriveLink(index, { ...link, url: e.target.value })}
+                          />
+                          <div className="flex items-center gap-1 shrink-0">
+                            {link.url.trim() && (
+                              <a
+                                href={link.url.trim()}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center justify-center rounded-xl border border-slate-200 p-2 text-brand-600 hover:bg-brand-50 hover:text-brand-700"
+                                title={text('เปิดลิงก์', 'Open link')}
+                                aria-label={text('เปิดลิงก์', 'Open link')}
+                              >
+                                <ExternalLink size={18} />
+                              </a>
+                            )}
+                            <button
+                              type="button"
+                              className="inline-flex items-center justify-center rounded-xl border border-slate-200 p-2 text-slate-500 hover:text-red-600 hover:bg-red-50"
+                              onClick={() => set('driveLinks', draft.driveLinks.filter((_, itemIndex) => itemIndex !== index))}
+                              aria-label={text('ลบลิงก์', 'Delete link')}
+                              title={text('ลบลิงก์', 'Delete link')}
+                            >
+                              <X size={18} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      {draft.driveLinks.length < 10 && (
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          onClick={() => set('driveLinks', [...draft.driveLinks, { displayName: '', url: '' }])}
+                        >
+                          <Plus size={17} />
+                          {text('เพิ่มลิงก์ Google Drive', 'Add Google Drive link')}
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
               )}
             </section>
           </fieldset>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlertTriangle, Bell, CalendarDays, CheckCircle2, ChevronDown, FileText, Link2, Loader2, Mail, Paperclip, Plus, Smartphone, Trash2, UserRound, X } from 'lucide-react'
+import { AlertTriangle, Bell, CalendarDays, CheckCircle2, ChevronDown, ExternalLink, FileText, Link2, Loader2, Mail, Paperclip, Plus, Smartphone, Trash2, UserRound, X } from 'lucide-react'
 import Swal from 'sweetalert2'
 import { useLanguage } from '../i18n/LanguageProvider'
 import type { Database } from '../lib/database.types'
@@ -460,7 +460,7 @@ export function TaskDialog({
                 <label className="field-label" htmlFor="task-name">
                   {text('ชื่องาน *', 'Task title *')}
                 </label>
-                <input id="task-name" className="field-input" value={draft.title} onChange={(event) => set('title', event.target.value)} maxLength={180} />
+                <input id="task-name" className="field-input" value={draft.title} onChange={(event) => set('title', event.target.value)} maxLength={300} />
               </div>
               <div>
                 <label className="field-label" htmlFor="task-affiliation">
@@ -943,14 +943,7 @@ export function TaskDialog({
                   )}
                 </div>
               ))}
-              {details?.documentLinks.map((link) => (
-                <div key={link.id} className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm">
-                  <Link2 size={16} />
-                  <a className="truncate font-medium text-brand-600 hover:underline" href={link.url} target="_blank" rel="noreferrer">
-                    {link.display_name}
-                  </a>
-                </div>
-              ))}
+
               {draft.files.map((file, index) => (
                 <div key={`${file.name}-${index}`} className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm">
                   <FileText size={16} />
@@ -978,43 +971,88 @@ export function TaskDialog({
                 <Paperclip size={17} />
                 {text('อัปโหลดไฟล์', 'Upload file')}
               </button>
-              <div className="space-y-2 border-t border-slate-100 pt-3">
-                <p className="flex items-center gap-2 text-sm font-medium">
-                  <Link2 size={16} />
-                  {text('ลิงก์ Google Drive', 'Google Drive links')}
-                </p>
-                {draft.driveLinks.map((link, index) => (
-                  <div key={index} className="grid gap-2 sm:grid-cols-[0.8fr_1.5fr_auto]">
-                    <input
-                      className="field-input"
-                      placeholder={text('ชื่อเอกสาร', 'Document name')}
-                      value={link.displayName}
-                      onChange={(event) => setDriveLink(index, { ...link, displayName: event.target.value })}
-                    />
-                    <input
-                      type="url"
-                      className="field-input"
-                      placeholder="https://drive.google.com/..."
-                      value={link.url}
-                      onChange={(event) => setDriveLink(index, { ...link, url: event.target.value })}
-                    />
-                    <button
-                      type="button"
-                      className="rounded-xl border border-slate-200 p-2 text-slate-500 hover:text-red-600"
-                      onClick={() => set('driveLinks', draft.driveLinks.filter((_, itemIndex) => itemIndex !== index))}
-                      aria-label={text('ลบลิงก์', 'Delete link')}
-                    >
-                      <X size={18} />
+              {!canEdit && (details?.documentLinks.length ?? 0) > 0 && (
+                <div className="space-y-2 border-t border-slate-100 pt-3">
+                  <p className="flex items-center gap-2 text-sm font-medium">
+                    <Link2 size={16} />
+                    {text('ลิงก์ Google Drive', 'Google Drive links')}
+                  </p>
+                  {details?.documentLinks.map((link) => (
+                    <div key={link.id} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Link2 size={16} className="text-brand-600 shrink-0" />
+                        <span className="truncate font-medium text-slate-700">{link.display_name || link.url}</span>
+                      </div>
+                      {link.url && (
+                        <a
+                          href={link.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn-secondary shrink-0 inline-flex items-center gap-1.5 text-brand-600 hover:text-brand-700"
+                        >
+                          <ExternalLink size={15} />
+                          <span>{text('เปิดลิงก์', 'Open link')}</span>
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {canEdit && (
+                <div className="space-y-2 border-t border-slate-100 pt-3">
+                  <p className="flex items-center gap-2 text-sm font-medium">
+                    <Link2 size={16} />
+                    {text('ลิงก์ Google Drive', 'Google Drive links')}
+                  </p>
+                  {draft.driveLinks.map((link, index) => (
+                    <div key={index} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                      <input
+                        className="field-input flex-1 min-w-0"
+                        placeholder={text('ชื่อเอกสาร', 'Document name')}
+                        value={link.displayName}
+                        onChange={(event) => setDriveLink(index, { ...link, displayName: event.target.value })}
+                      />
+                      <input
+                        type="url"
+                        className="field-input flex-[1.5] min-w-0"
+                        placeholder="https://drive.google.com/..."
+                        value={link.url}
+                        onChange={(event) => setDriveLink(index, { ...link, url: event.target.value })}
+                      />
+                      <div className="flex items-center gap-1 shrink-0">
+                        {link.url.trim() && (
+                          <a
+                            href={link.url.trim()}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center justify-center rounded-xl border border-slate-200 p-2 text-brand-600 hover:bg-brand-50 hover:text-brand-700"
+                            title={text('เปิดลิงก์', 'Open link')}
+                            aria-label={text('เปิดลิงก์', 'Open link')}
+                          >
+                            <ExternalLink size={18} />
+                          </a>
+                        )}
+                        <button
+                          type="button"
+                          className="inline-flex items-center justify-center rounded-xl border border-slate-200 p-2 text-slate-500 hover:text-red-600 hover:bg-red-50"
+                          onClick={() => set('driveLinks', draft.driveLinks.filter((_, itemIndex) => itemIndex !== index))}
+                          aria-label={text('ลบลิงก์', 'Delete link')}
+                          title={text('ลบลิงก์', 'Delete link')}
+                        >
+                          <X size={18} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {draft.driveLinks.length < 10 && (
+                    <button type="button" className="btn-secondary" onClick={() => set('driveLinks', [...draft.driveLinks, { displayName: '', url: '' }])}>
+                      <Plus size={17} />
+                      {text('เพิ่มลิงก์ Google Drive', 'Add Google Drive link')}
                     </button>
-                  </div>
-                ))}
-                {draft.driveLinks.length < 10 && (
-                  <button type="button" className="btn-secondary" onClick={() => set('driveLinks', [...draft.driveLinks, { displayName: '', url: '' }])}>
-                    <Plus size={17} />
-                    {text('เพิ่มลิงก์', 'Add link')}
-                  </button>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
             </section>
           </fieldset>
 

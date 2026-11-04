@@ -71,10 +71,10 @@ export function useAvatarDirectory() {
   })
 }
 
-export function MemberAvatar({ id, name, size = 28 }: { id: string; name: string; size?: number }) {
+export function MemberAvatar({ id, name, size = 28 }: { id?: string; name: string; size?: number }) {
   const avatars = useAvatarDirectory()
   const [failed, setFailed] = useState('')
-  const url = avatars.data?.[id]
+  const url = id ? avatars.data?.[id] : undefined
   return (
     <span className="member-avatar shrink-0 inline-flex items-center justify-center rounded-full overflow-hidden" title={name} style={{ width: size, height: size, minWidth: size, minHeight: size, fontSize: Math.max(9, size * 0.36) }}>
       {url && failed !== url ? <img src={url} alt={name} className="h-full w-full object-cover" onError={() => setFailed(url)} /> : <span aria-label={name}>{name.trim().slice(0, 1) || '?'}</span>}
@@ -172,7 +172,7 @@ export function ProfileAvatarEditor() {
   )
 }
 
-export function CalendarPeople({ ownerId, eventId, start, profiles, max = 2 }: { ownerId: string; eventId?: string; start?: string; profiles: Profile[]; max?: number }) {
+export function CalendarPeople({ ownerId, eventId, start, profiles, creatorName, calendarOwnerEmail, max = 2 }: { ownerId: string; eventId?: string; start?: string; profiles: Profile[]; creatorName?: string; calendarOwnerEmail?: string | null; max?: number }) {
   const avatars = useAvatarDirectory()
   const { text } = useLanguage()
   const roster = useQuery({
@@ -196,16 +196,49 @@ export function CalendarPeople({ ownerId, eventId, start, profiles, max = 2 }: {
   })
   const occurrence = roster.data?.occurrences.find((item) => new Date(item.start_datetime).getTime() === new Date(start || '').getTime())
   const emails = avatarGuestEmails(roster.data?.guests || [], roster.data?.exclusions || [], occurrence?.id, start)
-  const people = profiles.filter((person) => person.id === ownerId || emails.has(person.email.trim().toLowerCase())).sort((a, b) => Number(b.id === ownerId) - Number(a.id === ownerId))
-  if (!avatars.isSuccess || !people.length) return null
+  let creatorProfile = calendarOwnerEmail
+    ? profiles.find((person) => person.email.trim().toLowerCase() === calendarOwnerEmail.trim().toLowerCase())
+    : undefined
+
+  if (!creatorProfile && ownerId) {
+    const owner = profiles.find((person) => person.id === ownerId)
+    if (owner) {
+      if (!creatorName || owner.full_name.trim().toLowerCase() === creatorName.trim().toLowerCase()) {
+        creatorProfile = owner
+      } else if (owner.role !== 'admin') {
+        creatorProfile = owner
+      }
+    }
+  }
+
+  if (!creatorProfile && creatorName) {
+    creatorProfile = profiles.find((person) => person.full_name.trim().toLowerCase() === creatorName.trim().toLowerCase())
+  }
+
+  const effectiveCreatorId = creatorProfile ? creatorProfile.id : ownerId
+  const guestPeople = profiles.filter((person) => person.id !== effectiveCreatorId && emails.has(person.email.trim().toLowerCase()))
+
+  if (!avatars.isSuccess && !creatorProfile && !creatorName) return null
+
+  const creatorItem: { id?: string; name: string } = creatorProfile
+    ? { id: creatorProfile.id, name: creatorProfile.full_name }
+    : { id: undefined, name: creatorName || '' }
+
+  const items: Array<{ id?: string; name: string }> = [
+    creatorItem,
+    ...guestPeople.map((p) => ({ id: p.id, name: p.full_name }))
+  ].filter((item) => item.name || item.id)
+
+  if (!items.length) return null
+
   return (
     <span className="calendar-people shrink-0 inline-flex items-center" aria-label={text('ผู้สร้างและผู้เข้าร่วม', 'Creator and attendees')}>
-      {people.slice(0, max).map((person) => (
-        <MemberAvatar key={person.id} id={person.id} name={person.full_name} size={18} />
+      {items.slice(0, max).map((item, idx) => (
+        <MemberAvatar key={item.id ?? `creator-${idx}`} id={item.id} name={item.name} size={18} />
       ))}
-      {people.length > max && (
-        <span className="calendar-people-more" title={people.slice(max).map((person) => person.full_name).join(', ')}>
-          +{people.length - max}
+      {items.length > max && (
+        <span className="calendar-people-more" title={items.slice(max).map((item) => item.name).join(', ')}>
+          +{items.length - max}
         </span>
       )}
     </span>
