@@ -64,6 +64,7 @@ function calendarPage(options: { mobile?: boolean } = {}) {
     '../lib/calendarView': { ...calendarView, calendarMeetingOccurrences: (...args: Parameters<typeof calendarView.calendarMeetingOccurrences>) => { occurrenceRanges.push({ start: args[1], end: args[2] }); return calendarView.calendarMeetingOccurrences(...args) } },
     '../components/EventDialog': { EventDialog: (props: Record<string, unknown>) => React.createElement('div', { ...props, 'data-testid': 'event-dialog' }) },
     '../components/TaskDialog': { TaskDialog: (props: Record<string, unknown>) => React.createElement('task-dialog', props) },
+    '../components/MeetingSummaryDialog': { MeetingSummaryDialog: (props: Record<string, unknown>) => React.createElement('div', { ...props, 'data-testid': 'meeting-summary-dialog' }) },
     '../components/MemberAvatar': { CalendarPeople: () => null },
     '../lib/supabase': { supabase: { rpc: async (name: string, args: unknown) => { rpcCalls.push({ name, args }); return { data: true, error: null } }, from: (table: string) => ({ update: (values: unknown) => { writes.push({ table, values }); return { eq: async () => ({ error: null }) } }, delete: () => ({ eq: async () => ({ error: null }) }), insert: async () => ({ error: null }) }) } },
     '../lib/mobilePush': { checkMeetingMobileRecipients: async () => false, getConnectedDevices: async () => [] },

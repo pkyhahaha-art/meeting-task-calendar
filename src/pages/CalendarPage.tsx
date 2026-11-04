@@ -10,7 +10,7 @@ import luxonPlugin from '@fullcalendar/luxon3'
 import thLocale from '@fullcalendar/core/locales/th'
 import enGbLocale from '@fullcalendar/core/locales/en-gb'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarDays, CalendarPlus, CheckCircle2, ChevronDown, Clock3, FileText, Link2, ListTodo, Search, X } from 'lucide-react'
+import { CalendarDays, CalendarPlus, CheckCircle2, ChevronDown, Clock3, FileSpreadsheet, FileText, Link2, ListTodo, Search, X } from 'lucide-react'
 import Swal from 'sweetalert2'
 
 import { useAuth } from '../auth/AuthProvider'
@@ -19,6 +19,7 @@ import { useConfirm } from '../components/ConfirmDialogProvider'
 import { EventDialog, type EventDetails, type EventDraft } from '../components/EventDialog'
 import type { DeliveryStatusRow } from '../components/NotificationDeliveryStatus'
 import { TaskDialog, type TaskDetails, type TaskDraft, type TaskDeliveryStatusRow } from '../components/TaskDialog'
+import { MeetingSummaryDialog } from '../components/MeetingSummaryDialog'
 import { useLanguage } from '../i18n/LanguageProvider'
 import { useLocation, useNavigate } from 'react-router-dom'
 import type { Database } from '../lib/database.types'
@@ -126,6 +127,7 @@ export function CalendarPage() {
   const pendingMeetingSave = useRef<MeetingSaveAttempt>(null)
   const [eventDialog, setEventDialog] = useState<{ open: boolean; event: EventRow | null; date?: string; occurrenceStart?: string }>({ open: false, event: null })
   const [taskDialog, setTaskDialog] = useState<{ open: boolean; task: TaskRow | null; date?: string }>({ open: false, task: null })
+  const [summaryDialogOpen, setSummaryDialogOpen] = useState(false)
   const [yearDayDialog, setYearDayDialog] = useState<{ open: boolean; date: string; entries: any[] } | null>(null)
   const [openedEventLink, setOpenedEventLink] = useState<string | null>(null)
   const [openedTaskLink, setOpenedTaskLink] = useState<string | null>(null)
@@ -1381,6 +1383,13 @@ export function CalendarPage() {
 
             <div className="flex items-center gap-2 shrink-0">
               <button
+                type="button"
+                className="btn-secondary semantic-summary-action inline-flex min-h-9 items-center justify-center gap-1.5 rounded-xl border border-[#75638F] bg-white px-3.5 py-1.5 text-xs font-bold text-[#75638F] shadow-sm transition hover:bg-[#75638F]/10"
+                onClick={() => setSummaryDialogOpen(true)}
+              >
+                <FileSpreadsheet size={15} />{text('สรุปการประชุม', 'Meeting summary')}
+              </button>
+              <button
                 className="btn-secondary semantic-task-action inline-flex min-h-9 items-center justify-center gap-1.5 rounded-xl border border-[#75638F] bg-white px-3.5 py-1.5 text-xs font-bold text-[#75638F] shadow-sm transition hover:bg-[#75638F]/10"
                 onClick={() => setTaskDialog({ open: true, task: null })}
               >
@@ -1749,6 +1758,14 @@ export function CalendarPage() {
         onToggleComplete={async () => { if (selectedTask && await confirm({ title: selectedTask.status === 'completed' ? 'เปิดงานอีกครั้ง?' : 'ยืนยันว่างานเสร็จแล้ว?', message: `Task “${selectedTask.title}” จะถูกเปลี่ยนสถานะ`, confirmLabel: selectedTask.status === 'completed' ? 'เปิดงานอีกครั้ง' : 'ยืนยันงานเสร็จ' })) await toggleTaskMutation.mutateAsync(selectedTask) }}
         onAcknowledge={async () => { if (selectedTask) await acknowledgeTaskMutation.mutateAsync(selectedTask) }}
         onRetryNotification={(deliveryId) => retryNotificationMutation.mutateAsync(deliveryId)}
+      />
+      <MeetingSummaryDialog
+        open={summaryDialogOpen}
+        onClose={() => setSummaryDialogOpen(false)}
+        events={eventsQuery.data ?? []}
+        cancelledAppointments={cancelledAppointments}
+        defaultOwnerName={profile?.full_name ?? user?.email ?? ''}
+        defaultAffiliation={profileAffiliation(profile)}
       />
     </main>
   )
