@@ -72,3 +72,28 @@ test('MeetingSummaryDialog renders dialog with PEA theme header, checklist, and 
   assert.ok(text.includes('คัดลอกข้อความ'), 'Should render copy text button')
 })
 
+test('MeetingSummaryDialog renders multiline location split by slash', () => {
+  const meetingWithSlashLocation: Database['public']['Tables']['events']['Row'] = {
+    ...mockMeeting,
+    id: 'm-slash',
+    location: 'ห้องประชุม 2 ชั้น 1 / อาคาร 51',
+  }
+
+  let renderer: ReactTestRenderer | undefined
+  act(() => {
+    renderer = create(
+      <LanguageProvider>
+        <MeetingSummaryDialog
+          open={true}
+          onClose={() => {}}
+          events={[meetingWithSlashLocation]}
+        />
+      </LanguageProvider>
+    )
+  })
+
+  const text = JSON.stringify(renderer?.toJSON())
+  assert.ok(text.includes('ห้องประชุม 2 ชั้น 1'), 'Should render first line of location')
+  assert.ok(text.includes('อาคาร 51'), 'Should render second line of location')
+})
+

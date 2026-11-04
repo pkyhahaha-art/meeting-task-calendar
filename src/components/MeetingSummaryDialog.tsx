@@ -285,9 +285,15 @@ export function MeetingSummaryDialog({
       lines.push(`   📅 วันที่: ${m.thaiDate} | ⏰ เวลา: ${m.timeText}`)
       lines.push(`   📍 สถานที่: ${m.location}`)
       lines.push(`   🏢 หน่วยงาน: ${m.affiliation}`)
-      const desc = (customDescriptions[m.id] ?? m.description).replace(/\s+/g, ' ').trim()
+      const desc = (customDescriptions[m.id] ?? m.description).trim()
       if (showDescription && desc) {
-        lines.push(`   📝 รายละเอียด: ${desc}`)
+        const descLines = desc.split('\n').map((l) => l.trim()).filter(Boolean)
+        if (descLines.length === 1) {
+          lines.push(`   📝 รายละเอียด: ${descLines[0]}`)
+        } else if (descLines.length > 1) {
+          lines.push(`   📝 รายละเอียด:`)
+          descLines.forEach((l) => lines.push(`      • ${l}`))
+        }
       }
       lines.push('')
     })
@@ -578,17 +584,17 @@ export function MeetingSummaryDialog({
                         {showDescription && (
                           <div className="mt-1.5 pt-1" onClick={(e) => e.stopPropagation()}>
                             <label className="block text-[10px] font-semibold text-purple-900 mb-0.5">
-                              {text('รายละเอียด (พิมพ์แก้ไขข้อความสรุปได้):', 'Description (editable):')}
+                              {text('รายละเอียด (พิมพ์แก้ไขข้อความสรุปได้ / กด Enter ขึ้นบรรทัดใหม่ได้):', 'Description (editable / Enter for new line):')}
                             </label>
-                            <input
-                              type="text"
+                            <textarea
+                              rows={2}
                               value={customDescriptions[meeting.id] ?? meeting.description}
                               onChange={(e) => {
                                 const val = e.target.value
                                 setCustomDescriptions((prev) => ({ ...prev, [meeting.id]: val }))
                               }}
-                              placeholder={text('พิมพ์ข้อความสรุปย่อ...', 'Type short summary...')}
-                              className="w-full text-[11px] px-2 py-1 rounded-md border border-purple-200 bg-white focus:outline-none focus:border-purple-500 text-slate-700 shadow-2xs"
+                              placeholder={text('พิมพ์ข้อความสรุปย่อ (กด Enter ขึ้นบรรทัดใหม่ได้)...', 'Type short summary (Enter for new line)...')}
+                              className="w-full text-[11px] px-2 py-1.5 rounded-md border border-purple-200 bg-white focus:outline-none focus:border-purple-500 text-slate-700 shadow-2xs resize-y leading-snug"
                             />
                           </div>
                         )}
@@ -720,34 +726,34 @@ export function MeetingSummaryDialog({
 
                             {/* Card Body: 4 Columns (วันที่, เวลา, สถานที่, หน่วยงานผู้รับผิดชอบ) */}
                             <div className="px-3 py-2 bg-white">
-                              <div className="grid grid-cols-4 gap-2 text-xs">
-                                {/* Col 1: วันที่ */}
-                                <div className="space-y-0.5 min-w-0">
+                              <div className="grid grid-cols-[140px_110px_1fr_85px] gap-2.5 text-xs items-start">
+                                {/* Col 1: วันที่ (แสดงข้อความเต็ม ไม่ตัดคำ) */}
+                                <div className="space-y-0.5">
                                   <div className="flex items-center gap-1.5 text-purple-900 font-bold text-[10.5px]">
                                     <span className="flex h-4.5 w-4.5 items-center justify-center rounded-full bg-purple-100 text-purple-800 shrink-0">
                                       <Calendar size={10} />
                                     </span>
                                     <span>วันที่</span>
                                   </div>
-                                  <p className="text-[11.5px] font-semibold text-slate-800 pl-6 leading-tight truncate">
+                                  <p className="text-[11.5px] font-semibold text-slate-800 pl-6 leading-tight whitespace-nowrap">
                                     {meeting.thaiDate}
                                   </p>
                                 </div>
 
-                                {/* Col 2: เวลา */}
-                                <div className="space-y-0.5 min-w-0">
+                                {/* Col 2: เวลา (แสดงข้อความเต็ม) */}
+                                <div className="space-y-0.5">
                                   <div className="flex items-center gap-1.5 text-purple-900 font-bold text-[10.5px]">
                                     <span className="flex h-4.5 w-4.5 items-center justify-center rounded-full bg-purple-100 text-purple-800 shrink-0">
                                       <Clock size={10} />
                                     </span>
                                     <span>เวลา</span>
                                   </div>
-                                  <p className="text-[11.5px] font-semibold text-slate-800 pl-6 leading-tight truncate">
+                                  <p className="text-[11.5px] font-semibold text-slate-800 pl-6 leading-tight whitespace-nowrap">
                                     {meeting.timeText}
                                   </p>
                                 </div>
 
-                                {/* Col 3: สถานที่ (แสดงเต็ม ครบถ้วน) */}
+                                {/* Col 3: สถานที่ (จัด layout เรียบร้อย ตัดบรรทัดตาม / หรือ \ หรือขึ้นบรรทัดใหม่ให้ได้ใจความ) */}
                                 <div className="space-y-0.5 min-w-0">
                                   <div className="flex items-center gap-1.5 text-purple-900 font-bold text-[10.5px]">
                                     <span className="flex h-4.5 w-4.5 items-center justify-center rounded-full bg-purple-100 text-purple-800 shrink-0">
@@ -755,9 +761,19 @@ export function MeetingSummaryDialog({
                                     </span>
                                     <span>สถานที่</span>
                                   </div>
-                                  <p className="text-[11px] font-medium text-slate-800 pl-6 leading-tight break-words">
-                                    {meeting.location}
-                                  </p>
+                                  <div className="text-[11.5px] font-medium text-slate-800 pl-6 leading-snug space-y-0.5 break-words">
+                                    {meeting.location ? (
+                                      meeting.location
+                                        .split(/\s*[\/\\]\s*|\n/)
+                                        .map((part) => part.trim())
+                                        .filter(Boolean)
+                                        .map((part, pIdx) => (
+                                          <div key={pIdx} className="leading-snug">{part}</div>
+                                        ))
+                                    ) : (
+                                      <span className="text-slate-400">-</span>
+                                    )}
+                                  </div>
                                 </div>
 
                                 {/* Col 4: หน่วยงานผู้รับผิดชอบ */}
@@ -769,18 +785,18 @@ export function MeetingSummaryDialog({
                                     <span>หน่วยงาน</span>
                                   </div>
                                   <p className="text-[11.5px] font-semibold text-slate-800 pl-6 leading-tight truncate">
-                                    {meeting.affiliation}
+                                    {meeting.affiliation || '-'}
                                   </p>
                                 </div>
                               </div>
 
-                              {/* Description row: ปิดได้ หรือพิมพ์แก้ไขสรุปเองได้ */}
+                              {/* Description row: ปิดได้ หรือพิมพ์แก้ไขสรุปเองได้ (รองรับข้อความหลายบรรทัด) */}
                               {showDescription && (customDescriptions[meeting.id] ?? meeting.description).trim() && (
-                                <div className="mt-1.5 pt-1.5 border-t border-purple-100/70 flex items-start gap-1.5 text-[10.5px] text-slate-700 bg-purple-50/40 px-2.5 py-1 rounded-md min-w-0 break-words">
+                                <div className="mt-2 pt-1.5 border-t border-purple-100/70 flex items-start gap-1.5 text-[10.5px] text-slate-700 bg-purple-50/40 px-2.5 py-1.5 rounded-md min-w-0 break-words">
                                   <FileText size={11} className="shrink-0 text-purple-700 mt-0.5" />
-                                  <span className="leading-snug font-normal text-slate-700 break-words">
+                                  <div className="leading-relaxed font-normal text-slate-700 break-words whitespace-pre-wrap min-w-0 flex-1">
                                     {(customDescriptions[meeting.id] ?? meeting.description).trim()}
-                                  </span>
+                                  </div>
                                 </div>
                               )}
                             </div>
