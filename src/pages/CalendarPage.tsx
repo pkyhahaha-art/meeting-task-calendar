@@ -1764,8 +1764,6 @@ export function CalendarPage() {
         onClose={() => setSummaryDialogOpen(false)}
         events={eventsQuery.data ?? []}
         cancelledAppointments={cancelledAppointments}
-        defaultOwnerName={profile?.full_name ?? user?.email ?? ''}
-        defaultAffiliation={profileAffiliation(profile)}
       />
     </main>
   )

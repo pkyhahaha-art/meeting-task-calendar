@@ -4,21 +4,17 @@ import {
   Clock,
   MapPin,
   Building2,
-  User,
   Users,
   Download,
   Copy,
   Check,
   X,
-  ChevronLeft,
-  ChevronRight,
   FileSpreadsheet,
   FileText,
-  Filter,
   CheckSquare,
   Square,
-  Sparkles,
   Printer,
+  Edit3,
 } from 'lucide-react'
 import Swal from 'sweetalert2'
 import { toPng } from 'html-to-image'
@@ -27,13 +23,9 @@ import type { Database } from '../lib/database.types'
 import { useLanguage } from '../i18n/LanguageProvider'
 import {
   type EventRow,
-  type SummaryMeetingItem,
   THAI_MONTHS,
   getMonthWeeks,
-  getCurrentCalendarWeekRange,
   filterAndSortMeetingsForSummary,
-  formatThaiFullDate,
-  formatThaiShortDate,
 } from '../lib/meetingSummary'
 
 interface MeetingSummaryDialogProps {
@@ -41,8 +33,6 @@ interface MeetingSummaryDialogProps {
   onClose: () => void
   events: EventRow[]
   cancelledAppointments?: Set<string>
-  defaultOwnerName?: string
-  defaultAffiliation?: string
 }
 
 const ITEMS_PER_A4_PAGE = 5
@@ -52,8 +42,6 @@ export function MeetingSummaryDialog({
   onClose,
   events,
   cancelledAppointments = new Set(),
-  defaultOwnerName = '',
-  defaultAffiliation = '',
 }: MeetingSummaryDialogProps) {
   let text = (thai: string, _english?: string) => thai
   try {
@@ -77,9 +65,8 @@ export function MeetingSummaryDialog({
     return 5
   })
 
-  // Editable header state
-  const [calendarOwner, setCalendarOwner] = useState(defaultOwnerName || 'นายอลงกรณ์ สุเสาร์จัง')
-  const [responsibleDept, setResponsibleDept] = useState(defaultAffiliation || 'กกร.')
+  // Editable title label state
+  const [customTitleLabel, setCustomTitleLabel] = useState<string>('')
   const [showDescription, setShowDescription] = useState(true)
 
   // Weeks available in selected month
@@ -89,24 +76,30 @@ export function MeetingSummaryDialog({
   const activeRange = useMemo(() => {
     const pad = (n: number) => n.toString().padStart(2, '0')
     const m = pad(selectedMonth + 1)
+    const thaiYear = currentYear + 543
+    const monthName = THAI_MONTHS[selectedMonth]
 
     if (periodType === 'month') {
       const lastDay = new Date(currentYear, selectedMonth + 1, 0).getDate()
       return {
         start: new Date(`${currentYear}-${m}-01T00:00:00+07:00`),
         end: new Date(`${currentYear}-${m}-${pad(lastDay)}T23:59:59+07:00`),
-        titleLabel: `ประจำเดือน${THAI_MONTHS[selectedMonth]} ${currentYear + 543}`,
+        autoLabel: `ประจำเดือน${monthName} ${thaiYear}`,
       }
     }
 
     // Weekly mode
     const week = monthWeeks.find((w) => w.weekNumber === selectedWeekNumber) ?? monthWeeks[0]
+    const startDay = parseInt(week.startDate.slice(8, 10), 10)
+    const endDay = parseInt(week.endDate.slice(8, 10), 10)
     return {
       start: new Date(`${week.startDate}T00:00:00+07:00`),
       end: new Date(`${week.endDate}T23:59:59+07:00`),
-      titleLabel: `ประจำสัปดาห์ที่ ${week.weekNumber} (${formatThaiShortDate(week.startDate)} – ${formatThaiShortDate(week.endDate)})`,
+      autoLabel: `ประจำสัปดาห์ที่ ${week.weekNumber} (${startDay} – ${endDay} ${monthName} ${thaiYear})`,
     }
   }, [periodType, selectedMonth, selectedWeekNumber, monthWeeks, currentYear])
+
+  const effectiveTitleLabel = customTitleLabel.trim() || activeRange.autoLabel
 
   // Filtered and sorted meetings (Ascending by Date, then Ascending by Start Time)
   const allMeetings = useMemo(() => {
@@ -162,6 +155,7 @@ export function MeetingSummaryDialog({
     const day = today.getDate()
     setSelectedWeekNumber(day <= 7 ? 1 : day <= 14 ? 2 : day <= 21 ? 3 : day <= 28 ? 4 : 5)
     setPeriodType('week')
+    setCustomTitleLabel('')
     setHasInteractedWithSelection(false)
   }
 
@@ -169,6 +163,7 @@ export function MeetingSummaryDialog({
     const today = new Date()
     setSelectedMonth(today.getMonth())
     setPeriodType('month')
+    setCustomTitleLabel('')
     setHasInteractedWithSelection(false)
   }
 
@@ -280,9 +275,7 @@ export function MeetingSummaryDialog({
   const handleCopyText = async () => {
     if (selectedMeetings.length === 0) return
     const lines = [
-      `📢 สรุปการประชุม ${activeRange.titleLabel}`,
-      `👤 ผู้ครอบครองปฏิทิน : ${calendarOwner}`,
-      `🏢 หน่วยงานผู้รับผิดชอบ : ${responsibleDept}`,
+      `📢 สรุปการประชุม ${effectiveTitleLabel}`,
       '──────────────────────────────',
     ]
 
@@ -348,7 +341,7 @@ export function MeetingSummaryDialog({
         {/* Modal Body: Split View (Left: Controls & Checklist | Right: Live Preview) */}
         <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
           {/* LEFT: Controls & Checklist Panel */}
-          <div className="w-full lg:w-[480px] xl:w-[500px] flex flex-col border-b lg:border-b-0 lg:border-r border-slate-200 bg-slate-50/50 overflow-hidden">
+          <div className="w-full lg:w-[460px] xl:w-[480px] flex flex-col border-b lg:border-b-0 lg:border-r border-slate-200 bg-slate-50/50 overflow-hidden">
             {/* Filter Section */}
             <div className="p-4 border-b border-slate-200 bg-white space-y-3">
               {/* Period Type Buttons */}
@@ -357,6 +350,7 @@ export function MeetingSummaryDialog({
                   type="button"
                   onClick={() => {
                     setPeriodType('week')
+                    setCustomTitleLabel('')
                     setHasInteractedWithSelection(false)
                   }}
                   className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition ${
@@ -371,6 +365,7 @@ export function MeetingSummaryDialog({
                   type="button"
                   onClick={() => {
                     setPeriodType('month')
+                    setCustomTitleLabel('')
                     setHasInteractedWithSelection(false)
                   }}
                   className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition ${
@@ -395,6 +390,7 @@ export function MeetingSummaryDialog({
                     onChange={(e) => {
                       setSelectedMonth(parseInt(e.target.value, 10))
                       setSelectedWeekNumber(1)
+                      setCustomTitleLabel('')
                       setHasInteractedWithSelection(false)
                     }}
                   >
@@ -416,6 +412,7 @@ export function MeetingSummaryDialog({
                       value={selectedWeekNumber}
                       onChange={(e) => {
                         setSelectedWeekNumber(parseInt(e.target.value, 10))
+                        setCustomTitleLabel('')
                         setHasInteractedWithSelection(false)
                       }}
                     >
@@ -457,32 +454,30 @@ export function MeetingSummaryDialog({
                 </button>
               </div>
 
-              {/* Custom Header Fields (Collapsible / Compact) */}
-              <div className="pt-2 border-t border-slate-100 grid grid-cols-2 gap-2 text-xs">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 mb-0.5">
-                    {text('ผู้ครอบครองปฏิทิน', 'Calendar Owner')}
+              {/* Editable Period Subtitle */}
+              <div className="pt-2 border-t border-slate-100">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
+                    <Edit3 size={11} className="text-purple-700" />
+                    <span>{text('ข้อความหัวเรื่องประจำงวด', 'Period Subtitle')}</span>
                   </label>
-                  <input
-                    type="text"
-                    value={calendarOwner}
-                    onChange={(e) => setCalendarOwner(e.target.value)}
-                    className="w-full rounded-md border border-slate-300 px-2 py-1 text-xs focus:border-purple-500 focus:outline-none"
-                    placeholder="ชื่อผู้ครอบครอง"
-                  />
+                  {customTitleLabel && (
+                    <button
+                      type="button"
+                      onClick={() => setCustomTitleLabel('')}
+                      className="text-[10px] text-purple-700 hover:underline"
+                    >
+                      {text('คืนค่าเดิม', 'Reset')}
+                    </button>
+                  )}
                 </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 mb-0.5">
-                    {text('หน่วยงานผู้รับผิดชอบ', 'Department')}
-                  </label>
-                  <input
-                    type="text"
-                    value={responsibleDept}
-                    onChange={(e) => setResponsibleDept(e.target.value)}
-                    className="w-full rounded-md border border-slate-300 px-2 py-1 text-xs focus:border-purple-500 focus:outline-none"
-                    placeholder="หน่วยงาน"
-                  />
-                </div>
+                <input
+                  type="text"
+                  value={effectiveTitleLabel}
+                  onChange={(e) => setCustomTitleLabel(e.target.value)}
+                  className="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-xs text-slate-800 focus:border-purple-500 focus:outline-none"
+                  placeholder="เช่น ประจำเดือนพฤศจิกายน 2569"
+                />
               </div>
 
               {/* Toggle description */}
@@ -648,7 +643,7 @@ export function MeetingSummaryDialog({
               >
                 {/* 1. TOP HEADER SECTION */}
                 <div>
-                  <div className="flex items-center justify-between pb-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-purple-200/60">
                     <div className="flex items-center gap-3.5">
                       {/* PEA Official Round Emblem */}
                       <img
@@ -663,8 +658,8 @@ export function MeetingSummaryDialog({
                         <h1 className="text-3xl font-extrabold tracking-tight text-[#4c1553] leading-none">
                           สรุปการประชุม
                         </h1>
-                        <p className="text-base font-bold text-[#71277a] mt-1">
-                          {activeRange.titleLabel}
+                        <p className="text-base font-bold text-[#71277a] mt-1.5">
+                          {effectiveTitleLabel}
                         </p>
                       </div>
                     </div>
@@ -679,34 +674,9 @@ export function MeetingSummaryDialog({
                       </div>
                     </div>
                   </div>
-
-                  {/* 2. SUB-HEADER: CALENDAR OWNER & DEPARTMENT PILL */}
-                  <div className="mt-2 flex items-center justify-between rounded-xl bg-white/85 backdrop-blur-xs border border-purple-200 px-4 py-2.5 text-xs shadow-xs">
-                    <div className="flex items-center gap-2 text-slate-800">
-                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-purple-700 text-white shadow-xs">
-                        <User size={13} />
-                      </span>
-                      <span className="font-bold text-purple-950">
-                        ผู้ครอบครองปฏิทิน :{' '}
-                        <span className="font-medium text-slate-700">{calendarOwner || '-'}</span>
-                      </span>
-                    </div>
-
-                    <div className="h-4 w-[1px] bg-purple-200" />
-
-                    <div className="flex items-center gap-2 text-slate-800">
-                      <span className="flex h-6 w-6 items-center justify-center rounded-md bg-purple-700 text-white shadow-xs">
-                        <Building2 size={13} />
-                      </span>
-                      <span className="font-bold text-purple-950">
-                        หน่วยงานผู้รับผิดชอบ :{' '}
-                        <span className="font-medium text-slate-700">{responsibleDept || '-'}</span>
-                      </span>
-                    </div>
-                  </div>
                 </div>
 
-                {/* 3. MEETING CARDS TIMELINE SECTION */}
+                {/* 2. MEETING CARDS TIMELINE SECTION */}
                 <div className="my-6 relative flex-1">
                   {selectedMeetings.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-64 text-purple-400">
@@ -805,7 +775,7 @@ export function MeetingSummaryDialog({
                   )}
                 </div>
 
-                {/* 4. FOOTER: PEA BANNER ACCENT */}
+                {/* 3. FOOTER: PEA BANNER ACCENT */}
                 <div className="mt-4 pt-3 border-t border-purple-200/60 flex items-center justify-between text-xs text-purple-900/70">
                   <div className="flex items-center gap-2">
                     <span className="font-extrabold text-purple-900 tracking-wider">PEA</span>

@@ -58,8 +58,6 @@ test('MeetingSummaryDialog renders dialog with PEA theme header, checklist, and 
           open={true}
           onClose={() => {}}
           events={[mockMeeting]}
-          defaultOwnerName="นายอลงกรณ์ สุเสาร์จัง"
-          defaultAffiliation="กกร."
         />
       </LanguageProvider>
     )
@@ -67,8 +65,8 @@ test('MeetingSummaryDialog renders dialog with PEA theme header, checklist, and 
 
   const text = JSON.stringify(renderer?.toJSON())
   assert.ok(text.includes('สรุปการประชุม'), 'Should render title header')
-  assert.ok(text.includes('ผู้ครอบครองปฏิทิน'), 'Should render owner section')
-  assert.ok(text.includes('หน่วยงานผู้รับผิดชอบ'), 'Should render department section')
+  assert.ok(!text.includes('ผู้ครอบครองปฏิทิน'), 'Should not render owner section')
+  assert.ok(!text.includes('หน่วยงานผู้รับผิดชอบ : -'), 'Should not render department section')
   assert.ok(text.includes('ดาวน์โหลด PNG'), 'Should render PNG button')
   assert.ok(text.includes('ดาวน์โหลด PDF'), 'Should render PDF button')
   assert.ok(text.includes('คัดลอกข้อความ'), 'Should render copy text button')
