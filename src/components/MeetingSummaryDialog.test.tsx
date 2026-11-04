@@ -97,3 +97,27 @@ test('MeetingSummaryDialog renders multiline location split by slash', () => {
   assert.ok(text.includes('อาคาร 51'), 'Should render second line of location')
 })
 
+test('MeetingSummaryDialog renders full affiliation text without truncation', () => {
+  const meetingWithLongAffiliation: Database['public']['Tables']['events']['Row'] = {
+    ...mockMeeting,
+    id: 'm-affil',
+    affiliation: 'กกร. (Teams)',
+  }
+
+  let renderer: ReactTestRenderer | undefined
+  act(() => {
+    renderer = create(
+      <LanguageProvider>
+        <MeetingSummaryDialog
+          open={true}
+          onClose={() => {}}
+          events={[meetingWithLongAffiliation]}
+        />
+      </LanguageProvider>
+    )
+  })
+
+  const text = JSON.stringify(renderer?.toJSON())
+  assert.ok(text.includes('กกร. (Teams)'), 'Should render complete affiliation including parenthesized detail')
+})
+

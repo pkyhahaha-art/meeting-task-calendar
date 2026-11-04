@@ -656,7 +656,7 @@ export function MeetingSummaryDialog({
               <div
                 ref={previewRef}
                 id="pea-meeting-summary-canvas"
-                className="w-[680px] min-h-[920px] bg-gradient-to-b from-[#fbf8ff] via-[#f7f2fc] to-[#ede4f6] p-7 shadow-xl rounded-2xl border border-purple-200/80 flex flex-col justify-between font-sans relative"
+                className="w-[740px] min-h-[960px] bg-gradient-to-b from-[#fbf8ff] via-[#f7f2fc] to-[#ede4f6] p-7 shadow-xl rounded-2xl border border-purple-200/80 flex flex-col justify-between font-sans relative"
                 style={{
                   boxSizing: 'border-box',
                 }}
@@ -726,9 +726,9 @@ export function MeetingSummaryDialog({
 
                             {/* Card Body: 4 Columns (วันที่, เวลา, สถานที่, หน่วยงานผู้รับผิดชอบ) */}
                             <div className="px-3 py-2 bg-white">
-                              <div className="grid grid-cols-[140px_110px_1fr_85px] gap-2.5 text-xs items-start">
+                              <div className="grid grid-cols-[135px_105px_minmax(0,1fr)_minmax(0,1fr)] gap-3 text-xs items-start">
                                 {/* Col 1: วันที่ (แสดงข้อความเต็ม ไม่ตัดคำ) */}
-                                <div className="space-y-0.5">
+                                <div className="space-y-0.5 min-w-0">
                                   <div className="flex items-center gap-1.5 text-purple-900 font-bold text-[10.5px]">
                                     <span className="flex h-4.5 w-4.5 items-center justify-center rounded-full bg-purple-100 text-purple-800 shrink-0">
                                       <Calendar size={10} />
@@ -741,7 +741,7 @@ export function MeetingSummaryDialog({
                                 </div>
 
                                 {/* Col 2: เวลา (แสดงข้อความเต็ม) */}
-                                <div className="space-y-0.5">
+                                <div className="space-y-0.5 min-w-0">
                                   <div className="flex items-center gap-1.5 text-purple-900 font-bold text-[10.5px]">
                                     <span className="flex h-4.5 w-4.5 items-center justify-center rounded-full bg-purple-100 text-purple-800 shrink-0">
                                       <Clock size={10} />
@@ -776,7 +776,7 @@ export function MeetingSummaryDialog({
                                   </div>
                                 </div>
 
-                                {/* Col 4: หน่วยงานผู้รับผิดชอบ */}
+                                {/* Col 4: หน่วยงานผู้รับผิดชอบ (แบ่งพื้นที่สมดุลกับสถานที่ แสดงครบถ้วนไม่ถูกตัดทอน) */}
                                 <div className="space-y-0.5 min-w-0">
                                   <div className="flex items-center gap-1.5 text-purple-900 font-bold text-[10.5px]">
                                     <span className="flex h-4.5 w-4.5 items-center justify-center rounded-full bg-purple-100 text-purple-800 shrink-0">
@@ -784,9 +784,19 @@ export function MeetingSummaryDialog({
                                     </span>
                                     <span>หน่วยงาน</span>
                                   </div>
-                                  <p className="text-[11.5px] font-semibold text-slate-800 pl-6 leading-tight truncate">
-                                    {meeting.affiliation || '-'}
-                                  </p>
+                                  <div className="text-[11.5px] font-semibold text-slate-800 pl-6 leading-snug space-y-0.5 break-words">
+                                    {meeting.affiliation ? (
+                                      meeting.affiliation
+                                        .split(/\s*[\/\\]\s*|\n/)
+                                        .map((part) => part.trim())
+                                        .filter(Boolean)
+                                        .map((part, pIdx) => (
+                                          <div key={pIdx} className="leading-snug">{part}</div>
+                                        ))
+                                    ) : (
+                                      <span className="text-slate-400">-</span>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
 
