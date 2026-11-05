@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, CalendarDays, CalendarPlus, CalendarRange, CalendarClock, FileSpreadsheet, ListTodo, LogOut, Menu, Settings, ShieldCheck, Smartphone, UserRound, X } from 'lucide-react'
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import peaLogo from '../../ภาพประกอบUI/PEA Logo (1).png'
 
 import { useAuth } from '../auth/AuthProvider'
@@ -166,7 +166,7 @@ export function AppShell() {
               ['create-meeting', text('เพิ่ม Meeting', 'Add meeting'), CalendarPlus],
               ['meeting-summary', text('สรุปการประชุม', 'Meeting summary'), FileSpreadsheet],
             ] as const).map(([action, label, Icon]) => (
-              <NavLink key={action} to={`/calendar?action=${action}`} onClick={() => { setMenuOpen(false); setDesktopMenuExpanded(false) }} className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-medium text-white/85 transition hover:bg-white/12 hover:text-white"><Icon size={19} className="shrink-0" /><span>{label}</span></NavLink>
+              <Link key={action} to={`/calendar?action=${action}`} onClick={() => { setMenuOpen(false); setDesktopMenuExpanded(false) }} className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-medium text-white/85 transition hover:bg-white/12 hover:text-white"><Icon size={19} className="shrink-0" /><span>{label}</span></Link>
             ))}
           </div>
           <NavLink to="/mobile-push" title={text('แจ้งเตือนมือถือ', 'Mobile notifications')} onClick={() => { setMenuOpen(false); setDesktopMenuExpanded(false) }} className={navClass}><Smartphone size={19} className="shrink-0" /><span className={`${navLabel} lg:group-[.sidebar-expanded]:not-sr-only`}>{text('แจ้งเตือนมือถือ', 'Mobile notifications')}</span></NavLink>
