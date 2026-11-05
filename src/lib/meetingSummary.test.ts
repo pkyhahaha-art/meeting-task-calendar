@@ -30,6 +30,10 @@ test('formatTimeRange handles all day and regular times', () => {
     endTime: '23:59',
     text: 'ตลอดวัน',
   })
+  assert.deepEqual(formatTimeRange('2026-11-04T17:00:00Z', '2026-11-04T18:30:00Z'), {
+    startTime: '00:00', endTime: '01:30', text: '00:00 – 01:30 น.',
+  })
+  assert.equal(formatTimeRange('2026-11-04T23:00:00Z').text, '06:00 น.')
 })
 
 test('getMonthWeeks returns 4 or 5 week intervals for a month', () => {
@@ -169,5 +173,20 @@ test('filterAndSortMeetingsForSummary sorts by date asc then start time asc', ()
   assert.equal(results[2].eventId, 'e1')
   assert.equal(results[2].dateKey, '2026-11-05')
   assert.equal(results[2].startTime, '13:30')
+
+  // These UTC dates fall on Nov 4, but both meetings are on Nov 5 in Bangkok.
+  const early = [
+    { ...mockEvents[0], id: 'early-six', start_datetime: '2026-11-04T23:00:00Z', end_datetime: '2026-11-05T00:00:00Z' },
+    { ...mockEvents[0], id: 'midnight', start_datetime: '2026-11-04T17:00:00Z', end_datetime: '2026-11-04T18:00:00Z' },
+  ]
+  const midnightRangeStart = new Date('2026-11-05T00:00:00+07:00')
+  const midnightRangeEnd = new Date('2026-11-06T00:00:00+07:00')
+  const summaries = filterAndSortMeetingsForSummary(early, midnightRangeStart, midnightRangeEnd)
+  assert.deepEqual(summaries.map((item) => [item.eventId, item.dateKey, item.startTime, item.thaiDate]), [
+    ['midnight', '2026-11-05', '00:00', '5 พฤศจิกายน 2569'],
+    ['early-six', '2026-11-05', '06:00', '5 พฤศจิกายน 2569'],
+  ])
+  const cancelled = new Set([`midnight:${Date.parse('2026-11-04T17:00:00Z')}`])
+  assert.deepEqual(filterAndSortMeetingsForSummary(early, midnightRangeStart, midnightRangeEnd, cancelled).map((item) => item.eventId), ['early-six'])
 })
 

@@ -1,5 +1,5 @@
 import type { Database } from './database.types'
-import { calendarMeetingOccurrences } from './calendarView'
+import { calendarDayKey, calendarMeetingOccurrences } from './calendarView'
 
 export type EventRow = Database['public']['Tables']['events']['Row']
 
@@ -39,6 +39,10 @@ const THAI_MONTHS_SHORT = [
   'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.',
 ]
 
+const bangkokTimeFormatter = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+})
+
 /**
  * Format date string "YYYY-MM-DD" to Thai full date e.g. "5 พฤศจิกายน 2569"
  */
@@ -71,16 +75,13 @@ export function formatTimeRange(startIso: string, endIso?: string | null, allDay
     return { startTime: '00:00', endTime: '23:59', text: 'ตลอดวัน' }
   }
 
-  const startDate = new Date(startIso)
-  const pad = (n: number) => n.toString().padStart(2, '0')
-  const startTime = `${pad(startDate.getHours())}:${pad(startDate.getMinutes())}`
+  const startTime = bangkokTimeFormatter.format(new Date(startIso))
 
   if (!endIso) {
     return { startTime, endTime: '', text: `${startTime} น.` }
   }
 
-  const endDate = new Date(endIso)
-  const endTime = `${pad(endDate.getHours())}:${pad(endDate.getMinutes())}`
+  const endTime = bangkokTimeFormatter.format(new Date(endIso))
   return { startTime, endTime, text: `${startTime} – ${endTime} น.` }
 }
 
@@ -169,7 +170,7 @@ export function filterAndSortMeetingsForSummary(
       const occurrenceTime = new Date(occ.start).getTime()
       if (cancelledKeys.has(`${event.id}:${occurrenceTime}`)) continue
 
-      const dateKey = occ.start.slice(0, 10)
+      const dateKey = calendarDayKey(occ.start)
       const timeInfo = formatTimeRange(occ.start, occ.end, event.all_day)
 
       items.push({
