@@ -68,6 +68,7 @@ export function MeetingSummaryDialog({
   // Editable title label state
   const [customTitleLabel, setCustomTitleLabel] = useState<string>('')
   const [showDescription, setShowDescription] = useState(true)
+  const [mobilePanel, setMobilePanel] = useState<'edit' | 'preview'>('edit')
   const [descriptionEnabled, setDescriptionEnabled] = useState<Record<string, boolean>>({})
   const [customDescriptions, setCustomDescriptions] = useState<Record<string, string>>({})
 
@@ -287,7 +288,7 @@ export function MeetingSummaryDialog({
       lines.push(`   📍 สถานที่: ${m.location}`)
       lines.push(`   🏢 หน่วยงาน: ${m.affiliation}`)
       const desc = (customDescriptions[m.id] ?? m.description).trim()
-      if (showDescription && descriptionEnabled[m.id] !== false && desc) {
+      if (showDescription && descriptionEnabled[m.id] === true && desc) {
         const descLines = desc.split('\n').map((l) => l.trim()).filter(Boolean)
         if (descLines.length === 1) {
           lines.push(`   📝 รายละเอียด: ${descLines[0]}`)
@@ -318,22 +319,23 @@ export function MeetingSummaryDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-2 sm:p-4 backdrop-blur-sm overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 lg:p-4 backdrop-blur-sm overflow-hidden"
       role="dialog"
       aria-modal="true"
+      aria-labelledby="meeting-summary-title"
     >
-      <div className="relative flex flex-col w-full max-w-6xl max-h-[94vh] rounded-2xl bg-white shadow-2xl border border-purple-100 overflow-hidden">
+      <div className="relative flex flex-col w-full max-w-6xl h-[100dvh] max-h-[100dvh] lg:h-[94vh] lg:max-h-[94vh] lg:rounded-2xl bg-white shadow-2xl border border-purple-100 overflow-hidden">
         {/* Modal Top Bar */}
-        <div className="flex items-center justify-between border-b border-purple-100 bg-gradient-to-r from-purple-50 via-white to-purple-50/50 px-5 py-3.5">
-          <div className="flex items-center gap-2.5">
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-purple-100 bg-gradient-to-r from-purple-50 via-white to-purple-50/50 px-3 py-2 lg:px-5 lg:py-3.5">
+          <div className="flex min-w-0 items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple-700 text-white shadow-sm">
               <FileSpreadsheet size={19} />
             </div>
             <div>
-              <h2 className="text-base font-bold text-purple-950">
+              <h2 id="meeting-summary-title" className="text-sm lg:text-base font-bold text-purple-950">
                 {text('สรุปการประชุม (Meeting Summary)', 'Meeting Summary')}
               </h2>
-              <p className="text-xs text-purple-700/80">
+              <p className="hidden lg:block text-xs text-purple-700/80">
                 {text('คัดเลือกนัดหมาย จัดเรียงตามวันและเวลา พร้อมส่งออก PNG และ PDF สไตล์ PEA', 'Select meetings, sort by date and time, and export to PEA-themed PNG & PDF')}
               </p>
             </div>
@@ -341,18 +343,29 @@ export function MeetingSummaryDialog({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition"
+            aria-label={text('ปิดสรุปการประชุม', 'Close meeting summary')}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-600 transition"
           >
             <X size={18} />
           </button>
         </div>
 
+        <div className="flex shrink-0 gap-1 border-b border-purple-100 bg-white p-2 lg:hidden" role="group" aria-label={text('ขั้นตอนสรุปการประชุม', 'Meeting summary steps')}>
+          {(['edit', 'preview'] as const).map((panel) => (
+            <button key={panel} type="button" aria-pressed={mobilePanel === panel}
+              onClick={() => setMobilePanel(panel)}
+              className={`min-h-11 flex-1 rounded-xl px-2 py-2 text-sm font-bold transition ${mobilePanel === panel ? 'bg-[#75638F] text-white' : 'bg-slate-100 text-slate-600'}`}>
+              {panel === 'edit' ? text('เลือกและแก้ไข', 'Select & edit') : text('ดูตัวอย่าง / ส่งออก', 'Preview / export')}
+            </button>
+          ))}
+        </div>
+
         {/* Modal Body: Split View (Left: Controls & Checklist | Right: Live Preview) */}
         <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
           {/* LEFT: Controls & Checklist Panel */}
-          <div className="w-full lg:w-[460px] xl:w-[480px] flex flex-col border-b lg:border-b-0 lg:border-r border-slate-200 bg-slate-50/50 overflow-hidden">
+          <div aria-label={text('เลือกและแก้ไขรายการประชุม', 'Select and edit meetings')} className={`w-full min-h-0 lg:w-[460px] xl:w-[480px] lg:shrink-0 ${mobilePanel === 'edit' ? 'flex' : 'hidden'} lg:flex flex-col border-b lg:border-b-0 lg:border-r border-slate-200 bg-slate-50/50 overflow-y-auto lg:overflow-hidden`}>
             {/* Filter Section */}
-            <div className="p-4 border-b border-slate-200 bg-white space-y-3">
+            <div className="shrink-0 p-3 lg:p-4 border-b border-slate-200 bg-white space-y-3">
               {/* Period Type Buttons */}
               <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-100 border border-slate-200/80">
                 <button
@@ -504,7 +517,7 @@ export function MeetingSummaryDialog({
             </div>
 
             {/* Checklist Header & Bulk Actions */}
-            <div className="flex items-center justify-between px-4 py-2.5 bg-slate-100/90 border-b border-slate-200 text-xs">
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 px-3 lg:px-4 py-2.5 bg-slate-100/90 border-b border-slate-200 text-xs">
               <div className="flex items-center gap-1.5 font-bold text-slate-700">
                 <CheckSquare size={14} className="text-purple-700" />
                 <span>
@@ -516,7 +529,7 @@ export function MeetingSummaryDialog({
                 <button
                   type="button"
                   onClick={handleSelectAll}
-                  className="text-purple-700 hover:text-purple-900 font-bold hover:underline"
+                  className="min-h-11 px-1 text-purple-700 hover:text-purple-900 font-bold hover:underline"
                 >
                   {text('เลือกทั้งหมด', 'Select all')}
                 </button>
@@ -524,7 +537,7 @@ export function MeetingSummaryDialog({
                 <button
                   type="button"
                   onClick={handleDeselectAll}
-                  className="text-slate-500 hover:text-slate-700 font-bold hover:underline"
+                  className="min-h-11 px-1 text-slate-500 hover:text-slate-700 font-bold hover:underline"
                 >
                   {text('ปลดทั้งหมด', 'Clear')}
                 </button>
@@ -532,7 +545,7 @@ export function MeetingSummaryDialog({
             </div>
 
             {/* Checklist Items Scroll Container */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            <div className="shrink-0 lg:shrink lg:flex-1 lg:overflow-y-auto p-3 space-y-2">
               {allMeetings.length === 0 ? (
                 <div className="p-8 text-center text-slate-400">
                   <Calendar size={32} className="mx-auto mb-2 opacity-50" />
@@ -587,14 +600,14 @@ export function MeetingSummaryDialog({
                             <label className="flex min-h-11 items-center gap-2 text-[10px] font-semibold text-purple-900 mb-0.5 cursor-pointer">
                               <input
                                 type="checkbox"
-                                checked={descriptionEnabled[meeting.id] !== false}
+                                checked={descriptionEnabled[meeting.id] === true}
                                 onChange={(e) => setDescriptionEnabled((previous) => ({ ...previous, [meeting.id]: e.target.checked }))}
                                 aria-label={text(`แสดงรายละเอียด ${meeting.title}`, `Show description for ${meeting.title}`)}
                                 className="h-3.5 w-3.5 shrink-0 appearance-none rounded-full border border-purple-400 checked:bg-purple-600 checked:border-purple-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600"
                               />
                               {text('รายละเอียด (พิมพ์แก้ไขข้อความสรุปได้ / กด Enter ขึ้นบรรทัดใหม่ได้):', 'Description (editable / Enter for new line):')}
                             </label>
-                            {descriptionEnabled[meeting.id] !== false && (
+                            {descriptionEnabled[meeting.id] === true && (
                             <textarea
                               rows={2}
                               value={customDescriptions[meeting.id] ?? meeting.description}
@@ -617,10 +630,10 @@ export function MeetingSummaryDialog({
           </div>
 
           {/* RIGHT: Live Preview & Export Container */}
-          <div className="flex-1 flex flex-col min-h-0 bg-slate-200/60 overflow-hidden">
+          <div aria-label={text('ตัวอย่างและส่งออกสรุปประชุม', 'Meeting summary preview and export')} className={`flex-1 ${mobilePanel === 'preview' ? 'flex' : 'hidden'} lg:flex flex-col min-h-0 min-w-0 bg-slate-200/60 overflow-hidden`}>
             {/* Action Bar Above Preview */}
-            <div className="flex items-center justify-between px-5 py-2.5 bg-white border-b border-slate-200">
-              <div className="flex items-center gap-2">
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 px-3 lg:px-5 py-2.5 bg-white border-b border-slate-200">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-bold text-slate-700">
                   {text('ตัวอย่างภาพสรุป (Live Preview)', 'Live Preview')}
                 </span>
@@ -629,12 +642,12 @@ export function MeetingSummaryDialog({
                   {selectedMeetings.length <= ITEMS_PER_A4_PAGE ? text(' • พอดี 1 หน้า A4', ' • Fits 1 A4 page') : text(' • ยาวต่อเนื่อง', ' • Long infographic')})
                 </span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="grid w-full grid-cols-3 gap-2 lg:flex lg:w-auto">
                 <button
                   type="button"
                   onClick={handleCopyText}
                   disabled={selectedMeetings.length === 0}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-xs transition disabled:opacity-40"
+                  className="inline-flex min-h-11 items-center justify-center gap-1.5 px-2 lg:px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-xs transition disabled:opacity-40"
                 >
                   {copied ? <Check size={14} className="text-green-600" /> : <Copy size={14} />}
                   <span>{copied ? text('คัดลอกแล้ว', 'Copied') : text('คัดลอกข้อความ', 'Copy Text')}</span>
@@ -643,7 +656,7 @@ export function MeetingSummaryDialog({
                   type="button"
                   onClick={handleExportPng}
                   disabled={selectedMeetings.length === 0 || isExporting}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border border-purple-300 bg-purple-50 text-xs font-bold text-purple-800 hover:bg-purple-100 shadow-xs transition disabled:opacity-40"
+                  className="inline-flex min-h-11 items-center justify-center gap-1.5 px-2 lg:px-3.5 py-1.5 rounded-lg border border-purple-300 bg-purple-50 text-xs font-bold text-purple-800 hover:bg-purple-100 shadow-xs transition disabled:opacity-40"
                 >
                   <Download size={14} />
                   <span>{text('ดาวน์โหลด PNG', 'Download PNG')}</span>
@@ -652,7 +665,7 @@ export function MeetingSummaryDialog({
                   type="button"
                   onClick={handleExportPdf}
                   disabled={selectedMeetings.length === 0 || isExporting}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-purple-700 text-xs font-bold text-white hover:bg-purple-800 shadow-xs transition disabled:opacity-40"
+                  className="inline-flex min-h-11 items-center justify-center gap-1.5 px-2 lg:px-3.5 py-1.5 rounded-lg bg-purple-700 text-xs font-bold text-white hover:bg-purple-800 shadow-xs transition disabled:opacity-40"
                 >
                   <Printer size={14} />
                   <span>{text('ดาวน์โหลด PDF (A4)', 'Download PDF (A4)')}</span>
@@ -661,12 +674,13 @@ export function MeetingSummaryDialog({
             </div>
 
             {/* Scrollable Preview Area */}
-            <div className="flex-1 overflow-auto p-4 flex justify-center items-start">
+            <p className="shrink-0 px-3 py-2 text-xs text-slate-600 lg:hidden">{text('เลื่อนซ้าย–ขวาเพื่อดูภาพสรุปครบทุกส่วน', 'Scroll horizontally to view the full summary.')}</p>
+            <div className="flex-1 min-h-0 overflow-auto p-3 lg:p-4 flex justify-start items-start" tabIndex={0} aria-label={text('ภาพตัวอย่างสรุป เลื่อนเพื่อดูทั้งหมด', 'Summary image preview, scroll to view all')}>
               {/* THE INFOGRAPHIC CANVAS / TEMPLATE CONTAINER */}
               <div
                 ref={previewRef}
                 id="pea-meeting-summary-canvas"
-                className="w-[740px] min-h-[960px] bg-gradient-to-b from-[#fbf8ff] via-[#f7f2fc] to-[#ede4f6] p-7 shadow-xl rounded-2xl border border-purple-200/80 flex flex-col justify-between font-sans relative"
+                className="w-[740px] shrink-0 mx-auto min-h-[960px] bg-gradient-to-b from-[#fbf8ff] via-[#f7f2fc] to-[#ede4f6] p-7 shadow-xl rounded-2xl border border-purple-200/80 flex flex-col justify-between font-sans relative"
                 style={{
                   boxSizing: 'border-box',
                 }}
@@ -811,7 +825,7 @@ export function MeetingSummaryDialog({
                               </div>
 
                               {/* Description row: ปิดได้ หรือพิมพ์แก้ไขสรุปเองได้ (รองรับข้อความหลายบรรทัด) */}
-                              {showDescription && descriptionEnabled[meeting.id] !== false && (customDescriptions[meeting.id] ?? meeting.description).trim() && (
+                              {showDescription && descriptionEnabled[meeting.id] === true && (customDescriptions[meeting.id] ?? meeting.description).trim() && (
                                 <div className="mt-2 pt-1.5 border-t border-purple-100/70 flex items-start gap-1.5 text-[10.5px] text-slate-700 bg-purple-50/40 px-2.5 py-1.5 rounded-md min-w-0 break-words">
                                   <FileText size={11} className="shrink-0 text-purple-700 mt-0.5" />
                                   <div className="leading-relaxed font-normal text-slate-700 break-words whitespace-pre-wrap min-w-0 flex-1">
