@@ -7,6 +7,21 @@ import { MeetingSummaryDialog } from './MeetingSummaryDialog'
 
 Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: { getItem: () => 'th' } })
 
+test('per-meeting description toggle hides the editor and preview while retaining the edited draft', () => {
+  const now = new Date()
+  const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  let renderer!: ReactTestRenderer
+  act(() => { renderer = create(<LanguageProvider><MeetingSummaryDialog open onClose={() => {}} events={[{ ...mockMeeting, start_datetime: `${day}T13:30:00+07:00`, end_datetime: `${day}T14:30:00+07:00` }]} /></LanguageProvider>) })
+  const toggle = () => renderer.root.findAllByType('input').find((input) => String(input.props['aria-label'] ?? '').startsWith('แสดงรายละเอียด '))!
+  act(() => renderer.root.findByType('textarea').props.onChange({ target: { value: 'ข้อความที่แก้ไว้' } }))
+  act(() => toggle().props.onChange({ target: { checked: false } }))
+  assert.equal(renderer.root.findAllByType('textarea').length, 0)
+  assert.ok(!JSON.stringify(renderer.toJSON()).includes('ข้อความที่แก้ไว้'))
+  act(() => toggle().props.onChange({ target: { checked: true } }))
+  assert.equal(renderer.root.findByType('textarea').props.value, 'ข้อความที่แก้ไว้')
+  act(() => renderer.unmount())
+})
+
 const mockMeeting: Database['public']['Tables']['events']['Row'] = {
   id: 'm-1',
   title: 'สตภ. มาสัมภาษณ์',

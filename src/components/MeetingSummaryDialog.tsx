@@ -68,6 +68,7 @@ export function MeetingSummaryDialog({
   // Editable title label state
   const [customTitleLabel, setCustomTitleLabel] = useState<string>('')
   const [showDescription, setShowDescription] = useState(true)
+  const [descriptionEnabled, setDescriptionEnabled] = useState<Record<string, boolean>>({})
   const [customDescriptions, setCustomDescriptions] = useState<Record<string, string>>({})
 
   // Weeks available in selected month
@@ -286,7 +287,7 @@ export function MeetingSummaryDialog({
       lines.push(`   📍 สถานที่: ${m.location}`)
       lines.push(`   🏢 หน่วยงาน: ${m.affiliation}`)
       const desc = (customDescriptions[m.id] ?? m.description).trim()
-      if (showDescription && desc) {
+      if (showDescription && descriptionEnabled[m.id] !== false && desc) {
         const descLines = desc.split('\n').map((l) => l.trim()).filter(Boolean)
         if (descLines.length === 1) {
           lines.push(`   📝 รายละเอียด: ${descLines[0]}`)
@@ -583,9 +584,17 @@ export function MeetingSummaryDialog({
                         )}
                         {showDescription && (
                           <div className="mt-1.5 pt-1" onClick={(e) => e.stopPropagation()}>
-                            <label className="block text-[10px] font-semibold text-purple-900 mb-0.5">
+                            <label className="flex min-h-11 items-center gap-2 text-[10px] font-semibold text-purple-900 mb-0.5 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={descriptionEnabled[meeting.id] !== false}
+                                onChange={(e) => setDescriptionEnabled((previous) => ({ ...previous, [meeting.id]: e.target.checked }))}
+                                aria-label={text(`แสดงรายละเอียด ${meeting.title}`, `Show description for ${meeting.title}`)}
+                                className="h-5 w-5 shrink-0 appearance-none rounded-full border-2 border-purple-400 checked:bg-purple-600 checked:border-purple-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600"
+                              />
                               {text('รายละเอียด (พิมพ์แก้ไขข้อความสรุปได้ / กด Enter ขึ้นบรรทัดใหม่ได้):', 'Description (editable / Enter for new line):')}
                             </label>
+                            {descriptionEnabled[meeting.id] !== false && (
                             <textarea
                               rows={2}
                               value={customDescriptions[meeting.id] ?? meeting.description}
@@ -596,6 +605,7 @@ export function MeetingSummaryDialog({
                               placeholder={text('พิมพ์ข้อความสรุปย่อ (กด Enter ขึ้นบรรทัดใหม่ได้)...', 'Type short summary (Enter for new line)...')}
                               className="w-full text-[11px] px-2 py-1.5 rounded-md border border-purple-200 bg-white focus:outline-none focus:border-purple-500 text-slate-700 shadow-2xs resize-y leading-snug"
                             />
+                            )}
                           </div>
                         )}
                       </div>
@@ -801,7 +811,7 @@ export function MeetingSummaryDialog({
                               </div>
 
                               {/* Description row: ปิดได้ หรือพิมพ์แก้ไขสรุปเองได้ (รองรับข้อความหลายบรรทัด) */}
-                              {showDescription && (customDescriptions[meeting.id] ?? meeting.description).trim() && (
+                              {showDescription && descriptionEnabled[meeting.id] !== false && (customDescriptions[meeting.id] ?? meeting.description).trim() && (
                                 <div className="mt-2 pt-1.5 border-t border-purple-100/70 flex items-start gap-1.5 text-[10.5px] text-slate-700 bg-purple-50/40 px-2.5 py-1.5 rounded-md min-w-0 break-words">
                                   <FileText size={11} className="shrink-0 text-purple-700 mt-0.5" />
                                   <div className="leading-relaxed font-normal text-slate-700 break-words whitespace-pre-wrap min-w-0 flex-1">

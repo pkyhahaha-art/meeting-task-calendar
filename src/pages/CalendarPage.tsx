@@ -128,6 +128,21 @@ export function CalendarPage() {
   const [eventDialog, setEventDialog] = useState<{ open: boolean; event: EventRow | null; date?: string; occurrenceStart?: string }>({ open: false, event: null })
   const [taskDialog, setTaskDialog] = useState<{ open: boolean; task: TaskRow | null; date?: string }>({ open: false, task: null })
   const [summaryDialogOpen, setSummaryDialogOpen] = useState(false)
+  const consumedCalendarAction = useRef<string | null>(null)
+  useEffect(() => {
+    const params = new URLSearchParams(locationSearch)
+    const action = params.get('action')
+    if (!action) { consumedCalendarAction.current = null; return }
+    if (!user || profile?.status !== 'active' || consumedCalendarAction.current === locationSearch) return
+    if (!['create-task', 'create-meeting', 'meeting-summary'].includes(action)) return
+    consumedCalendarAction.current = locationSearch
+    setTaskDialog({ open: action === 'create-task', task: null })
+    setEventDialog({ open: action === 'create-meeting', event: null })
+    setSummaryDialogOpen(action === 'meeting-summary')
+    params.delete('action')
+    const remaining = params.toString()
+    navigate(`/calendar${remaining ? `?${remaining}` : ''}`, { replace: true })
+  }, [locationSearch, navigate, user, profile?.status])
   const [yearDayDialog, setYearDayDialog] = useState<{ open: boolean; date: string; entries: any[] } | null>(null)
   const [openedEventLink, setOpenedEventLink] = useState<string | null>(null)
   const [openedTaskLink, setOpenedTaskLink] = useState<string | null>(null)
@@ -1381,7 +1396,7 @@ export function CalendarPage() {
               })}
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="hidden items-center gap-2 shrink-0 lg:flex">
               <button
                 type="button"
                 className="btn-secondary semantic-summary-action inline-flex min-h-9 items-center justify-center gap-1.5 rounded-xl border border-[#75638F] bg-white px-3.5 py-1.5 text-xs font-bold text-[#75638F] shadow-sm transition hover:bg-[#75638F]/10"
@@ -1451,7 +1466,7 @@ export function CalendarPage() {
           </div>
         </div>
         <aside className="calendar-sidebar grid content-start gap-3 sm:grid-cols-2 lg:order-1 lg:flex lg:min-h-0 lg:flex-col lg:gap-2 lg:overflow-y-auto lg:border lg:border-slate-200 lg:bg-slate-50" aria-label={text('สรุปปฏิทิน', 'Calendar summary')}>
-          <section className="mini-calendar-card card p-3 sm:p-3.5 sm:col-span-2 lg:col-span-1 lg:shrink-0" aria-label={text('เลือกวันที่ในปฏิทิน', 'Choose a calendar date')}>
+          <section className="mini-calendar-card card hidden p-3 sm:p-3.5 sm:col-span-2 lg:block lg:col-span-1 lg:shrink-0" aria-label={text('เลือกวันที่ในปฏิทิน', 'Choose a calendar date')}>
             <FullCalendar ref={miniCalendarRef} plugins={[dayGridPlugin, interactionPlugin, luxonPlugin]} initialView="dayGridMonth"
               locale={language === 'th' ? thLocale : enGbLocale} timeZone="Asia/Bangkok" firstDay={1} height="auto"
               dayHeaderContent={(info) => formatCalendarDayHeader(info.date, info.view?.type, language)}

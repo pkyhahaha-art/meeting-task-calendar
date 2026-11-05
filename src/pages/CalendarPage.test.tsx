@@ -16,6 +16,7 @@ function calendarPage(options: { mobile?: boolean } = {}) {
   let role = 'user'
   let status = 'active'
   let routeSearch = ''
+  const routeNavigations: { to: string; options?: { replace?: boolean } }[] = []
   const queries = new Map<string, { queryKey: string[]; enabled?: boolean; queryFn: () => Promise<unknown> }>()
   const queryErrors = new Set<string>()
   const mutations: Record<string, unknown>[] = []
@@ -56,7 +57,7 @@ function calendarPage(options: { mobile?: boolean } = {}) {
     react: React,
     '@fullcalendar/react': Calendar,
     '@tanstack/react-query': { useQuery: (options: { queryKey: string[]; enabled?: boolean; queryFn: () => Promise<unknown> }) => { queries.set(options.queryKey[0], options); return { data: queryData[options.queryKey[0]], isError: queryErrors.has(options.queryKey[0]), isLoading: false } }, useMutation: (options: { mutationFn?: (args: Record<string, unknown>) => Promise<unknown> }) => { mutationOptions.push(options); return { isPending: false, isError: false, mutateAsync: async (args: Record<string, unknown>) => { mutations.push(args) } } }, useQueryClient: () => ({ invalidateQueries: async () => { } }) },
-    'react-router-dom': { useLocation: () => ({ search: routeSearch }), useNavigate: () => () => { }, useOutletContext: () => ({}) },
+    'react-router-dom': { useLocation: () => ({ search: routeSearch }), useNavigate: () => (to: string, options?: { replace?: boolean }) => { routeNavigations.push({ to, options }) }, useOutletContext: () => ({}) },
     '../auth/AuthProvider': { useAuth: () => ({ user: { id: userId }, profile: { role, status } }) },
     '../i18n/LanguageProvider': { useLanguage: () => ({ language, text }) },
     '../components/ConfirmDialogProvider': { useConfirm: () => confirm },
@@ -79,7 +80,7 @@ function calendarPage(options: { mobile?: boolean } = {}) {
   const viewSelect = () => renderer.root.findByProps({ 'aria-label': 'Calendar view' })
   const refresh = () => act(() => renderer.update(React.createElement(exports.CalendarPage!)))
   return {
-    renderer, calendar, button, viewSelect, changes, anchor, navigation, queryData, queries, queryErrors, mutations, rpcCalls, mutationOptions, writes, meetings, tasks, occurrenceRanges, confirmations,
+    renderer, calendar, button, viewSelect, changes, anchor, navigation, routeNavigations, queryData, queries, queryErrors, mutations, rpcCalls, mutationOptions, writes, meetings, tasks, occurrenceRanges, confirmations,
     setActiveDate: (date: Date) => { activeDate = date },
     renders: () => calendarRenders, refresh,
     setLanguage: (next: string) => { language = next; text = (th, en) => next === 'th' ? th : en; refresh() },
@@ -345,5 +346,31 @@ test('mobile screen defaults to day calendar view and timeGridDay', () => {
   try {
     assert.equal(page.viewSelect().props.value, 'day')
     assert.equal(page.calendar().props.initialView, 'timeGridDay')
+  } finally { act(() => page.renderer.unmount()) }
+})
+
+test('navigation actions open the matching dialog once and consume only the action query', () => {
+  const page = calendarPage({ mobile: true })
+  try {
+    page.setRole('user', 'disabled')
+    page.setRoute('?action=create-task')
+    assert.equal(page.renderer.root.findByType('task-dialog' as React.ElementType).props.open, false)
+    page.setRole('user')
+    assert.equal(page.renderer.root.findByType('task-dialog' as React.ElementType).props.open, true)
+    assert.equal(page.routeNavigations.at(-1)?.to, '/calendar')
+    assert.equal(page.routeNavigations.at(-1)?.options?.replace, true)
+    const navigations = page.routeNavigations.length
+    page.refresh()
+    assert.equal(page.routeNavigations.length, navigations)
+    page.setRoute('')
+    page.setRoute('?action=create-meeting&keep=yes')
+    assert.equal(page.renderer.root.findByProps({ 'data-testid': 'event-dialog' }).props.open, true)
+    assert.equal(page.renderer.root.findByType('task-dialog' as React.ElementType).props.open, false)
+    assert.equal(page.routeNavigations.at(-1)?.to, '/calendar?keep=yes')
+    assert.equal(page.routeNavigations.at(-1)?.options?.replace, true)
+    page.setRoute('')
+    page.setRoute('?action=meeting-summary')
+    assert.equal(page.renderer.root.findByProps({ 'data-testid': 'meeting-summary-dialog' }).props.open, true)
+    assert.equal(page.renderer.root.findByProps({ 'data-testid': 'event-dialog' }).props.open, false)
   } finally { act(() => page.renderer.unmount()) }
 })

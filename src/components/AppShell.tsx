@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, CalendarDays, CalendarRange, CalendarClock, LogOut, Menu, Settings, ShieldCheck, Smartphone, UserRound, X } from 'lucide-react'
+import { ArrowLeft, CalendarDays, CalendarPlus, CalendarRange, CalendarClock, FileSpreadsheet, ListTodo, LogOut, Menu, Settings, ShieldCheck, Smartphone, UserRound, X } from 'lucide-react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import peaLogo from '../../ภาพประกอบUI/PEA Logo (1).png'
 
@@ -160,6 +160,15 @@ export function AppShell() {
         </div>
         <nav className="px-3 py-5" aria-label={text('เมนูหลัก', 'Main navigation')}>
           <NavLink to="/calendar" title={t('calendar')} onClick={() => { setMenuOpen(false); setDesktopMenuExpanded(false) }} className={navClass}><CalendarDays size={19} /><span className={`${navLabel} lg:group-[.sidebar-expanded]:not-sr-only`}>{t('calendar')}</span></NavLink>
+          <div className="my-2 space-y-1 border-y border-white/15 py-2 lg:hidden" aria-label={text('จัดการรายการปฏิทิน', 'Calendar actions')}>
+            {([
+              ['create-task', text('เพิ่ม Task', 'Add task'), ListTodo],
+              ['create-meeting', text('เพิ่ม Meeting', 'Add meeting'), CalendarPlus],
+              ['meeting-summary', text('สรุปการประชุม', 'Meeting summary'), FileSpreadsheet],
+            ] as const).map(([action, label, Icon]) => (
+              <NavLink key={action} to={`/calendar?action=${action}`} onClick={() => { setMenuOpen(false); setDesktopMenuExpanded(false) }} className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-medium text-white/85 transition hover:bg-white/12 hover:text-white"><Icon size={19} className="shrink-0" /><span>{label}</span></NavLink>
+            ))}
+          </div>
           <NavLink to="/mobile-push" title={text('แจ้งเตือนมือถือ', 'Mobile notifications')} onClick={() => { setMenuOpen(false); setDesktopMenuExpanded(false) }} className={navClass}><Smartphone size={19} className="shrink-0" /><span className={`${navLabel} lg:group-[.sidebar-expanded]:not-sr-only`}>{text('แจ้งเตือนมือถือ', 'Mobile notifications')}</span></NavLink>
           <NavLink to="/profile" title={text('บัญชีและตั้งค่า', 'Account & settings')} onClick={() => { setMenuOpen(false); setDesktopMenuExpanded(false) }} className={navClass}><UserRound size={19} /><span className={`${navLabel} lg:group-[.sidebar-expanded]:not-sr-only`}>{text('บัญชีและตั้งค่า', 'Account & settings')}</span></NavLink>
           {profile?.role === 'admin' && <NavLink to="/admin" title="Admin" onClick={() => { setMenuOpen(false); setDesktopMenuExpanded(false) }} className={navClass}><ShieldCheck size={19} /><span className={`${navLabel} lg:group-[.sidebar-expanded]:not-sr-only`}>Admin</span></NavLink>}
