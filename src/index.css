@@ -1709,11 +1709,6 @@ body { font-size: 15px; line-height: 1.6; }
     text-align: center !important;
     justify-content: center !important;
   }
-  .calendar-page-main .calendar-page-header > div:last-child {
-    display: flex !important;
-    width: 100% !important;
-    gap: .5rem !important;
-  }
   .calendar-page-main .calendar-page-header .btn-primary,
   .calendar-page-main .calendar-page-header .btn-secondary {
     flex: 1 1 0 !important;

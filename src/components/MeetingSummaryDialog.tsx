@@ -590,7 +590,7 @@ export function MeetingSummaryDialog({
                                 checked={descriptionEnabled[meeting.id] !== false}
                                 onChange={(e) => setDescriptionEnabled((previous) => ({ ...previous, [meeting.id]: e.target.checked }))}
                                 aria-label={text(`แสดงรายละเอียด ${meeting.title}`, `Show description for ${meeting.title}`)}
-                                className="h-5 w-5 shrink-0 appearance-none rounded-full border-2 border-purple-400 checked:bg-purple-600 checked:border-purple-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600"
+                                className="h-3.5 w-3.5 shrink-0 appearance-none rounded-full border border-purple-400 checked:bg-purple-600 checked:border-purple-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600"
                               />
                               {text('รายละเอียด (พิมพ์แก้ไขข้อความสรุปได้ / กด Enter ขึ้นบรรทัดใหม่ได้):', 'Description (editable / Enter for new line):')}
                             </label>
