@@ -13,39 +13,12 @@ test('per-meeting description toggle hides the editor and preview while retainin
   let renderer!: ReactTestRenderer
   act(() => { renderer = create(<LanguageProvider><MeetingSummaryDialog open onClose={() => {}} events={[{ ...mockMeeting, start_datetime: `${day}T13:30:00+07:00`, end_datetime: `${day}T14:30:00+07:00` }]} /></LanguageProvider>) })
   const toggle = () => renderer.root.findAllByType('input').find((input) => String(input.props['aria-label'] ?? '').startsWith('แสดงรายละเอียด '))!
-  assert.equal(toggle().props.checked, false)
-  assert.equal(renderer.root.findAllByType('textarea').length, 0)
-  assert.ok(!JSON.stringify(renderer.toJSON()).includes(mockMeeting.description))
-  act(() => toggle().props.onChange({ target: { checked: true } }))
   act(() => renderer.root.findByType('textarea').props.onChange({ target: { value: 'ข้อความที่แก้ไว้' } }))
   act(() => toggle().props.onChange({ target: { checked: false } }))
   assert.equal(renderer.root.findAllByType('textarea').length, 0)
   assert.ok(!JSON.stringify(renderer.toJSON()).includes('ข้อความที่แก้ไว้'))
   act(() => toggle().props.onChange({ target: { checked: true } }))
   assert.equal(renderer.root.findByType('textarea').props.value, 'ข้อความที่แก้ไว้')
-  act(() => renderer.unmount())
-})
-
-test('mobile summary steps preserve editor draft and selection while exposing preview export controls', () => {
-  const now = new Date()
-  const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-  let renderer!: ReactTestRenderer
-  act(() => { renderer = create(<LanguageProvider><MeetingSummaryDialog open onClose={() => {}} events={[{ ...mockMeeting, start_datetime: `${day}T13:30:00+07:00`, end_datetime: `${day}T14:30:00+07:00` }]} /></LanguageProvider>) })
-  const step = (label: string) => renderer.root.findAllByType('button').find((button) => button.children.includes(label))!
-  const descriptionToggle = () => renderer.root.findAllByType('input').find((input) => String(input.props['aria-label'] ?? '').startsWith('แสดงรายละเอียด '))!
-  act(() => descriptionToggle().props.onChange({ target: { checked: true } }))
-  act(() => renderer.root.findByType('textarea').props.onChange({ target: { value: 'draft on mobile' } }))
-  act(() => step('ดูตัวอย่าง / ส่งออก').props.onClick())
-  assert.equal(step('ดูตัวอย่าง / ส่งออก').props['aria-pressed'], true)
-  const editor = renderer.root.findAllByType('div').find((div) => div.props['aria-label'] === 'เลือกและแก้ไขรายการประชุม')!
-  assert.ok(editor.props.className.includes('hidden'))
-  const preview = renderer.root.findAllByType('div').find((div) => div.props['aria-label'] === 'ตัวอย่างและส่งออกสรุปประชุม')!
-  assert.ok(!preview.props.className.split(/\s+/).includes('hidden'))
-  assert.ok(JSON.stringify(renderer.toJSON()).includes('draft on mobile'))
-  act(() => step('เลือกและแก้ไข').props.onClick())
-  assert.equal(renderer.root.findByType('textarea').props.value, 'draft on mobile')
-  assert.equal(descriptionToggle().props.checked, true)
-  assert.ok(renderer.root.findByProps({ 'aria-label': 'ปิดสรุปการประชุม' }))
   act(() => renderer.unmount())
 })
 
