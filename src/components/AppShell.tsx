@@ -149,7 +149,7 @@ export function AppShell() {
         <div className="flex w-full justify-center">{statsCard}</div>
       </header>
       {menuOpen && <button type="button" className="fixed inset-0 z-40 bg-slate-950/40 lg:hidden" onClick={() => setMenuOpen(false)} aria-label={text('ปิดเมนู', 'Close menu')} />}
-      <aside className={`calendar-app-rail group fixed inset-y-0 left-0 z-50 flex w-[254px] flex-col border-r border-[#685481] bg-[#75638F] shadow-xl transition-[width,transform,box-shadow] duration-300 motion-reduce:transition-none lg:sticky lg:top-0 lg:h-screen ${desktopSidebarWidth} lg:translate-x-0 lg:overflow-hidden lg:shadow-none lg:hover:w-[254px] lg:hover:shadow-xl lg:has-[:focus-visible]:w-[254px] lg:has-[:focus-visible]:shadow-xl ${desktopMenuExpanded ? 'sidebar-expanded' : ''} ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`calendar-app-rail group fixed inset-y-0 left-0 z-50 flex w-[254px] flex-col border-r border-[#685481] bg-[#75638F] shadow-xl transition-[width,transform,box-shadow] duration-300 motion-reduce:transition-none lg:sticky lg:top-0 lg:h-screen ${desktopSidebarWidth} lg:translate-x-0 lg:overflow-hidden lg:shadow-none lg:hover:w-[254px] lg:hover:shadow-xl lg:has-[:focus-visible]:w-[254px] lg:has-[:focus-visible]:shadow-xl ${desktopMenuExpanded || menuOpen ? 'sidebar-expanded' : ''} ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex min-h-20 items-center justify-between border-b border-white/15 px-5 lg:px-2 lg:group-hover:px-5 lg:group-has-[:focus-visible]:px-5">
           <span className="sidebar-brand-tile rounded-xl bg-white p-2 shadow-xs" role="img" aria-label={text('PEA การไฟฟ้าส่วนภูมิภาค', 'PEA Provincial Electricity Authority')}>
             <span className="sidebar-brand-seal" aria-hidden="true"><img src={peaLogo} alt="" width="5114" height="1823" /></span>
@@ -158,9 +158,9 @@ export function AppShell() {
           <button type="button" onClick={() => setDesktopMenuExpanded((expanded) => !expanded)} className="touch-sidebar-toggle rounded-lg p-2 text-white/80 hover:bg-white/12 hover:text-white transition" aria-label={desktopMenuExpanded ? text('ยุบเมนู', 'Collapse menu') : text('ขยายเมนู', 'Expand menu')} aria-expanded={desktopMenuExpanded}><Menu size={18} /></button>
           <button type="button" onClick={() => setMenuOpen(false)} className="rounded-lg p-1 text-white/70 hover:text-white lg:hidden" aria-label={text('ปิดเมนู', 'Close menu')}><X size={20} /></button>
         </div>
-        <nav className="px-3 py-5" aria-label={text('เมนูหลัก', 'Main navigation')}>
+        <nav className="min-h-0 overflow-y-auto px-3 py-5" aria-label={text('เมนูหลัก', 'Main navigation')}>
           <NavLink to="/calendar" title={t('calendar')} onClick={() => { setMenuOpen(false); setDesktopMenuExpanded(false) }} className={navClass}><CalendarDays size={19} /><span className={`${navLabel} lg:group-[.sidebar-expanded]:not-sr-only`}>{t('calendar')}</span></NavLink>
-          <div className="my-2 space-y-1 border-y border-white/15 py-2 lg:hidden" aria-label={text('จัดการรายการปฏิทิน', 'Calendar actions')}>
+          <div className={`my-2 space-y-1 border-y border-white/15 py-2 ${menuOpen || desktopMenuExpanded ? '' : 'lg:hidden'}`} aria-label={text('จัดการรายการปฏิทิน', 'Calendar actions')}>
             {([
               ['create-task', text('เพิ่ม Task', 'Add task'), ListTodo],
               ['create-meeting', text('เพิ่ม Meeting', 'Add meeting'), CalendarPlus],
