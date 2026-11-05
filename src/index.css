@@ -651,7 +651,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .calendar-app-rail nav a:hover:not([aria-current="page"]) > svg {
   color: #ffffff !important;
 }
-.calendar-app-rail:not(.sidebar-expanded):not(:hover):not(:has(:focus-visible)) nav a { width: 46px; grid-template-columns: 46px; justify-content: center; margin-inline: auto; padding-inline: 0; }
+.calendar-app-rail:not(.sidebar-expanded):not(:hover):not(:has(:focus-visible)) nav a { width: min(46px, 100%); grid-template-columns: minmax(0, 1fr); justify-content: center; margin-inline: auto; padding-inline: 0; }
 .calendar-app-rail > div:last-child { border-color: rgba(255, 255, 255, 0.15) !important; }
 .calendar-app-rail .app-sidebar-identity p:first-child { color: #ffffff !important; font-weight: 700; }
 .calendar-app-rail .app-sidebar-identity p:last-child { color: rgba(255, 255, 255, 0.75) !important; }

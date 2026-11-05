@@ -158,7 +158,7 @@ export function AppShell() {
           <button type="button" onClick={() => setDesktopMenuExpanded((expanded) => !expanded)} className="touch-sidebar-toggle rounded-lg p-2 text-white/80 hover:bg-white/12 hover:text-white transition" aria-label={desktopMenuExpanded ? text('ยุบเมนู', 'Collapse menu') : text('ขยายเมนู', 'Expand menu')} aria-expanded={desktopMenuExpanded}><Menu size={18} /></button>
           <button type="button" onClick={() => setMenuOpen(false)} className="rounded-lg p-1 text-white/70 hover:text-white lg:hidden" aria-label={text('ปิดเมนู', 'Close menu')}><X size={20} /></button>
         </div>
-        <nav className="min-h-0 overflow-y-auto px-3 py-5" aria-label={text('เมนูหลัก', 'Main navigation')}>
+        <nav className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-3 py-5" aria-label={text('เมนูหลัก', 'Main navigation')}>
           <NavLink to="/calendar" title={t('calendar')} onClick={() => { setMenuOpen(false); setDesktopMenuExpanded(false) }} className={navClass}><CalendarDays size={19} /><span className={`${navLabel} lg:group-[.sidebar-expanded]:not-sr-only`}>{t('calendar')}</span></NavLink>
           <div className={`my-2 space-y-1 border-y border-white/15 py-2 ${menuOpen || desktopMenuExpanded ? '' : 'lg:hidden'}`} aria-label={text('จัดการรายการปฏิทิน', 'Calendar actions')}>
             {([
