@@ -152,3 +152,28 @@ test('AdminEditMemberDialog displays error when RPC fails', async () => {
   const errorText = alert.findByType('span').children.join('')
   assert.match(errorText, /รหัสพนักงานนี้ถูกใช้งานแล้วในระบบ/)
 })
+
+test('Admin saves the actual Other or head-office selection while general affiliation uses only the unit', async () => {
+  for (const department of ['อื่นๆ', 'ประจำกอง กบง.']) {
+    const h = harness()
+    let renderer!: ReactTestRenderer
+    await act(async () => { renderer = create(<LanguageProvider><h.AdminEditMemberDialog account={{ ...memberFixture, department }} onClose={() => {}} onSaved={() => {}} /></LanguageProvider>) })
+    const departmentSelect = renderer.root.findAllByType('select').find(node => node.props.id.endsWith('-department'))!
+    assert.equal(departmentSelect.props.value, department)
+    await act(async () => { renderer.root.findByType('form').props.onSubmit({ preventDefault() {} }) })
+    assert.equal((h.rpcCalls[0].args as { next_department: string }).next_department, department)
+    act(() => renderer.unmount())
+  }
+})
+
+test('editing a legacy member name does not replace an absent department with Other', async () => {
+  const h = harness()
+  let renderer!: ReactTestRenderer
+  await act(async () => { renderer = create(<LanguageProvider><h.AdminEditMemberDialog account={{ ...memberFixture, department: null }} onClose={() => {}} onSaved={() => {}} /></LanguageProvider>) })
+  const departmentSelect = renderer.root.findAllByType('select').find(node => node.props.id.endsWith('-department'))!
+  assert.equal(departmentSelect.props.value, '')
+  act(() => renderer.root.findByProps({ id: 'edit-member-name' }).props.onChange({ target: { value: 'สมชาย แก้เฉพาะชื่อ' } }))
+  await act(async () => { renderer.root.findByType('form').props.onSubmit({ preventDefault() {} }) })
+  assert.equal((h.rpcCalls[0].args as { next_department: string | null }).next_department, null)
+  act(() => renderer.unmount())
+})

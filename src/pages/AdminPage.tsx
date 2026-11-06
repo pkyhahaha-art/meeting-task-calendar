@@ -9,7 +9,7 @@ import { useLanguage } from '../i18n/LanguageProvider'
 import { MemberAvatar, useAvatarDirectory, uploadMemberAvatar, removeMemberAvatar } from '../components/MemberAvatar'
 import { appUrl } from '../lib/appUrl'
 import { supabase } from '../lib/supabase'
-import { departmentsFor, normalizeOrganizationUnit, organizationUnits, unspecifiedDepartment } from '../lib/organization'
+import { departmentsFor, normalizeOrganizationSelection, organizationUnits } from '../lib/organization'
 import { downloadCsv, filterAdminProfiles, reportDateBounds, reportPageSize, type AdminProfile, type MemberFilters } from '../lib/adminReports'
 import { loadAdminOverview, loadAdminProfiles, loadLatestSystemLog } from '../lib/adminReportQueries'
 import { AdminFilter, AdminPager, AdminStatus, adminDate } from '../components/AdminReportControls'
@@ -20,6 +20,10 @@ import { AdminEditMemberDialog } from '../components/AdminEditMemberDialog'
 const statusText = { pending_verification: 'รอยืนยัน Gmail', active: 'ใช้งานอยู่', disabled: 'ระงับแล้ว' }
 const emptyFilters: MemberFilters = { search: '', status: '', unit: '', department: '', missing: false }
 const today = () => new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10)
+const memberOrganization = (account: AdminProfile) => {
+  const selection = normalizeOrganizationSelection(account.organization_unit, account.department)
+  return { ...selection, department: selection.department || (departmentsFor(selection.unit).length ? 'ไม่ระบุ' : '') }
+}
 
 export function AdminPage() {
   const { profile, user } = useAuth()
@@ -144,7 +148,7 @@ export function AdminPage() {
   }
 
   const exportMembers = () => {
-    downloadCsv('members-filtered.csv', ['ชื่อ', 'รหัสพนักงาน', 'Gmail', 'หน่วยงาน', 'แผนก', 'สิทธิ์', 'สถานะ', 'วันที่สมัคร', 'ยืนยัน Gmail'], filtered.map((account) => [account.full_name, account.employee_id, account.email, normalizeOrganizationUnit(account.organization_unit), account.department || (departmentsFor(account.organization_unit).length ? unspecifiedDepartment : ''), account.role, statusText[account.status], adminDate(account.created_at), adminDate(account.email_verified_at)]))
+    downloadCsv('members-filtered.csv', ['ชื่อ', 'รหัสพนักงาน', 'Gmail', 'หน่วยงาน', 'แผนก', 'สิทธิ์', 'สถานะ', 'วันที่สมัคร', 'ยืนยัน Gmail'], filtered.map((account) => [account.full_name, account.employee_id, account.email, memberOrganization(account).unit, memberOrganization(account).department, account.role, statusText[account.status], adminDate(account.created_at), adminDate(account.email_verified_at)]))
   }
 
   const refresh = () => {
@@ -170,7 +174,7 @@ export function AdminPage() {
         <AdminFilter label="ชื่อ / รหัสพนักงาน / Gmail"><input className="field-input" value={filters.search} onChange={(e) => updateFilters({ search: e.target.value })} /></AdminFilter>
         <AdminFilter label="สถานะสมาชิก"><select className="field-input" value={filters.status} onChange={(e) => updateFilters({ status: e.target.value })}><option value="">ทุกสถานะ</option>{Object.entries(statusText).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></AdminFilter>
         <AdminFilter label="หน่วยงาน"><select className="field-input" value={filters.unit} onChange={(e) => updateFilters({ unit: e.target.value, department: '' })}><option value="">ทุกหน่วยงาน</option>{organizationUnits.map((unit) => <option key={unit}>{unit}</option>)}</select></AdminFilter>
-        <AdminFilter label="แผนก"><select className="field-input" disabled={!departmentsFor(filters.unit).length} value={filters.department} onChange={(e) => updateFilters({ department: e.target.value })}><option value="">ทุกแผนก</option>{departmentsFor(filters.unit).length > 0 && <option value={unspecifiedDepartment}>{unspecifiedDepartment}</option>}{departmentsFor(filters.unit).map((department) => <option key={department}>{department}</option>)}</select></AdminFilter>
+        <AdminFilter label="แผนก"><select className="field-input" disabled={!departmentsFor(filters.unit).length} value={filters.department} onChange={(e) => updateFilters({ department: e.target.value })}><option value="">ทุกแผนก</option>{departmentsFor(filters.unit).map((department) => <option key={department}>{department}</option>)}</select></AdminFilter>
         <label className="flex min-h-11 items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={filters.missing} onChange={(e) => updateFilters({ missing: e.target.checked })} />เฉพาะสมาชิกที่ข้อมูลสังกัดยังไม่ครบ</label>
         <button type="button" className="btn-secondary justify-self-start" onClick={() => { setFilters(emptyFilters); setPage(0) }}>ล้างตัวกรองสมาชิก</button>
       </div>
@@ -204,7 +208,7 @@ export function AdminPage() {
                 <AdminStatus value={account.status} label={statusText[account.status]} />
               </p>
               <p className="break-words text-sm text-slate-600">{account.email} · {account.employee_id || text('ไม่ระบุรหัสพนักงาน', 'No employee ID')}</p>
-              <p className="text-sm text-slate-500">{[account.department || (departmentsFor(account.organization_unit).length ? unspecifiedDepartment : ''), normalizeOrganizationUnit(account.organization_unit)].filter(Boolean).join(' · ') || text('ยังไม่ระบุสังกัด', 'Affiliation not specified')}</p>
+              <p className="text-sm text-slate-500">{[memberOrganization(account).department, memberOrganization(account).unit].filter(Boolean).join(' · ') || text('ยังไม่ระบุสังกัด', 'Affiliation not specified')}</p>
               <p className="text-xs text-slate-400">สมัคร {adminDate(account.created_at)} · ยืนยัน Gmail {account.email_verified_at ? adminDate(account.email_verified_at) : text('ยังไม่ยืนยัน', 'Unverified')}</p>
             </div>
           </div>

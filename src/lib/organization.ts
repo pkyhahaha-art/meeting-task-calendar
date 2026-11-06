@@ -41,16 +41,16 @@ export function validOrganization(unit: string, department: string) {
   return options.length ? normalized.department === '' || options.includes(normalized.department) : normalized.department === ''
 }
 
-/** Explicit other/legacy unspecified uses the existing nullable field. */
+/** Preserve an explicit Other selection; absence still uses the nullable field. */
 export function memberOrganizationData(unit: string, department: string) {
   const normalized = normalizeOrganizationSelection(unit, department)
-  return { organization_unit: normalized.unit, department: !normalized.department || normalized.department === unspecifiedDepartment ? null : normalized.department }
+  return { organization_unit: normalized.unit, department: normalized.department || null }
 }
 
 /** Defaults for new drafts only; saved Task/Meeting text stays unchanged. */
 export function profileAffiliation(profile?: { organization_unit?: string | null; department?: string | null } | null) {
   if (!profile?.organization_unit || !validOrganization(profile.organization_unit, profile.department || '')) return ''
   const { organization_unit, department } = memberOrganizationData(profile.organization_unit, profile.department || '')
-  return !department || department.startsWith('ประจำกอง ')
+  return !department || department === unspecifiedDepartment || department.startsWith('ประจำกอง ')
     ? organization_unit : [department, organization_unit].join(' ')
 }

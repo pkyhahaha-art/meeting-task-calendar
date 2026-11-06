@@ -54,7 +54,7 @@ test('profile affiliation handles all department pairs and preserves the empty l
   assert.equal(profileAffiliation({ organization_unit: 'กคน.', department: unspecifiedDepartment }), 'กคน.')
   for (const unit of organizationUnits) {
     assert.equal(validOrganization(unit, ''), true)
-    assert.deepEqual(memberOrganizationData(unit, departmentsFor(unit).length ? unspecifiedDepartment : ''), { organization_unit: unit, department: null })
+    assert.deepEqual(memberOrganizationData(unit, departmentsFor(unit).length ? unspecifiedDepartment : ''), { organization_unit: unit, department: departmentsFor(unit).length ? unspecifiedDepartment : null })
   }
   for (const unit of organizationUnits) for (const department of departmentsFor(unit)) {
     assert.equal(validOrganization(unit, department), true)
@@ -63,7 +63,7 @@ test('profile affiliation handles all department pairs and preserves the empty l
   assert.equal(profileAffiliation({ organization_unit: 'กคน.', department: 'ผสอ.' }), '')
 })
 
-test('profile displays legacy names canonically, requires explicit department choice after unit change, and saves unspecified as null', async () => {
+test('profile displays legacy names canonically, requires explicit department choice after unit change, and saves explicit other', async () => {
   const updates: unknown[] = []
   const profile = { id: 'fixture-member', organization_unit: 'กกก.', department: 'ผนผ.' }
   const mocks: Record<string, unknown> = {
@@ -93,7 +93,7 @@ test('profile displays legacy names canonically, requires explicit department ch
     act(() => renderer.root.findByProps({ id: 'profile-department' }).props.onChange({ target: { value: unspecifiedDepartment } }))
     assert.equal(renderer.root.findByType('button').props.disabled, false)
     await act(async () => { renderer.root.findByType('form').props.onSubmit({ preventDefault() {} }) })
-    assert.deepEqual(updates, [{ organization_unit: 'กคน.', department: null }])
+    assert.deepEqual(updates, [{ organization_unit: 'กคน.', department: unspecifiedDepartment }])
     assert.equal(profile.organization_unit, 'กกก.')
   } finally { act(() => renderer.unmount()) }
 })

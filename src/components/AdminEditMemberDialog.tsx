@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { AlertCircle, Check, Loader2, UserCheck, X } from 'lucide-react'
 import { useLanguage } from '../i18n/LanguageProvider'
 import type { AdminProfile } from '../lib/adminReports'
-import { departmentsFor, memberOrganizationData, normalizeOrganizationSelection, unspecifiedDepartment, validOrganization } from '../lib/organization'
+import { memberOrganizationData, normalizeOrganizationSelection, validOrganization } from '../lib/organization'
 import { supabase } from '../lib/supabase'
 import { OrganizationFields } from './OrganizationFields'
 
@@ -20,7 +20,7 @@ export function AdminEditMemberDialog({
   const [employeeId, setEmployeeId] = useState(account.employee_id || '')
   const initialOrganization = normalizeOrganizationSelection(account.organization_unit, account.department)
   const [unit, setUnit] = useState(initialOrganization.unit)
-  const [department, setDepartment] = useState(initialOrganization.department || (departmentsFor(initialOrganization.unit).length ? unspecifiedDepartment : ''))
+  const [department, setDepartment] = useState(initialOrganization.department)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const dialogRef = useRef<HTMLDivElement>(null)

@@ -32,7 +32,7 @@ describe('registrationSchema', () => {
         const result = registrationSchema.safeParse({ ...validRegistration, organizationUnit, department })
         assert.equal(result.success, true, `${organizationUnit}/${department}`)
         if (result.success) assert.deepEqual(memberOrganizationData(result.data.organizationUnit, result.data.department), {
-          organization_unit: organizationUnit, department: department === unspecifiedDepartment || !department ? null : department,
+          organization_unit: organizationUnit, department: !department ? null : department,
         })
       }
       if (!departments.length) assert.equal(registrationSchema.safeParse({ ...validRegistration, organizationUnit, department: unspecifiedDepartment }).success, false)
