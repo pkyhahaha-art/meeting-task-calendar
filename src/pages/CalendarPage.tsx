@@ -14,7 +14,7 @@ import { CalendarDays, CalendarPlus, CheckCircle2, ChevronDown, Clock3, FileSpre
 import Swal from 'sweetalert2'
 
 import { useAuth } from '../auth/AuthProvider'
-import { profileAffiliation } from '../lib/organization'
+import { normalizeAffiliationText, profileAffiliation } from '../lib/organization'
 import { useConfirm } from '../components/ConfirmDialogProvider'
 import { EventDialog, type EventDetails, type EventDraft } from '../components/EventDialog'
 import type { DeliveryStatusRow } from '../components/NotificationDeliveryStatus'
@@ -1054,7 +1054,7 @@ export function CalendarPage() {
     setCalendarTooltipAt([{
       kind: isTask ? 'task' : 'event',
       title: info.event.title,
-      affiliation: row.affiliation || '-',
+      affiliation: normalizeAffiliationText(row.affiliation) || '-',
       date: info.event.start,
       isOverdue: Boolean(info.event.extendedProps.isOverdue),
       isCompleted: Boolean(info.event.extendedProps.isCompleted),
@@ -1129,7 +1129,7 @@ export function CalendarPage() {
           return {
             kind: entry.extendedProps.kind as CalendarTooltipItem['kind'],
             title: entry.title,
-            affiliation: row.affiliation || '-',
+            affiliation: normalizeAffiliationText(row.affiliation) || '-',
             date: info.date,
             isOverdue: Boolean(entry.extendedProps.isOverdue),
             isCompleted: Boolean(entry.extendedProps.isCompleted),
@@ -1508,7 +1508,7 @@ export function CalendarPage() {
                     const timeMatch = new Date(entry.start).toLocaleTimeString(language === 'th' ? 'th-TH' : 'en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Bangkok' })
                     if (timeMatch) timeStr = timeMatch
                   }
-                  const loc = !isTask && event?.location ? event.location : (event?.affiliation || task?.affiliation || '')
+                  const loc = !isTask && event?.location ? event.location : (normalizeAffiliationText(event?.affiliation) || normalizeAffiliationText(task?.affiliation) || '')
 
                   return (
                     <button
@@ -1626,7 +1626,7 @@ export function CalendarPage() {
                   const timeMatch = new Date(entry.start).toLocaleTimeString(language === 'th' ? 'th-TH' : 'en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Bangkok' })
                   if (timeMatch) timeStr = timeMatch
                 }
-                const loc = !isTask && event?.location ? event.location : (event?.affiliation || task?.affiliation || '')
+                const loc = !isTask && event?.location ? event.location : (normalizeAffiliationText(event?.affiliation) || normalizeAffiliationText(task?.affiliation) || '')
 
                 return (
                   <button

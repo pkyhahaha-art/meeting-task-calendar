@@ -47,7 +47,22 @@ export function memberOrganizationData(unit: string, department: string) {
   return { organization_unit: normalized.unit, department: normalized.department || null }
 }
 
-/** Defaults for new drafts only; saved Task/Meeting text stays unchanged. */
+/**
+ * Normalize a saved affiliation string from the old format to the current one.
+ * Strips legacy ' ฝลส.' suffix and normalizes legacy department acronyms.
+ */
+export function normalizeAffiliationText(affiliation?: string | null): string {
+  if (!affiliation) return ''
+  let text = affiliation.trim()
+  text = text.replace(/ ฝลส\.$/, '').trim()
+  if (text === 'ประจำฝ่าย (ฝลส.)') return 'ฝลส.'
+  if (text === 'กกร. (Team-Based)') return 'กกร.'
+  const headOffice = /^ประจำกอง \((กบง\.|กคน\.|กกท\.)\)$/.exec(text)
+  if (headOffice) return headOffice[1]
+  return text
+}
+
+/** Derives the affiliation text for a creator's profile using the current format. */
 export function profileAffiliation(profile?: { organization_unit?: string | null; department?: string | null } | null) {
   if (!profile?.organization_unit || !validOrganization(profile.organization_unit, profile.department || '')) return ''
   const { organization_unit, department } = memberOrganizationData(profile.organization_unit, profile.department || '')

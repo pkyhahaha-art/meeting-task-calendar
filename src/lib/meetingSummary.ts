@@ -1,5 +1,6 @@
 import type { Database } from './database.types'
 import { calendarDayKey, calendarMeetingOccurrences } from './calendarView'
+import { normalizeAffiliationText } from './organization'
 
 export type EventRow = Database['public']['Tables']['events']['Row']
 
@@ -184,7 +185,7 @@ export function filterAndSortMeetingsForSummary(
         timeText: timeInfo.text,
         location: event.location || 'ไม่ระบุสถานที่',
         description: event.description || '',
-        affiliation: event.affiliation || 'กฟภ.',
+        affiliation: normalizeAffiliationText(event.affiliation) || 'กฟภ.',
         allDay: event.all_day,
         startIso: occ.start,
         endIso: occ.end,

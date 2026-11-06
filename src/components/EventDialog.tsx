@@ -33,6 +33,7 @@ import {
 import { TimeSelect } from './TimeSelect'
 import { SaveActionMenu } from './SaveActionMenu'
 import { NotificationDeliveryStatus, type DeliveryStatusRow } from './NotificationDeliveryStatus'
+import { normalizeAffiliationText, profileAffiliation } from '../lib/organization'
 import { expandEvent } from '../lib/recurrence'
 import { isMeetingAppointmentPassed } from '../lib/meetingCompletion'
 
@@ -340,13 +341,19 @@ export function EventDialog({
           ? 'until_date'
           : 'end_of_year',
     )
+    const isOwner = Boolean(currentUserId && event?.owner_user_id && event.owner_user_id === currentUserId)
+    const creator = event ? profiles.find((p) => p.id === event.owner_user_id) : null
+    const creatorAffiliation = event
+      ? (isOwner && defaultAffiliation ? defaultAffiliation : profileAffiliation(creator))
+      : defaultAffiliation
+    const initialAffiliation = creatorAffiliation || (event ? normalizeAffiliationText(event.affiliation) : defaultAffiliation)
     setDraft(
       event
         ? {
           title: event.title,
           description: useOccurrenceValues && details?.occurrenceOverride?.description !== undefined ? details.occurrenceOverride.description : event.description,
           location: useOccurrenceValues && details?.occurrenceOverride?.location !== undefined ? details.occurrenceOverride.location : event.location,
-          affiliation: event.affiliation,
+          affiliation: initialAffiliation,
           all_day: event.all_day,
           date: bangkokDate(new Date(event.start_datetime)),
           start: localTime(event.start_datetime) || '09:00',
@@ -362,13 +369,18 @@ export function EventDialog({
         }
         : { ...blankDraft(selectedDate), affiliation: defaultAffiliation },
     )
-  }, [event, details, selectedDate, occurrenceStart, open, defaultAffiliation])
+  }, [event, details, selectedDate, occurrenceStart, open, defaultAffiliation, currentUserId, profiles])
 
   useEffect(() => {
-    if (open && !event && !affiliationEdited.current && defaultAffiliation) {
-      setDraft((current) => current.affiliation === defaultAffiliation ? current : { ...current, affiliation: defaultAffiliation })
+    if (!open || affiliationEdited.current) return
+    const isOwner = Boolean(currentUserId && event?.owner_user_id && event.owner_user_id === currentUserId)
+    const resolved = event
+      ? (isOwner && defaultAffiliation ? defaultAffiliation : profileAffiliation(profiles.find((p) => p.id === event.owner_user_id)))
+      : defaultAffiliation
+    if (resolved) {
+      setDraft((current) => current.affiliation === resolved ? current : { ...current, affiliation: resolved })
     }
-  }, [open, event, defaultAffiliation])
+  }, [open, event, defaultAffiliation, currentUserId, profiles])
 
   useEffect(() => {
     if (!open || !event || !details || guestEmailsEdited.current) return

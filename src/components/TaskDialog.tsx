@@ -21,6 +21,7 @@ import {
 } from '../lib/taskForm'
 import { TimeSelect } from './TimeSelect'
 import { NotificationDeliveryStatus, type DeliveryStatusRow } from './NotificationDeliveryStatus'
+import { normalizeAffiliationText, profileAffiliation } from '../lib/organization'
 
 type TaskRow = Database['public']['Tables']['tasks']['Row']
 type ProfileRow = Database['public']['Tables']['profiles']['Row']
@@ -174,10 +175,16 @@ export function TaskDialog({
     setRecipientTab(internalIds.includes(userId) ? 'self' : internalIds.length ? 'internal' : 'external')
     setDueDateText(formatDisplayDate(task.due_date))
     const isContinuous = details?.reminderMode === 'continuous' || details?.reminderKeys.includes('continuous')
+    const isCreator = Boolean(userId && task?.creator_user_id && task.creator_user_id === userId)
+    const creator = task ? profiles.find((p) => p.id === task.creator_user_id) : null
+    const creatorAffiliation = task
+      ? (isCreator && defaultAffiliation ? defaultAffiliation : profileAffiliation(creator))
+      : defaultAffiliation
+    const initialAffiliation = creatorAffiliation || (task ? normalizeAffiliationText(task.affiliation) : defaultAffiliation)
     setDraft({
       title: task.title,
       description: task.description,
-      affiliation: task.affiliation,
+      affiliation: initialAffiliation,
       dueDate: task.due_date,
       dueTime: task.due_time?.slice(0, 5) ?? '',
       internalUserIds: internalIds,
@@ -193,13 +200,18 @@ export function TaskDialog({
         ? details.documentLinks.map((link) => ({ displayName: link.display_name, url: link.url }))
         : [{ displayName: '', url: '' }],
     })
-  }, [details, open, selectedDate, task, userId, hasConnectedDevices, defaultAffiliation])
+  }, [details, open, selectedDate, task, userId, hasConnectedDevices, defaultAffiliation, profiles])
 
   useEffect(() => {
-    if (open && !task && !affiliationEdited.current && defaultAffiliation) {
-      setDraft((current) => current.affiliation === defaultAffiliation ? current : { ...current, affiliation: defaultAffiliation })
+    if (!open || affiliationEdited.current) return
+    const isCreator = Boolean(userId && task?.creator_user_id && task.creator_user_id === userId)
+    const resolved = task
+      ? (isCreator && defaultAffiliation ? defaultAffiliation : profileAffiliation(profiles.find((p) => p.id === task.creator_user_id)))
+      : defaultAffiliation
+    if (resolved) {
+      setDraft((current) => current.affiliation === resolved ? current : { ...current, affiliation: resolved })
     }
-  }, [open, task, defaultAffiliation])
+  }, [open, task, defaultAffiliation, userId, profiles])
 
   if (!open) return null
 

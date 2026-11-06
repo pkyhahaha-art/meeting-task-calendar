@@ -157,3 +157,97 @@ for (const kind of ['meeting', 'task'] as const) {
     act(() => renderer.unmount())
   })
 }
+
+test('normalizeAffiliationText normalizes legacy affiliations', () => {
+  assert.equal(organization.normalizeAffiliationText('ผบธ. กบง. ฝลส.'), 'ผบธ. กบง.')
+  assert.equal(organization.normalizeAffiliationText('ผคอ. กคน. ฝลส.'), 'ผคอ. กคน.')
+  assert.equal(organization.normalizeAffiliationText('กบง. ฝลส.'), 'กบง.')
+  assert.equal(organization.normalizeAffiliationText('ประจำฝ่าย (ฝลส.)'), 'ฝลส.')
+  assert.equal(organization.normalizeAffiliationText('ประจำกอง (กกท.)'), 'กกท.')
+  assert.equal(organization.normalizeAffiliationText('กกร. (Team-Based)'), 'กกร.')
+  assert.equal(organization.normalizeAffiliationText('ผบธ. กบง.'), 'ผบธ. กบง.')
+  assert.equal(organization.normalizeAffiliationText(''), '')
+})
+
+test('creator editing their existing meeting receives updated creator affiliation from profile', () => {
+  let renderer!: ReactTestRenderer
+  const meeting = {
+    id: 'm-old',
+    owner_user_id: 'user-creator',
+    affiliation: 'ผบร. กบง. ฝลส.',
+    title: 'Old meeting',
+    description: '',
+    location: '',
+    start_datetime: '2030-10-03T02:00:00Z',
+    all_day: false,
+  } as unknown as Database['public']['Tables']['events']['Row']
+
+  act(() => {
+    renderer = create(
+      <LanguageProvider>
+        <EventDialog
+          open={true}
+          event={meeting}
+          details={eventDetails}
+          currentUserId="user-creator"
+          defaultAffiliation="ผบธ. กบง."
+          canEdit
+          canViewDeliveryStatus={false}
+          busy={false}
+          onClose={() => {}}
+          onSave={noop}
+          onDelete={noop}
+          onDeleteAttachment={noop}
+          onRetryNotification={noop}
+        />
+      </LanguageProvider>
+    )
+  })
+  const field = renderer.root.findByProps({ id: 'event-affiliation' })
+  assert.equal(field.props.value, 'ผบธ. กบง.')
+  act(() => renderer.unmount())
+})
+
+test('creator editing their existing task receives updated creator affiliation from profile', () => {
+  let renderer!: ReactTestRenderer
+  const task = {
+    id: 't-old',
+    creator_user_id: 'user-creator',
+    affiliation: 'ผบร. กบง. ฝลส.',
+    title: 'Old task',
+    description: '',
+    due_date: '2030-10-03',
+    assignee_type: 'internal',
+  } as unknown as Database['public']['Tables']['tasks']['Row']
+
+  act(() => {
+    renderer = create(
+      <LanguageProvider>
+        <TaskDialog
+          open={true}
+          task={task}
+          details={taskDetails}
+          userId="user-creator"
+          defaultAffiliation="ผบธ. กบง."
+          profiles={[]}
+          events={[]}
+          canEdit
+          canComplete={false}
+          canAcknowledge={false}
+          canViewDeliveryStatus={false}
+          busy={false}
+          onClose={() => {}}
+          onSave={noop}
+          onDelete={noop}
+          onToggleComplete={noop}
+          onAcknowledge={noop}
+          onDeleteAttachment={noop}
+          onRetryNotification={noop}
+        />
+      </LanguageProvider>
+    )
+  })
+  const field = renderer.root.findByProps({ id: 'task-affiliation' })
+  assert.equal(field.props.value, 'ผบธ. กบง.')
+  act(() => renderer.unmount())
+})
