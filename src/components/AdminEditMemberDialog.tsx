@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { AlertCircle, Check, Loader2, UserCheck, X } from 'lucide-react'
 import { useLanguage } from '../i18n/LanguageProvider'
 import type { AdminProfile } from '../lib/adminReports'
-import { departmentsFor, memberOrganizationData, normalizeOrganizationUnit, unspecifiedDepartment, validOrganization } from '../lib/organization'
+import { departmentsFor, memberOrganizationData, normalizeOrganizationSelection, unspecifiedDepartment, validOrganization } from '../lib/organization'
 import { supabase } from '../lib/supabase'
 import { OrganizationFields } from './OrganizationFields'
 
@@ -18,8 +18,9 @@ export function AdminEditMemberDialog({
   const { text } = useLanguage()
   const [fullName, setFullName] = useState(account.full_name)
   const [employeeId, setEmployeeId] = useState(account.employee_id || '')
-  const [unit, setUnit] = useState(normalizeOrganizationUnit(account.organization_unit))
-  const [department, setDepartment] = useState(account.department || (departmentsFor(account.organization_unit).length ? unspecifiedDepartment : ''))
+  const initialOrganization = normalizeOrganizationSelection(account.organization_unit, account.department)
+  const [unit, setUnit] = useState(initialOrganization.unit)
+  const [department, setDepartment] = useState(initialOrganization.department || (departmentsFor(initialOrganization.unit).length ? unspecifiedDepartment : ''))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const dialogRef = useRef<HTMLDivElement>(null)

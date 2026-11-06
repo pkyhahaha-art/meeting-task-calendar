@@ -31,7 +31,7 @@ test('department options follow each organization, clear on unit change, and dis
     act(() => unit().props.onChange({ target: { value } }))
     assert.equal(department().props.value, '')
     assert.equal(department().props.disabled, departmentsFor(value).length === 0)
-    assert.deepEqual(department().findAllByType('option').slice(1).map((node) => node.props.value), departmentsFor(value).length ? [unspecifiedDepartment, ...departmentsFor(value)] : [])
+    assert.deepEqual(department().findAllByType('option').slice(1).map((node) => node.props.value), departmentsFor(value))
     if (!departmentsFor(value).length) assert.equal(department().findAllByType('option')[0].children[0], 'หน่วยงานนี้ไม่มีแผนก')
     if (departmentsFor(value).length) {
       act(() => department().props.onChange({ target: { value: unspecifiedDepartment } }))
@@ -47,18 +47,18 @@ test('profile affiliation handles all department pairs and preserves the empty l
   assert.equal(profileAffiliation(null), '')
   assert.equal(profileAffiliation({ organization_unit: null, department: null }), '')
   assert.equal(profileAffiliation({ organization_unit: 'ประจำฝ่าย (ฝลส.)', department: null }), 'ฝลส.')
-  assert.equal(profileAffiliation({ organization_unit: 'กกร.', department: null }), 'กกร. (Team-Based) ฝลส.')
-  assert.equal(profileAffiliation({ organization_unit: 'กกก.', department: 'ผนผ.' }), 'ผนผ. กกท. ฝลส.')
+  assert.equal(profileAffiliation({ organization_unit: 'กกร.', department: null }), 'กกร.')
+  assert.equal(profileAffiliation({ organization_unit: 'กกก.', department: 'ผนผ.' }), 'ผนผ. กกท.')
   assert.equal(normalizeOrganizationUnit('กกก.'), 'กกท.')
-  assert.equal(profileAffiliation({ organization_unit: 'กคน.', department: null }), 'กคน. ฝลส.')
-  assert.equal(profileAffiliation({ organization_unit: 'กคน.', department: unspecifiedDepartment }), 'กคน. ฝลส.')
+  assert.equal(profileAffiliation({ organization_unit: 'กคน.', department: null }), 'กคน.')
+  assert.equal(profileAffiliation({ organization_unit: 'กคน.', department: unspecifiedDepartment }), 'กคน.')
   for (const unit of organizationUnits) {
     assert.equal(validOrganization(unit, ''), true)
     assert.deepEqual(memberOrganizationData(unit, departmentsFor(unit).length ? unspecifiedDepartment : ''), { organization_unit: unit, department: null })
   }
   for (const unit of organizationUnits) for (const department of departmentsFor(unit)) {
     assert.equal(validOrganization(unit, department), true)
-    assert.equal(profileAffiliation({ organization_unit: unit, department }), `${department} ${unit} ฝลส.`)
+    assert.equal(profileAffiliation({ organization_unit: unit, department }), department === unspecifiedDepartment || department.startsWith('ประจำกอง ') ? unit : `${department} ${unit}`)
   }
   assert.equal(profileAffiliation({ organization_unit: 'กคน.', department: 'ผสอ.' }), '')
 })
@@ -98,6 +98,24 @@ test('profile displays legacy names canonically, requires explicit department ch
   } finally { act(() => renderer.unmount()) }
 })
 
+test('legacy organization selections remain usable and produce only new-draft defaults', () => {
+  assert.deepEqual(organizationUnits, ['ฝลส.', 'กกท.', 'กบง.', 'กคน.', 'กกร.'])
+  for (const unit of ['กกท.', 'กบง.', 'กคน.']) {
+    const legacy = `ประจำกอง (${unit})`
+    assert.deepEqual(organization.normalizeOrganizationSelection(legacy, null), { unit, department: `ประจำกอง ${unit}` })
+    assert.equal(profileAffiliation({ organization_unit: legacy, department: null }), unit)
+  }
+  assert.equal(profileAffiliation({ organization_unit: 'กกก.', department: 'ผปล.' }), 'ผปส. กกท.')
+  assert.equal(profileAffiliation({ organization_unit: 'กบง.', department: 'ผบร.' }), 'ผบธ. กบง.')
+  assert.equal(profileAffiliation({ organization_unit: 'กกร. (Team-Based)', department: null }), 'กกร.')
+  assert.equal(profileAffiliation({ organization_unit: 'กบง.', department: 'ไม่ระบุ' }), 'กบง.')
+  let renderer!: ReactTestRenderer
+  act(() => { renderer = create(<OrganizationFields idPrefix="legacy" unit="ประจำกอง (กบง.)" department="" onChange={() => {}} />) })
+  assert.equal(renderer.root.findByProps({ id: 'legacy-unit' }).props.value, 'กบง.')
+  assert.equal(renderer.root.findByProps({ id: 'legacy-department' }).props.value, 'ประจำกอง กบง.')
+  act(() => renderer.unmount())
+})
+
 const eventDetails: EventDetails = { guestEmails: [], occurrenceGuestEmails: [], guestAcknowledgements: {}, reminderKeys: [],
   attachments: [], occurrenceId: null, occurrenceOverride: null, hasOccurrenceChanges: false, notificationDeliveries: [], occurrenceReminders: [], occurrenceNotificationDeliveries: [] }
 const taskDetails: TaskDetails = { reminderKeys: [], notifyEmail: true, notifyLine: false, attachments: [], documentLinks: [], internalRecipients: [], externalRecipients: [], notificationDeliveries: [], reminders: [], reminderNotificationDeliveries: [] }
@@ -105,11 +123,11 @@ const taskDetails: TaskDetails = { reminderKeys: [], notifyEmail: true, notifyLi
 for (const kind of ['meeting', 'task'] as const) {
   test(`${kind} fills a late profile without resetting other fields, respects manual changes, and preserves legacy items`, () => {
     let renderer!: ReactTestRenderer
-    const dialog = (affiliation: string, saved = false, open = true) => <LanguageProvider>{kind === 'meeting'
-      ? <EventDialog open={open} event={saved ? { id: 'legacy', affiliation: '', title: 'Saved', description: '', location: '', start_datetime: '2030-10-03T02:00:00Z', all_day: false } as Database['public']['Tables']['events']['Row'] : null}
+    const dialog = (affiliation: string, saved = false, open = true, savedAffiliation = '') => <LanguageProvider>{kind === 'meeting'
+      ? <EventDialog open={open} event={saved ? { id: 'legacy', affiliation: savedAffiliation, title: 'Saved', description: '', location: '', start_datetime: '2030-10-03T02:00:00Z', all_day: false } as Database['public']['Tables']['events']['Row'] : null}
         details={eventDetails} defaultAffiliation={affiliation} canEdit canViewDeliveryStatus={false} busy={false}
         onClose={() => {}} onSave={noop} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} />
-      : <TaskDialog open={open} task={saved ? { id: 'legacy', affiliation: '', title: 'Saved', description: '', due_date: '2030-10-03', assignee_type: 'internal' } as Database['public']['Tables']['tasks']['Row'] : null}
+      : <TaskDialog open={open} task={saved ? { id: 'legacy', affiliation: savedAffiliation, title: 'Saved', description: '', due_date: '2030-10-03', assignee_type: 'internal' } as Database['public']['Tables']['tasks']['Row'] : null}
         details={taskDetails} defaultAffiliation={affiliation} userId="self" profiles={[]} events={[]} canEdit canComplete={false} canAcknowledge={false} canViewDeliveryStatus={false} busy={false}
         onClose={() => {}} onSave={noop} onDelete={noop} onToggleComplete={noop} onAcknowledge={noop} onDeleteAttachment={noop} onRetryNotification={noop} />}</LanguageProvider>
     const field = () => renderer.root.findByProps({ id: kind === 'meeting' ? 'event-affiliation' : 'task-affiliation' })
@@ -129,6 +147,13 @@ for (const kind of ['meeting', 'task'] as const) {
     act(() => renderer.update(dialog('ผปก. กคน. ฝลส.', true)))
     assert.equal(field().props.value, '')
     assert.equal(title().props.value, 'Saved')
+    act(() => renderer.update(dialog('ผปส. กกท.', true, false, 'กกก. ผปล.')))
+    act(() => renderer.update(dialog('ผปส. กกท.', true, true, 'กกก. ผปล.')))
+    assert.equal(field().props.value, 'กกก. ผปล.')
+    act(() => title().props.onChange({ target: { value: 'Edited title only' } }))
+    act(() => renderer.update(dialog('ผบธ. กบง.', true, true, 'กกก. ผปล.')))
+    assert.equal(title().props.value, 'Edited title only')
+    assert.equal(field().props.value, 'กกก. ผปล.')
     act(() => renderer.unmount())
   })
 }

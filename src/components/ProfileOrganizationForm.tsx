@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../auth/AuthProvider'
 import { useLanguage } from '../i18n/LanguageProvider'
-import { departmentsFor, memberOrganizationData, normalizeOrganizationUnit, unspecifiedDepartment, validOrganization } from '../lib/organization'
+import { departmentsFor, memberOrganizationData, normalizeOrganizationSelection, unspecifiedDepartment, validOrganization } from '../lib/organization'
 import { supabase } from '../lib/supabase'
 import { OrganizationFields } from './OrganizationFields'
 
@@ -14,8 +14,9 @@ export function ProfileOrganizationForm() {
   const [message, setMessage] = useState('')
   const [failed, setFailed] = useState(false)
   useEffect(() => {
-    setUnit(normalizeOrganizationUnit(profile?.organization_unit))
-    setDepartment(profile?.department || (departmentsFor(profile?.organization_unit).length ? unspecifiedDepartment : ''))
+    const selection = normalizeOrganizationSelection(profile?.organization_unit, profile?.department)
+    setUnit(selection.unit)
+    setDepartment(selection.department || (departmentsFor(selection.unit).length ? unspecifiedDepartment : ''))
   }, [profile?.id, profile?.organization_unit, profile?.department])
   const validSelection = validOrganization(unit, department) && (!departmentsFor(unit).length || department !== '')
 

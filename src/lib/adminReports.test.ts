@@ -38,6 +38,25 @@ test('canonical organization filters include legacy names and explicit unspecifi
   assert.equal(rows[0].organization_unit, 'กกก.')
 })
 
+test('new department filters include equivalent legacy member values without merging head-office and other choices', () => {
+  const rows = [profile('old-dept', { organization_unit: 'กกก.', department: 'ผปล.' }),
+    profile('new-dept', { organization_unit: 'กกท.', department: 'ผปส.' }),
+    profile('old-office', { organization_unit: 'ประจำกอง (กกท.)' }),
+    profile('new-office', { organization_unit: 'กกท.', department: 'ประจำกอง กกท.' }),
+    profile('old-other', { organization_unit: 'กกก.', department: 'ไม่ระบุ' }),
+    profile('new-other', { organization_unit: 'กกท.', department: 'อื่นๆ' }),
+    profile('null-other', { organization_unit: 'กกท.' })]
+  const before = JSON.stringify(rows)
+  assert.deepEqual(filterAdminProfiles(rows, { ...filters, unit: 'กกท.', department: 'ผปส.' }).map(row => row.id), ['old-dept', 'new-dept'])
+  assert.deepEqual(filterAdminProfiles(rows, { ...filters, unit: 'กกท.', department: 'ผปล.' }).map(row => row.id), ['old-dept', 'new-dept'])
+  assert.deepEqual(filterAdminProfiles(rows, { ...filters, unit: 'กกท.', department: 'ประจำกอง กกท.' }).map(row => row.id), ['old-office', 'new-office'])
+  assert.deepEqual(filterAdminProfiles(rows, { ...filters, unit: 'ประจำกอง (กกท.)' }).map(row => row.id), ['old-office', 'new-office'])
+  for (const department of ['ไม่ระบุ', 'อื่นๆ']) {
+    assert.deepEqual(filterAdminProfiles(rows, { ...filters, unit: 'กกท.', department }).map(row => row.id), ['old-other', 'new-other', 'null-other'])
+  }
+  assert.equal(JSON.stringify(rows), before)
+})
+
 test('Thai date range includes the entire final day and rejects invalid or reversed dates', () => {
   assert.deepEqual(reportDateBounds({ from: '2026-10-01', to: '2026-10-31' }), { start: '2026-09-30T17:00:00.000Z', end: '2026-10-31T17:00:00.000Z' })
   assert.deepEqual(reportDateBounds({ from: '', to: '' }), { start: undefined, end: undefined })

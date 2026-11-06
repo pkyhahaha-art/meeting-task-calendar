@@ -10,7 +10,7 @@ import { registrationSchema, type RegistrationValues } from '../lib/validation'
 
 const values: RegistrationValues = {
   namePrefix: 'นาย', firstName: 'Test', lastName: 'Member', employeeId: '123456',
-  organizationUnit: 'ประจำฝ่าย (ฝลส.)', department: '', email: 'Fixture@gmail.com',
+  organizationUnit: 'ฝลส.', department: '', email: 'Fixture@gmail.com',
   password: 'Fixturepass12', confirmPassword: 'Fixturepass12',
 }
 type SignupResult = { data: { user: { identities?: unknown[] } | null }; error: { message: string } | null }

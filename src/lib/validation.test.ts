@@ -21,9 +21,9 @@ describe('registrationSchema', () => {
     assert.equal(registrationSchema.safeParse({ ...validRegistration, organizationUnit: '' }).success, false)
     assert.equal(registrationSchema.safeParse({ ...validRegistration, department: '' }).success, false)
     assert.equal(registrationSchema.safeParse({ ...validRegistration, department: 'ผสอ.' }).success, false)
-    assert.equal(registrationSchema.safeParse({ ...validRegistration, organizationUnit: 'กกร. (Team-Based)', department: '' }).success, true)
-    assert.equal(registrationSchema.safeParse({ ...validRegistration, organizationUnit: 'ประจำฝ่าย (ฝลส.)', department: '' }).success, true)
-    assert.equal(registrationSchema.safeParse({ ...validRegistration, organizationUnit: 'กกร. (Team-Based)', department: 'ผคอ.' }).success, false)
+    assert.equal(registrationSchema.safeParse({ ...validRegistration, organizationUnit: 'กกร.', department: '' }).success, true)
+    assert.equal(registrationSchema.safeParse({ ...validRegistration, organizationUnit: 'ฝลส.', department: '' }).success, true)
+    assert.equal(registrationSchema.safeParse({ ...validRegistration, organizationUnit: 'กกร.', department: 'ผคอ.' }).success, false)
   })
   it('accepts each new organization with its department or explicit unspecified choice and serializes absence as null', () => {
     for (const organizationUnit of organizationUnits) {
@@ -38,6 +38,9 @@ describe('registrationSchema', () => {
       if (!departments.length) assert.equal(registrationSchema.safeParse({ ...validRegistration, organizationUnit, department: unspecifiedDepartment }).success, false)
     }
     assert.equal(registrationSchema.safeParse({ ...validRegistration, organizationUnit: 'กกก.' }).success, false)
+    for (const organizationUnit of ['ประจำฝ่าย (ฝลส.)', 'กกร. (Team-Based)', 'ประจำกอง (กบง.)', 'ประจำกอง (กคน.)', 'ประจำกอง (กกท.)']) {
+      assert.equal(registrationSchema.safeParse({ ...validRegistration, organizationUnit, department: '' }).success, false)
+    }
   })
   it('accepts the required registration fields', () => {
     assert.equal(registrationSchema.safeParse(validRegistration).success, true)

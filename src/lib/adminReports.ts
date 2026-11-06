@@ -1,5 +1,5 @@
 import type { Database, Json } from './database.types'
-import { normalizeOrganizationUnit, unspecifiedDepartment, validOrganization } from './organization'
+import { normalizeOrganizationSelection, unspecifiedDepartment, validOrganization } from './organization'
 
 export type AdminProfile = Database['public']['Tables']['profiles']['Row']
 export type AdminDelivery = Omit<Database['public']['Tables']['notification_deliveries']['Row'], 'payload' | 'idempotency_key' | 'provider_reference'> & { title: string | null; push_user_id: string | null }
@@ -28,10 +28,19 @@ export function reportDateBounds({ from, to }: ReportDates) {
 
 export function filterAdminProfiles(rows: AdminProfile[], filters: MemberFilters) {
   const search = filters.search.trim().toLocaleLowerCase()
-  return rows.filter((row) => (!search || [row.full_name, row.employee_id, row.email].some((value) => value?.toLocaleLowerCase().includes(search)))
-    && (!filters.status || row.status === filters.status) && (!filters.unit || normalizeOrganizationUnit(row.organization_unit) === normalizeOrganizationUnit(filters.unit))
-    && (!filters.department || (filters.department === unspecifiedDepartment ? !row.department : row.department === filters.department))
-    && (!filters.missing || !validOrganization(row.organization_unit || '', row.department || '')))
+  const selected = normalizeOrganizationSelection(filters.unit, filters.department)
+  return rows.filter((row) => {
+    const organization = normalizeOrganizationSelection(row.organization_unit, row.department)
+    const selectedDepartment = filters.department
+      ? normalizeOrganizationSelection(filters.unit || row.organization_unit, filters.department).department
+      : selected.department
+    const departmentMatches = !selectedDepartment || (selectedDepartment === unspecifiedDepartment
+      ? !organization.department || organization.department === unspecifiedDepartment
+      : organization.department === selectedDepartment)
+    return (!search || [row.full_name, row.employee_id, row.email].some((value) => value?.toLocaleLowerCase().includes(search)))
+      && (!filters.status || row.status === filters.status) && (!filters.unit || organization.unit === selected.unit)
+      && departmentMatches && (!filters.missing || !validOrganization(row.organization_unit || '', row.department || ''))
+  })
 }
 
 /** Read every page, detecting truncation or a changing result instead of exporting a partial report. */
