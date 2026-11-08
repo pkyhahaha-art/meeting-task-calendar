@@ -698,6 +698,61 @@ textarea.field-input { line-height: 1.6; }
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
 
+/* Improve reading without changing the existing visual theme or event limits. */
+.calendar-page-main .calendar-fill-month .fc .fc-daygrid-body { height: 100% !important; }
+.calendar-page-main .calendar-fill-month .fc .fc-scrollgrid-sync-table { height: 100% !important; }
+.calendar-page-main .calendar-fill-month .fc .fc-scrollgrid-sync-table tbody {
+  display: grid;
+  height: 100%;
+  grid-auto-rows: minmax(72px, 1fr);
+}
+.calendar-page-main .calendar-fill-month .fc .fc-scrollgrid-sync-table tbody tr {
+  display: table;
+  width: 100%;
+  height: 100% !important;
+  table-layout: fixed;
+}
+.calendar-page-main .calendar-fill-month .fc .fc-daygrid-event {
+  box-sizing: border-box;
+  height: 34px !important;
+  min-height: 34px !important;
+  max-height: 34px !important;
+  overflow: hidden !important;
+}
+.calendar-page-main .calendar-fill-month .fc .fc-daygrid-event .fc-event-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal !important;
+  overflow: hidden !important;
+  max-height: 2.7em;
+  min-width: 0;
+  font-size: 11px !important;
+  line-height: 1.35 !important;
+}
+.calendar-page-main .calendar-fill .fc .fc-timegrid-event .fc-event-title { font-size: 11.5px !important; line-height: 1.35; }
+/* Keep the selected-date border and its shadow inside the first and last columns. */
+.calendar-page-main .mini-calendar-card .fc .fc-daygrid-day-number {
+  box-sizing: border-box;
+  width: min(2.35rem, calc(100% - 6px));
+  min-width: 0;
+  max-width: 100%;
+}
+.calendar-page-main .mini-calendar-card .fc .mini-calendar-date {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+}
+@media (pointer: coarse) {
+  .calendar-page-main .mini-calendar-card .fc .fc-daygrid-day-number { width: min(44px, calc(100% - 6px)); }
+  .calendar-page-main .mini-calendar-card .fc .mini-calendar-date { position: relative; }
+  .calendar-page-main .mini-calendar-card .fc .mini-calendar-date::after { content: ''; position: absolute; inset: 0 -3px; }
+}
+p.mb-3.text-sm.font-semibold.text-brand-600 { color: #805100; }
+@media (min-width: 1024px) {
+  .calendar-page-main > div { grid-template-columns: minmax(240px, 280px) minmax(0, 1fr); }
+}
+
 /* Keep day and week controls readable and easy to tap on narrow screens. */
 @media (max-width: 767px) {
   header .calendar-event-stats-card {
