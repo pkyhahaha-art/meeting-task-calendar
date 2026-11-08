@@ -61,6 +61,22 @@ test('email branding falls back to readable PEA text without a secure app URL', 
   }
 })
 
+test('every task and meeting notification uses the same email-safe card styling', () => {
+  const templates = [
+    'meeting_created', 'meeting_updated', 'meeting_cancelled', 'meeting_guest_added',
+    'meeting_reminder', 'meeting_occurrence_cancelled', 'meeting_occurrence_moved',
+    'task_created', 'task_assigned', 'task_reminder', 'task_updated', 'task_cancelled', 'task_completed',
+  ]
+  for (const template of templates) {
+    const entity = template.startsWith('meeting_') ? 'meeting' : 'task'
+    const card = html(template, { entity, title: 'ทดสอบ & ตรวจสอบ', reminder_key: 'overdue' })
+    assert.match(card, /background:#ffe15d;border-top:3px solid #111111/)
+    assert.match(card, /ทดสอบ &amp; ตรวจสอบ/)
+    assert.match(card, /<table role="presentation"/)
+    assert.doesNotMatch(card, /display:flex|<script/)
+  }
+})
+
 test('appointment action notices name the exact Bangkok date and remain concise in branded email', () => {
   const payload = { entity: 'meeting', title: '<แผนงาน>', original_occurrence_start: '2026-10-02T17:30:00Z',
     new_occurrence_start: '2026-10-01T17:30:00Z', description: 'PRIVATE AGENDA',
