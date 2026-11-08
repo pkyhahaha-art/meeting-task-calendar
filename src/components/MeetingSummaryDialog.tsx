@@ -603,7 +603,7 @@ export function MeetingSummaryDialog({
                                 setCustomDescriptions((prev) => ({ ...prev, [meeting.id]: val }))
                               }}
                               placeholder={text('พิมพ์ข้อความสรุปย่อ (กด Enter ขึ้นบรรทัดใหม่ได้)...', 'Type short summary (Enter for new line)...')}
-                              className="w-full text-[11px] px-2 py-1.5 rounded-md border border-purple-200 bg-white focus:outline-none focus:border-purple-500 text-slate-700 shadow-2xs resize-y leading-snug"
+                              className="w-full text-[11px] px-2 py-1.5 rounded-md border border-purple-200 bg-white focus:outline-none focus:border-purple-500 text-slate-700 shadow-sm resize-y leading-snug"
                             />
                             )}
                           </div>
@@ -726,7 +726,7 @@ export function MeetingSummaryDialog({
                           </div>
 
                           {/* Meeting Card Container */}
-                          <div className="rounded-xl overflow-hidden border border-purple-200/90 shadow-2xs bg-white transition">
+                          <div className="rounded-xl overflow-hidden border border-purple-200/90 shadow-sm bg-white transition">
                             {/* Card Header (Deep Purple Strip) */}
                             <div className="bg-gradient-to-r from-[#712276] via-[#7d2783] to-[#913297] text-white px-3.5 py-1.5 flex items-center justify-between">
                               <h3 className="font-bold text-[13px] tracking-tight leading-snug">

@@ -134,53 +134,53 @@ export function AppShell() {
   }
   const calendarMode = location.pathname === '/calendar'
   const navClass = ({ isActive }: { isActive: boolean }) =>
-    `flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-medium whitespace-nowrap transition ${isActive ? 'bg-[#FAF8FC] text-[#5D437A] font-bold shadow-sm' : 'text-white/85 hover:bg-white/12 hover:text-white'}`
+    `flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-bold whitespace-nowrap transition border-2 ${isActive ? 'bg-[#FFE15D] text-black border-black shadow-[3px_3px_0px_#000000]' : 'border-transparent text-black hover:bg-[#FFFBEA] hover:border-black hover:shadow-[2px_2px_0px_#000000]'}`
   const navLabel = 'lg:sr-only lg:group-hover:not-sr-only lg:group-has-[:focus-visible]:not-sr-only'
   const desktopSidebarWidth = desktopMenuExpanded ? 'lg:w-[254px]' : 'lg:w-[70px]'
   const displayName = profile?.full_name || user?.email || text('ผู้ใช้งาน', 'User')
 
   return (
-    <div className={`app-shell min-h-screen bg-[#F7F5FA] text-slate-900 lg:grid lg:grid-cols-[70px_minmax(0,1fr)] ${calendarMode ? 'calendar-page-shell' : ''}`}>
+    <div className={`app-shell min-h-screen bg-[#FFFDF7] text-black lg:grid lg:grid-cols-[70px_minmax(0,1fr)] ${calendarMode ? 'calendar-page-shell' : ''}`}>
       <a className="app-skip-link" href={`#${location.pathname}`} onClick={(event) => { event.preventDefault(); document.getElementById('app-main-content')?.focus() }}>{text('ข้ามไปยังเนื้อหา', 'Skip to content')}</a>
-      <header className="sticky top-0 z-30 flex min-h-16 flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-white/95 px-4 py-2 backdrop-blur lg:hidden">
-        <button type="button" onClick={() => setMenuOpen(true)} className="rounded-xl p-2 text-brand-700 hover:bg-slate-50" aria-label={text('เปิดเมนู', 'Open menu')}><Menu size={24} /></button>
-        <span className="min-w-0 flex-1 text-xs font-bold leading-tight text-brand-700">{t('appName')}</span>
+      <header className="sticky top-0 z-30 flex min-h-16 flex-wrap items-center justify-between gap-2 border-b-[3px] border-black bg-[#FFFDF7] px-4 py-2 lg:hidden">
+        <button type="button" onClick={() => setMenuOpen(true)} className="rounded-md border-2 border-black bg-white p-2 text-black shadow-[2px_2px_0px_#000000] hover:bg-[#FFE15D]" aria-label={text('เปิดเมนู', 'Open menu')}><Menu size={24} /></button>
+        <span className="min-w-0 flex-1 text-xs font-extrabold leading-tight text-black">{t('appName')}</span>
         <LanguageToggle />
         <div className="flex w-full justify-center">{statsCard}</div>
       </header>
-      {menuOpen && <button type="button" className="fixed inset-0 z-40 bg-slate-950/40 lg:hidden" onClick={() => setMenuOpen(false)} aria-label={text('ปิดเมนู', 'Close menu')} />}
-      <aside className={`calendar-app-rail group fixed inset-y-0 left-0 z-50 flex w-[254px] flex-col border-r border-[#685481] bg-[#75638F] shadow-xl transition-[width,transform,box-shadow] duration-300 motion-reduce:transition-none lg:sticky lg:top-0 lg:h-screen ${desktopSidebarWidth} lg:translate-x-0 lg:overflow-hidden lg:shadow-none lg:hover:w-[254px] lg:hover:shadow-xl lg:has-[:focus-visible]:w-[254px] lg:has-[:focus-visible]:shadow-xl ${desktopMenuExpanded || menuOpen ? 'sidebar-expanded' : ''} ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="flex min-h-20 items-center justify-between border-b border-white/15 px-5 lg:px-2 lg:group-hover:px-5 lg:group-has-[:focus-visible]:px-5">
-          <span className="sidebar-brand-tile rounded-xl bg-white p-2 shadow-xs" role="img" aria-label={text('PEA การไฟฟ้าส่วนภูมิภาค', 'PEA Provincial Electricity Authority')}>
+      {menuOpen && <button type="button" className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setMenuOpen(false)} aria-label={text('ปิดเมนู', 'Close menu')} />}
+      <aside className={`calendar-app-rail group fixed inset-y-0 left-0 z-50 flex w-[254px] flex-col border-r-[3px] border-black bg-white shadow-[4px_0px_0px_#000000] transition-[width,transform] duration-300 motion-reduce:transition-none lg:sticky lg:top-0 lg:h-screen ${desktopSidebarWidth} lg:translate-x-0 lg:overflow-hidden lg:shadow-none lg:hover:w-[254px] lg:has-[:focus-visible]:w-[254px] ${desktopMenuExpanded || menuOpen ? 'sidebar-expanded' : ''} ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="flex min-h-20 items-center justify-between border-b-[2.5px] border-black px-5 lg:px-2 lg:group-hover:px-5 lg:group-has-[:focus-visible]:px-5">
+          <span className="sidebar-brand-tile rounded-md border-2 border-black bg-white p-1.5 shadow-[2px_2px_0px_#000000]" role="img" aria-label={text('PEA การไฟฟ้าส่วนภูมิภาค', 'PEA Provincial Electricity Authority')}>
             <span className="sidebar-brand-seal" aria-hidden="true"><img src={peaLogo} alt="" width="5114" height="1823" /></span>
             <img className="sidebar-brand-full" src={peaLogo} alt="" width="5114" height="1823" aria-hidden="true" />
           </span>
-          <button type="button" onClick={() => setDesktopMenuExpanded((expanded) => !expanded)} className="touch-sidebar-toggle rounded-lg p-2 text-white/80 hover:bg-white/12 hover:text-white transition" aria-label={desktopMenuExpanded ? text('ยุบเมนู', 'Collapse menu') : text('ขยายเมนู', 'Expand menu')} aria-expanded={desktopMenuExpanded}><Menu size={18} /></button>
-          <button type="button" onClick={() => setMenuOpen(false)} className="rounded-lg p-1 text-white/70 hover:text-white lg:hidden" aria-label={text('ปิดเมนู', 'Close menu')}><X size={20} /></button>
+          <button type="button" onClick={() => setDesktopMenuExpanded((expanded) => !expanded)} className="touch-sidebar-toggle rounded-md border-2 border-black bg-white p-2 text-black hover:bg-[#FFE15D] shadow-[2px_2px_0px_#000000] transition" aria-label={desktopMenuExpanded ? text('ยุบเมนู', 'Collapse menu') : text('ขยายเมนู', 'Expand menu')} aria-expanded={desktopMenuExpanded}><Menu size={18} className="text-black" /></button>
+          <button type="button" onClick={() => setMenuOpen(false)} className="rounded-md border-2 border-black bg-white p-1 text-black hover:bg-[#FFE15D] shadow-[2px_2px_0px_#000000] lg:hidden" aria-label={text('ปิดเมนู', 'Close menu')}><X size={20} className="text-black" /></button>
         </div>
-        <nav className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-3 py-5" aria-label={text('เมนูหลัก', 'Main navigation')}>
-          <NavLink to="/calendar" title={t('calendar')} onClick={() => { setMenuOpen(false); setDesktopMenuExpanded(false) }} className={navClass}><CalendarDays size={19} /><span className={`${navLabel} lg:group-[.sidebar-expanded]:not-sr-only`}>{t('calendar')}</span></NavLink>
-          <div className={`my-2 space-y-1 border-y border-white/15 py-2 ${menuOpen || desktopMenuExpanded ? '' : 'lg:hidden'}`} aria-label={text('จัดการรายการปฏิทิน', 'Calendar actions')}>
+        <nav className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-3 py-5 text-black" aria-label={text('เมนูหลัก', 'Main navigation')}>
+          <NavLink to="/calendar" title={t('calendar')} onClick={() => { setMenuOpen(false); setDesktopMenuExpanded(false) }} className={navClass}><CalendarDays size={19} className="text-black shrink-0" /><span className={`${navLabel} lg:group-[.sidebar-expanded]:not-sr-only text-black`}>{t('calendar')}</span></NavLink>
+          <div className={`my-2 space-y-1 border-y-2 border-black py-2 ${menuOpen || desktopMenuExpanded ? '' : 'lg:hidden'}`} aria-label={text('จัดการรายการปฏิทิน', 'Calendar actions')}>
             {([
               ['create-task', text('เพิ่ม Task', 'Add task'), ListTodo],
               ['create-meeting', text('เพิ่ม Meeting', 'Add meeting'), CalendarPlus],
               ['meeting-summary', text('สรุปการประชุม', 'Meeting summary'), FileSpreadsheet],
             ] as const).map(([action, label, Icon]) => (
-              <Link key={action} to={`/calendar?action=${action}`} onClick={() => { setMenuOpen(false); setDesktopMenuExpanded(false) }} className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-medium text-white/85 transition hover:bg-white/12 hover:text-white"><Icon size={19} className="shrink-0" /><span>{label}</span></Link>
+              <Link key={action} to={`/calendar?action=${action}`} onClick={() => { setMenuOpen(false); setDesktopMenuExpanded(false) }} className="flex min-h-11 items-center gap-3 rounded-md border-2 border-transparent px-3 text-sm font-bold text-black transition hover:border-black hover:bg-[#FFFBEA] hover:shadow-[2px_2px_0px_#000000]"><Icon size={19} className="shrink-0 text-black" /><span className="text-black">{label}</span></Link>
             ))}
           </div>
-          <NavLink to="/mobile-push" title={text('แจ้งเตือนมือถือ', 'Mobile notifications')} onClick={() => { setMenuOpen(false); setDesktopMenuExpanded(false) }} className={navClass}><Smartphone size={19} className="shrink-0" /><span className={`${navLabel} lg:group-[.sidebar-expanded]:not-sr-only`}>{text('แจ้งเตือนมือถือ', 'Mobile notifications')}</span></NavLink>
-          <NavLink to="/profile" title={text('บัญชีและตั้งค่า', 'Account & settings')} onClick={() => { setMenuOpen(false); setDesktopMenuExpanded(false) }} className={navClass}><UserRound size={19} /><span className={`${navLabel} lg:group-[.sidebar-expanded]:not-sr-only`}>{text('บัญชีและตั้งค่า', 'Account & settings')}</span></NavLink>
-          {profile?.role === 'admin' && <NavLink to="/admin" title="Admin" onClick={() => { setMenuOpen(false); setDesktopMenuExpanded(false) }} className={navClass}><ShieldCheck size={19} /><span className={`${navLabel} lg:group-[.sidebar-expanded]:not-sr-only`}>Admin</span></NavLink>}
+          <NavLink to="/mobile-push" title={text('แจ้งเตือนมือถือ', 'Mobile notifications')} onClick={() => { setMenuOpen(false); setDesktopMenuExpanded(false) }} className={navClass}><Smartphone size={19} className="shrink-0 text-black" /><span className={`${navLabel} lg:group-[.sidebar-expanded]:not-sr-only text-black`}>{text('แจ้งเตือนมือถือ', 'Mobile notifications')}</span></NavLink>
+          <NavLink to="/profile" title={text('บัญชีและตั้งค่า', 'Account & settings')} onClick={() => { setMenuOpen(false); setDesktopMenuExpanded(false) }} className={navClass}><UserRound size={19} className="text-black shrink-0" /><span className={`${navLabel} lg:group-[.sidebar-expanded]:not-sr-only text-black`}>{text('บัญชีและตั้งค่า', 'Account & settings')}</span></NavLink>
+          {profile?.role === 'admin' && <NavLink to="/admin" title="Admin" onClick={() => { setMenuOpen(false); setDesktopMenuExpanded(false) }} className={navClass}><ShieldCheck size={19} className="text-black shrink-0" /><span className={`${navLabel} lg:group-[.sidebar-expanded]:not-sr-only text-black`}>Admin</span></NavLink>}
         </nav>
-        <div className="app-sidebar-footer mt-auto border-t border-white/15 px-4 py-3">
-          {logoutError && <p role="alert" className="mb-2 text-xs text-red-200">{logoutError}</p>}
-          <div className="app-sidebar-identity mb-2 flex min-w-0 items-center gap-3"><MemberAvatar id={user?.id || ""} name={displayName} size={36} /><div className={`min-w-0 ${navLabel} lg:group-[.sidebar-expanded]:not-sr-only`}><p className="truncate text-sm font-bold text-white">{displayName}</p><p className="truncate text-xs text-white/75">{profile?.employee_id || user?.email}</p></div></div>
-          <button type="button" onClick={() => void logout()} className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-white/85 hover:bg-white/12 hover:text-white transition" aria-label={t('signOut')} title={t('signOut')}><LogOut size={17} /><span className={`${navLabel} lg:group-[.sidebar-expanded]:not-sr-only`}>{t('signOut')}</span></button>
+        <div className="app-sidebar-footer mt-auto border-t-[2.5px] border-black px-4 py-3 bg-[#FFFDF7]">
+          {logoutError && <p role="alert" className="mb-2 text-xs font-bold text-red-600">{logoutError}</p>}
+          <div className="app-sidebar-identity mb-2 flex min-w-0 items-center gap-3"><MemberAvatar id={user?.id || ""} name={displayName} size={36} /><div className={`min-w-0 ${navLabel} lg:group-[.sidebar-expanded]:not-sr-only`}><p className="truncate text-sm font-bold text-black">{displayName}</p><p className="truncate text-xs text-black/70 font-semibold">{profile?.employee_id || user?.email}</p></div></div>
+          <button type="button" onClick={() => void logout()} className="flex min-h-11 w-full items-center gap-3 rounded-md border-2 border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-[#FF6B6B] hover:text-white shadow-[2px_2px_0px_#000000] transition" aria-label={t('signOut')} title={t('signOut')}><LogOut size={17} className="text-black shrink-0" /><span className={`${navLabel} lg:group-[.sidebar-expanded]:not-sr-only text-black`}>{t('signOut')}</span></button>
         </div>
       </aside>
       <div className={`flex min-h-screen min-w-0 flex-col ${location.pathname === '/calendar' ? 'calendar-page-content' : ''}`}>
-        <header className={`app-desktop-topbar hidden ${calendarMode ? 'calendar-app-topbar min-h-[4.25rem]' : 'min-h-16'} grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-b border-[#EAE4F0] bg-white px-6 lg:grid`}>
+        <header className={`app-desktop-topbar hidden ${calendarMode ? 'calendar-app-topbar min-h-[4.25rem]' : 'min-h-16'} grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-b-[3px] border-black bg-[#FFFDF7] px-6 lg:grid`}>
           <div className="flex min-w-0 items-center gap-3">
             {location.pathname !== '/calendar' && (
               <button
@@ -201,7 +201,7 @@ export function AppShell() {
             />
           </div>
           {statsCard}
-          <div className="app-header-account flex min-w-0 items-center justify-end gap-3"><LanguageToggle /><span className="app-header-user-name hidden text-sm font-semibold text-slate-700 xl:block">{displayName}</span><NavLink to="/profile" className="flex shrink-0 items-center gap-2 rounded-full bg-slate-100 p-2 text-brand-700" aria-label={text('บัญชีและตั้งค่า', 'Account & settings')}><MemberAvatar id={user?.id || ""} name={displayName} size={28} /><Settings size={18} /></NavLink></div>
+          <div className="app-header-account flex min-w-0 items-center justify-end gap-3"><LanguageToggle /><span className="app-header-user-name hidden text-sm font-bold text-black xl:block">{displayName}</span><NavLink to="/profile" className="flex shrink-0 items-center gap-2 rounded-full border-2 border-black bg-white p-1.5 text-black shadow-[2px_2px_0px_#000000] hover:bg-[#FFE15D]" aria-label={text('บัญชีและตั้งค่า', 'Account & settings')}><MemberAvatar id={user?.id || ""} name={displayName} size={28} /><Settings size={18} /></NavLink></div>
         </header>
         <div id="app-main-content" className="app-route-content" tabIndex={-1}><Outlet /></div>
         <AppFooter className="mt-auto xl:h-12 xl:shrink-0 xl:py-1" />

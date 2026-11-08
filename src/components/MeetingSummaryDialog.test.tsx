@@ -22,14 +22,17 @@ test('per-meeting description toggle hides the editor and preview while retainin
   act(() => renderer.unmount())
 })
 
+const now = new Date()
+const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+
 const mockMeeting: Database['public']['Tables']['events']['Row'] = {
   id: 'm-1',
   title: 'สตภ. มาสัมภาษณ์',
   description: 'สัมภาษณ์ระบบสารสนเทศ',
   location: 'ห้อง 2ศรีวิชัย',
   affiliation: 'กกร.',
-  start_datetime: '2026-11-05T13:30:00+07:00',
-  end_datetime: '2026-11-05T16:30:00+07:00',
+  start_datetime: `${todayStr}T13:30:00+07:00`,
+  end_datetime: `${todayStr}T16:30:00+07:00`,
   all_day: false,
   owner_user_id: 'u-1',
   creator_name: 'นายอลงกรณ์ สุเสาร์จัง',

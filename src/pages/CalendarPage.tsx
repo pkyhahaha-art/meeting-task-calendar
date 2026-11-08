@@ -211,6 +211,11 @@ export function CalendarPage() {
       setCalendarTooltip(null)
       api.changeView(view, api.getDate())
     }
+    // FullCalendar measures event columns during the view transition. Recheck
+    // after React has applied the new container layout to avoid stale positions.
+    if (typeof requestAnimationFrame !== 'function') return
+    const frame = requestAnimationFrame(() => api?.updateSize?.())
+    return () => cancelAnimationFrame(frame)
   }, [calendarView, compactCalendar])
 
   const updateCalendarRange = useCallback((info: DatesSetArg) => {
@@ -1083,7 +1088,7 @@ export function CalendarPage() {
       timeZone="Asia/Bangkok"
       initialView={calendarViewType(calendarView, compactCalendar)}
       slotEventOverlap={calendarView !== 'week' && calendarView !== 'day'}
-      eventMaxStack={calendarView === 'week' ? 2 : undefined}
+      {...(calendarView === 'week' ? { eventMaxStack: 2 } : {}) /* Omit the option: FullCalendar coerces explicit undefined to NaN. */}
       datesSet={updateCalendarRange}
       firstDay={1}
       height={compactCalendar && (calendarView === 'year' || calendarView === 'week') ? 'auto' : '100%'}
@@ -1276,16 +1281,16 @@ export function CalendarPage() {
       <div className="calendar-filter-options flex flex-col gap-2.5" aria-label={text('ตัวกรองรายการในปฏิทิน', 'Calendar filters')}>
         {/* กลุ่มที่ 1: ประเภทรายการ */}
         <div className="space-y-1">
-          <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">{text('ประเภทรายการ', 'Item type')}</span>
-          <div className="flex flex-wrap justify-start gap-1.5 text-xs font-semibold lg:flex-col lg:items-stretch lg:gap-1">
-            <label className={`calendar-filter-option semantic-choice semantic-meeting flex min-h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-slate-300 lg:min-h-9 lg:gap-1.5 lg:px-2 lg:py-1 lg:text-xs ${showMeetings ? 'border-slate-300 bg-slate-100 text-slate-900' : 'border-slate-200 bg-white text-slate-500'}`}>
-              <input type="checkbox" className="h-4 w-4 accent-brand-600 lg:h-3.5 lg:w-3.5" checked={showMeetings} onChange={(event) => setShowMeetings(event.target.checked)} />
-              <CalendarDays size={15} aria-hidden="true" />
+          <span className="block text-[11px] font-extrabold uppercase tracking-wider text-black">{text('ประเภทรายการ', 'Item type')}</span>
+          <div className="flex flex-wrap justify-start gap-1.5 text-xs font-bold lg:flex-col lg:items-stretch lg:gap-1.5">
+            <label className={`calendar-filter-option flex min-h-9 shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap rounded-md px-2.5 py-1.5 transition lg:min-h-9 lg:gap-2 lg:px-2.5 lg:py-1 lg:text-xs ${showMeetings ? 'border-2 border-black bg-[#FFE15D] text-black font-extrabold shadow-[2px_2px_0px_#000000]' : 'border-2 border-black bg-white text-black/60 shadow-[2px_2px_0px_#000000] hover:bg-[#FFFDF7]'}`}>
+              <input type="checkbox" className="h-4 w-4 shrink-0 accent-black lg:h-3.5 lg:w-3.5" checked={showMeetings} onChange={(event) => setShowMeetings(event.target.checked)} />
+              <CalendarDays size={16} className="shrink-0 text-black" aria-hidden="true" />
               <span>{text('แสดง Meeting', 'Show meetings')}</span>
             </label>
-            <label className={`calendar-filter-option semantic-choice semantic-task flex min-h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-amber-300 lg:min-h-9 lg:gap-1.5 lg:px-2 lg:py-1 lg:text-xs ${showTasks ? 'border-amber-300 bg-amber-100 text-amber-900' : 'border-slate-200 bg-white text-slate-500'}`}>
-              <input type="checkbox" className="h-4 w-4 accent-amber-600 lg:h-3.5 lg:w-3.5" checked={showTasks} onChange={(event) => setShowTasks(event.target.checked)} />
-              <ListTodo size={15} aria-hidden="true" />
+            <label className={`calendar-filter-option flex min-h-9 shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap rounded-md px-2.5 py-1.5 transition lg:min-h-9 lg:gap-2 lg:px-2.5 lg:py-1 lg:text-xs ${showTasks ? 'border-2 border-black bg-[#4D77FF] text-white font-extrabold shadow-[2px_2px_0px_#000000]' : 'border-2 border-black bg-white text-black/60 shadow-[2px_2px_0px_#000000] hover:bg-[#FFFDF7]'}`}>
+              <input type="checkbox" className="h-4 w-4 shrink-0 accent-black lg:h-3.5 lg:w-3.5" checked={showTasks} onChange={(event) => setShowTasks(event.target.checked)} />
+              <ListTodo size={16} className={`shrink-0 ${showTasks ? 'text-white' : 'text-black'}`} aria-hidden="true" />
               <span>{text('แสดง Task', 'Show tasks')}</span>
             </label>
           </div>
@@ -1293,26 +1298,26 @@ export function CalendarPage() {
 
         {/* กลุ่มที่ 2: สถานะ */}
         <div className="space-y-1">
-          <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">{text('สถานะ', 'Status')}</span>
-          <div className="flex flex-wrap justify-start gap-1.5 text-xs font-semibold lg:flex-col lg:items-stretch lg:gap-1">
-            <label className={`calendar-filter-option semantic-choice semantic-completed flex min-h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-green-300 lg:min-h-9 lg:gap-1.5 lg:px-2 lg:py-1 lg:text-xs ${showCompletedTasks ? 'border-green-300 bg-green-100 text-green-900' : 'border-slate-200 bg-white text-slate-500'}`}>
-              <input type="checkbox" className="h-4 w-4 accent-green-600 lg:h-3.5 lg:w-3.5" checked={showCompletedTasks} onChange={(event) => setShowCompletedTasks(event.target.checked)} />
-              <CheckCircle2 size={15} aria-hidden="true" />
+          <span className="block text-[11px] font-extrabold uppercase tracking-wider text-black">{text('สถานะ', 'Status')}</span>
+          <div className="flex flex-wrap justify-start gap-1.5 text-xs font-bold lg:flex-col lg:items-stretch lg:gap-1.5">
+            <label className={`calendar-filter-option flex min-h-9 shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap rounded-md px-2.5 py-1.5 transition lg:min-h-9 lg:gap-2 lg:px-2.5 lg:py-1 lg:text-xs ${showCompletedTasks ? 'border-2 border-black bg-[#52D17C] text-black font-extrabold shadow-[2px_2px_0px_#000000]' : 'border-2 border-black bg-white text-black/60 shadow-[2px_2px_0px_#000000] hover:bg-[#FFFDF7]'}`}>
+              <input type="checkbox" className="h-4 w-4 shrink-0 accent-black lg:h-3.5 lg:w-3.5" checked={showCompletedTasks} onChange={(event) => setShowCompletedTasks(event.target.checked)} />
+              <CheckCircle2 size={16} className="shrink-0 text-black" aria-hidden="true" />
               <span>{text('แสดง Task ที่เสร็จแล้ว', 'Show completed tasks')}</span>
             </label>
-            <label className={`calendar-filter-option semantic-choice semantic-completed flex min-h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-green-300 lg:min-h-9 lg:gap-1.5 lg:px-2 lg:py-1 lg:text-xs ${showCompletedMeetings ? 'border-green-300 bg-green-100 text-green-900' : 'border-slate-200 bg-white text-slate-500'}`}>
-              <input type="checkbox" className="h-4 w-4 accent-green-600 lg:h-3.5 lg:w-3.5" checked={showCompletedMeetings} onChange={(event) => setShowCompletedMeetings(event.target.checked)} />
-              <CheckCircle2 size={15} aria-hidden="true" />
+            <label className={`calendar-filter-option flex min-h-9 shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap rounded-md px-2.5 py-1.5 transition lg:min-h-9 lg:gap-2 lg:px-2.5 lg:py-1 lg:text-xs ${showCompletedMeetings ? 'border-2 border-black bg-[#52D17C] text-black font-extrabold shadow-[2px_2px_0px_#000000]' : 'border-2 border-black bg-white text-black/60 shadow-[2px_2px_0px_#000000] hover:bg-[#FFFDF7]'}`}>
+              <input type="checkbox" className="h-4 w-4 shrink-0 accent-black lg:h-3.5 lg:w-3.5" checked={showCompletedMeetings} onChange={(event) => setShowCompletedMeetings(event.target.checked)} />
+              <CheckCircle2 size={16} className="shrink-0 text-black" aria-hidden="true" />
               <span>{text('แสดง Meeting ที่เสร็จสิ้นแล้ว', 'Show completed meetings')}</span>
             </label>
-            <label className={`calendar-filter-option semantic-choice semantic-overdue flex min-h-9 max-w-full cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-red-300 lg:whitespace-normal lg:min-h-9 lg:gap-1.5 lg:px-2 lg:py-1 lg:text-xs ${showOverdueTasks ? 'border-red-300 bg-red-100 text-red-900' : 'border-slate-200 bg-white text-slate-500'}`}>
-              <input type="checkbox" className="h-4 w-4 shrink-0 accent-red-600 lg:h-3.5 lg:w-3.5" checked={showOverdueTasks} onChange={(event) => setShowOverdueTasks(event.target.checked)} />
-              <Clock3 size={15} className="shrink-0" aria-hidden="true" />
+            <label className={`calendar-filter-option flex min-h-9 max-w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 transition lg:whitespace-normal lg:min-h-9 lg:gap-2 lg:px-2.5 lg:py-1 lg:text-xs ${showOverdueTasks ? 'border-2 border-black bg-[#FF6B6B] text-white font-extrabold shadow-[2px_2px_0px_#000000]' : 'border-2 border-black bg-white text-black/60 shadow-[2px_2px_0px_#000000] hover:bg-[#FFFDF7]'}`}>
+              <input type="checkbox" className="h-4 w-4 shrink-0 accent-black lg:h-3.5 lg:w-3.5" checked={showOverdueTasks} onChange={(event) => setShowOverdueTasks(event.target.checked)} />
+              <Clock3 size={16} className={`shrink-0 ${showOverdueTasks ? 'text-white' : 'text-black'}`} aria-hidden="true" />
               <span>{text('แสดง Task เกินกำหนด', 'Show overdue tasks')}</span>
             </label>
-            <label className={`calendar-filter-option semantic-choice semantic-pending flex min-h-9 max-w-full cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1.5 shadow-sm transition focus-within:ring-2 focus-within:ring-amber-300 lg:whitespace-normal lg:min-h-9 lg:gap-1.5 lg:px-2 lg:py-1 lg:text-xs ${showPendingConfirmationMeetings ? 'border-amber-300 bg-amber-100 text-amber-900' : 'border-slate-200 bg-white text-slate-500'}`}>
-              <input type="checkbox" className="h-4 w-4 shrink-0 accent-amber-600 lg:h-3.5 lg:w-3.5" checked={showPendingConfirmationMeetings} onChange={(event) => setShowPendingConfirmationMeetings(event.target.checked)} />
-              <Clock3 size={15} className="shrink-0" aria-hidden="true" />
+            <label className={`calendar-filter-option flex min-h-9 max-w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 transition lg:whitespace-normal lg:min-h-9 lg:gap-2 lg:px-2.5 lg:py-1 lg:text-xs ${showPendingConfirmationMeetings ? 'border-2 border-black bg-[#FFA41B] text-black font-extrabold shadow-[2px_2px_0px_#000000]' : 'border-2 border-black bg-white text-black/60 shadow-[2px_2px_0px_#000000] hover:bg-[#FFFDF7]'}`}>
+              <input type="checkbox" className="h-4 w-4 shrink-0 accent-black lg:h-3.5 lg:w-3.5" checked={showPendingConfirmationMeetings} onChange={(event) => setShowPendingConfirmationMeetings(event.target.checked)} />
+              <Clock3 size={16} className="shrink-0 text-black" aria-hidden="true" />
               <span>{text('แสดง Meeting รอยืนยันเสร็จสิ้น', 'Show meetings pending confirmation')}</span>
             </label>
           </div>
@@ -1338,32 +1343,44 @@ export function CalendarPage() {
 
             <span className="semantic-pending status-card-pending" title={text('งานที่ยังไม่เสร็จในช่วงเวลาที่เลือก', 'Pending tasks in the selected period')}>
               <span className="flex items-center gap-1.5 min-w-0">
-                <Clock3 size={15} className="shrink-0 text-amber-600" aria-hidden="true" />
-                <span className="text-slate-700 font-semibold">{text('รอดำเนินการ', 'Pending')}</span>
+                <Clock3 size={16} className="shrink-0" aria-hidden="true" />
+                <span className="flex flex-wrap items-baseline gap-x-1 min-w-0 font-extrabold leading-tight">
+                  <span>{text('รอดำเนินการ', 'Pending')}</span>
+                  <span className="text-[10px] font-bold opacity-85 whitespace-nowrap">(Task)</span>
+                </span>
               </span>
               <strong>{pendingCount}</strong>
             </span>
 
             <span className="semantic-completed status-card-completed" title={text('งานและการประชุมที่เสร็จสิ้นในช่วงเวลาที่เลือก', 'Completed tasks and meetings in the selected period')}>
               <span className="flex items-center gap-1.5 min-w-0">
-                <CheckCircle2 size={15} className="shrink-0 text-emerald-600" aria-hidden="true" />
-                <span className="text-slate-700 font-semibold">{text('เสร็จแล้ว', 'Completed')}</span>
+                <CheckCircle2 size={16} className="shrink-0" aria-hidden="true" />
+                <span className="flex flex-wrap items-baseline gap-x-1 min-w-0 font-extrabold leading-tight">
+                  <span>{text('เสร็จแล้ว', 'Completed')}</span>
+                  <span className="text-[10px] font-bold opacity-85 whitespace-nowrap">({text('Task และ Meeting', 'Task & Meeting')})</span>
+                </span>
               </span>
               <strong>{completedCount}</strong>
             </span>
 
             <span className="semantic-overdue status-card-overdue" title={text('งานที่เกินกำหนดส่งในช่วงเวลาที่เลือก', 'Overdue tasks in the selected period')}>
               <span className="flex items-center gap-1.5 min-w-0">
-                <Clock3 size={15} className="shrink-0 text-rose-600" aria-hidden="true" />
-                <span className="text-slate-700 font-semibold">{text('เกินกำหนด', 'Overdue')}</span>
+                <Clock3 size={16} className="shrink-0" aria-hidden="true" />
+                <span className="flex flex-wrap items-baseline gap-x-1 min-w-0 font-extrabold leading-tight">
+                  <span>{text('เกินกำหนด', 'Overdue')}</span>
+                  <span className="text-[10px] font-bold opacity-85 whitespace-nowrap">(Task)</span>
+                </span>
               </span>
               <strong>{overdueCount}</strong>
             </span>
 
             <span className="semantic-pending status-card-pending-confirmation" title={text('ประชุมในช่วงเวลาที่เลือกที่ผ่านเวลาแล้วแต่ยังไม่ยืนยันเสร็จสิ้น', 'Past meetings pending confirmation in the selected period')}>
               <span className="flex items-center gap-1.5 min-w-0">
-                <Clock3 size={15} className="shrink-0 text-rose-600" aria-hidden="true" />
-                <span className="text-slate-700 font-semibold">{text('ประชุมรอยืนยัน', 'Meetings pending confirmation')}</span>
+                <Clock3 size={16} className="shrink-0" aria-hidden="true" />
+                <span className="flex flex-wrap items-baseline gap-x-1 min-w-0 font-extrabold leading-tight">
+                  <span>{text('ประชุมรอยืนยัน', 'Meetings pending confirmation')}</span>
+                  <span className="text-[10px] font-bold opacity-85 whitespace-nowrap">(Meeting)</span>
+                </span>
               </span>
               <strong>{pendingConfirmationMeetingsCount}</strong>
             </span>
@@ -1371,7 +1388,7 @@ export function CalendarPage() {
 
           {/* Row 2: Controls Toolbar (Segmented View Switcher on left, Action Buttons on right) */}
           <div className="calendar-page-header mb-2 flex items-center justify-between gap-3 lg:mb-2 lg:shrink-0">
-            <div className="calendar-view-segmented inline-flex items-center gap-1 rounded-xl bg-[#F2EDF7] p-1 border border-[#E6DEF0]">
+            <div className="calendar-view-segmented inline-flex items-center gap-1 rounded-md bg-white p-1 border-2 border-black shadow-[2px_2px_0px_#000000]">
               <select
                 aria-label={text('มุมมองปฏิทิน', 'Calendar view')}
                 value={calendarView}
@@ -1388,7 +1405,7 @@ export function CalendarPage() {
                     type="button"
                     aria-pressed={isActive}
                     onClick={() => handleSelectView(view.value as CalendarView)}
-                    className={`min-h-8 rounded-lg px-3 py-1 text-xs font-bold transition ${isActive ? 'bg-[#75638F] text-white shadow-sm' : 'text-[#6B5287] hover:bg-white/60 hover:text-[#4A3266]'}`}
+                    className={`min-h-8 rounded-md px-3 py-1 text-xs font-bold transition border-2 ${isActive ? 'bg-[#FFE15D] text-black border-black shadow-[2px_2px_0px_#000000]' : 'border-transparent text-black hover:bg-[#FFFBEA] hover:border-black'}`}
                   >
                     {view.label}
                   </button>
@@ -1399,19 +1416,19 @@ export function CalendarPage() {
             <div className="hidden items-center gap-2 shrink-0 lg:flex">
               <button
                 type="button"
-                className="btn-secondary semantic-summary-action inline-flex min-h-9 items-center justify-center gap-1.5 rounded-xl border border-[#75638F] bg-white px-3.5 py-1.5 text-xs font-bold text-[#75638F] shadow-sm transition hover:bg-[#75638F]/10"
+                className="btn-secondary semantic-summary-action inline-flex min-h-9 items-center justify-center gap-1.5 rounded-md border-2 border-black bg-white px-3.5 py-1.5 text-xs font-bold text-black shadow-[2px_2px_0px_#000000] transition hover:bg-[#FFE15D]"
                 onClick={() => setSummaryDialogOpen(true)}
               >
-                <FileSpreadsheet size={15} />{text('สรุปการประชุม', 'Meeting summary')}
+                <FileSpreadsheet size={15} className="text-black" />{text('สรุปการประชุม', 'Meeting summary')}
               </button>
               <button
-                className="btn-secondary semantic-task-action inline-flex min-h-9 items-center justify-center gap-1.5 rounded-xl border border-[#75638F] bg-white px-3.5 py-1.5 text-xs font-bold text-[#75638F] shadow-sm transition hover:bg-[#75638F]/10"
+                className="btn-secondary semantic-task-action inline-flex min-h-9 items-center justify-center gap-1.5 rounded-md border-2 border-black bg-[#EEF3FF] px-3.5 py-1.5 text-xs font-bold text-black shadow-[2px_2px_0px_#000000] transition hover:bg-[#DCE7FE]"
                 onClick={() => setTaskDialog({ open: true, task: null })}
               >
-                <ListTodo size={15} />{text('เพิ่ม Task', 'Add task')}
+                <ListTodo size={15} className="text-black" />{text('เพิ่ม Task', 'Add task')}
               </button>
               <button
-                className="btn-primary inline-flex min-h-9 items-center justify-center gap-1.5 rounded-xl border border-[#75638F] bg-[#75638F] px-3.5 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#64517C]"
+                className="btn-primary inline-flex min-h-9 items-center justify-center gap-1.5 rounded-md border-2 border-black bg-[#FFE15D] px-3.5 py-1.5 text-xs font-bold text-black shadow-[2px_2px_0px_#000000] transition hover:bg-[#FED035]"
                 onClick={() => setEventDialog({ open: true, event: null })}
               >
                 <CalendarPlus size={15} />{text('เพิ่ม Meeting', 'Add meeting')}
@@ -1465,8 +1482,8 @@ export function CalendarPage() {
             </div>
           </div>
         </div>
-        <aside className="calendar-sidebar grid content-start gap-3 sm:grid-cols-2 lg:order-1 lg:flex lg:min-h-0 lg:flex-col lg:gap-2 lg:overflow-y-auto lg:border lg:border-slate-200 lg:bg-slate-50" aria-label={text('สรุปปฏิทิน', 'Calendar summary')}>
-          <section className="mini-calendar-card card hidden p-3 sm:p-3.5 sm:col-span-2 lg:block lg:col-span-1 lg:shrink-0" aria-label={text('เลือกวันที่ในปฏิทิน', 'Choose a calendar date')}>
+        <aside className="calendar-sidebar grid content-start gap-3 sm:grid-cols-2 lg:order-1 lg:flex lg:min-h-0 lg:flex-col lg:gap-3 lg:overflow-y-auto lg:border-r-[3px] lg:border-black lg:bg-[#FFFDF7] lg:p-1" aria-label={text('สรุปปฏิทิน', 'Calendar summary')}>
+          <section className="mini-calendar-card card hidden p-3.5 sm:col-span-2 lg:block lg:col-span-1 lg:shrink-0 bg-white border-[3px] border-black rounded-lg shadow-[4px_4px_0px_#000000]" aria-label={text('เลือกวันที่ในปฏิทิน', 'Choose a calendar date')}>
             <FullCalendar ref={miniCalendarRef} plugins={[dayGridPlugin, interactionPlugin, luxonPlugin]} initialView="dayGridMonth"
               locale={language === 'th' ? thLocale : enGbLocale} timeZone="Asia/Bangkok" firstDay={1} height="auto"
               dayHeaderContent={(info) => formatCalendarDayHeader(info.date, info.view?.type, language)}
@@ -1480,14 +1497,14 @@ export function CalendarPage() {
                   calendarRef.current?.getApi().gotoDate(day)
                 }}>{info.dayNumberText}</button>} />
           </section>
-          <section className="calendar-filter-panel hidden lg:block">{calendarControls}</section>
-          <section className="card p-3 lg:shrink-0 lg:p-2.5" aria-label={text('รายการของวันที่', 'Schedule for date')}>
-            <div className="mb-2 flex items-center justify-between">
+          <section className="calendar-filter-panel hidden lg:block rounded-lg border-[3px] border-black bg-white p-3 shadow-[4px_4px_0px_#000000]">{calendarControls}</section>
+          <section className="card p-3.5 lg:shrink-0 rounded-lg border-[3px] border-black bg-white shadow-[4px_4px_0px_#000000]" aria-label={text('รายการของวันที่', 'Schedule for date')}>
+            <div className="mb-2.5 flex items-center justify-between">
               <div>
-                <h2 className="font-extrabold text-[#29233A] text-xs leading-tight">{text('รายการของวันที่', 'Schedule for')}</h2>
-                <p className="text-[11px] font-medium text-slate-500 mt-0.5">{selectedDayHeading}</p>
+                <h2 className="font-extrabold text-black text-xs leading-tight">{text('รายการของวันที่', 'Schedule for')}</h2>
+                <p className="text-[11px] font-bold text-black/70 mt-0.5">{selectedDayHeading}</p>
               </div>
-              <span className="rounded-full bg-[#F3EEF9] px-2 py-0.5 text-xs font-bold text-[#75638F] shrink-0 border border-[#E7DCF4]">
+              <span className="rounded-md bg-[#FFE15D] px-2.5 py-0.5 text-xs font-bold text-black shrink-0 border-2 border-black shadow-[1px_1px_0px_#000000]">
                 {selectedDayEntries.length} {text('รายการ', 'items')}
               </span>
             </div>
@@ -1499,9 +1516,24 @@ export function CalendarPage() {
                   const event = !isTask ? entry.extendedProps.row as EventRow : null
                   const isCompleted = isTask ? task?.status === 'completed' : Boolean(entry.extendedProps.isCompleted)
                   const isOverdue = Boolean(entry.extendedProps.isOverdue)
-                  const barColor = isCompleted ? 'bg-emerald-500' : isOverdue ? 'bg-rose-500' : isTask ? 'bg-blue-500' : 'bg-[#75638F]'
-                  const badgeClass = isCompleted ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : isOverdue ? 'bg-rose-50 text-rose-700 border-rose-200' : isTask ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-[#F4EEF9] text-[#6B5087] border-[#E7DCF4]'
-                  const badgeLabel = isTask ? text('งาน', 'Task') : text('ประชุม', 'Meeting')
+                  const isPendingConfirmation = !isTask && Boolean(entry.extendedProps.isPendingConfirmation)
+                  const barColor = isCompleted ? 'bg-[#52D17C]' : isOverdue ? 'bg-[#FF6B6B]' : isPendingConfirmation ? 'bg-[#FFA41B]' : isTask ? 'bg-[#4D77FF]' : 'bg-[#FFE15D]'
+                  const badgeClass = isCompleted
+                    ? 'bg-[#52D17C] text-black border-2 border-black font-extrabold shadow-[1px_1px_0px_#000000]'
+                    : isOverdue
+                      ? 'bg-[#FF6B6B] text-white border-2 border-black font-extrabold shadow-[1px_1px_0px_#000000]'
+                      : isPendingConfirmation
+                        ? 'bg-[#FFA41B] text-black border-2 border-black font-extrabold shadow-[1px_1px_0px_#000000]'
+                        : isTask
+                          ? 'bg-[#4D77FF] text-white border-2 border-black font-extrabold shadow-[1px_1px_0px_#000000]'
+                          : 'bg-[#FFE15D] text-black border-2 border-black font-extrabold shadow-[1px_1px_0px_#000000]'
+                  const badgeLabel = isCompleted
+                    ? (isTask ? text('งาน (เสร็จแล้ว)', 'Task (Done)') : text('ประชุม (เสร็จแล้ว)', 'Meeting (Done)'))
+                    : isOverdue
+                      ? text('งาน (เกินกำหนด)', 'Task (Overdue)')
+                      : isPendingConfirmation
+                        ? text('ประชุม (รอยืนยัน)', 'Meeting (Pending)')
+                        : (isTask ? text('งาน', 'Task') : text('ประชุม', 'Meeting'))
 
                   let timeStr = text('ทั้งวัน', 'All day')
                   if (!entry.allDay && entry.start) {
@@ -1515,59 +1547,59 @@ export function CalendarPage() {
                       key={entry.id}
                       type="button"
                       onClick={() => openCalendarEntry(entry)}
-                      className="group flex w-full min-w-0 items-start gap-2 rounded-xl border border-slate-100 bg-white p-2 text-left shadow-2xs hover:border-[#E8E1EE] hover:bg-[#FAF8FD] transition"
+                      className="group flex w-full min-w-0 items-start gap-2.5 rounded-md border-2 border-black bg-white p-2.5 text-left shadow-[2px_2px_0px_#000000] hover:bg-[#FFFBEA] transition"
                     >
-                      <span className={`mt-0.5 h-7 w-1 shrink-0 rounded-full ${barColor}`} />
+                      <span className={`mt-0.5 h-7 w-1.5 shrink-0 rounded-sm border border-black ${barColor}`} />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-1">
-                          <span className="font-bold tabular-nums text-[11px] text-slate-600">{timeStr}</span>
-                          <span className={`rounded px-1.5 py-0.2 text-[9px] font-semibold border ${badgeClass}`}>{badgeLabel}</span>
+                          <span className="font-bold tabular-nums text-[11px] text-black">{timeStr}</span>
+                          <span className={`rounded-sm px-1.5 py-0.2 text-[9px] font-bold border ${badgeClass}`}>{badgeLabel}</span>
                         </div>
-                        <span className="block truncate text-xs font-bold text-slate-800 group-hover:text-[#75638F]">{entry.title}</span>
-                        {loc && <span className="block truncate text-[10px] text-slate-500">{loc}</span>}
+                        <span className="block truncate text-xs font-bold text-black group-hover:underline transition">{entry.title}</span>
+                        {loc && <span className="block text-[10px] text-black/70 font-semibold leading-snug [overflow-wrap:anywhere]">{loc}</span>}
                       </div>
                     </button>
                   )
                 })}
               </div>
             ) : (
-              <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50/50 p-2 text-center text-xs text-slate-400">
+              <p className="rounded-md border-2 border-dashed border-black bg-[#FFFBEA] p-2.5 text-center text-xs font-bold text-black/70">
                 {text('วันนี้ยังไม่มีรายการในปฏิทิน', 'No calendar items today.')}
               </p>
             )}
           </section>
-          <section className="card p-3 sm:col-span-2 lg:col-span-1 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:p-2">
+          <section className="card p-3.5 sm:col-span-2 lg:col-span-1 lg:min-h-0 lg:flex-1 lg:overflow-y-auto rounded-lg border-[3px] border-black bg-white shadow-[4px_4px_0px_#000000]">
             <h2 className="sr-only">{text('รายการถัดไปและเอกสารล่าสุด', 'Upcoming items and recent documents')}</h2>
-            <div className="mb-2 flex rounded-md bg-slate-50 p-1 text-xs font-bold">
-              <button type="button" aria-pressed={sideTab === 'upcoming'} onClick={() => setSideTab('upcoming')} className={`flex-1 rounded-md px-2 py-1.5 transition ${sideTab === 'upcoming' ? 'bg-white text-brand-900 shadow-sm' : 'text-slate-500 hover:text-brand-700'}`}>{text('รายการถัดไป', 'Upcoming')}</button>
-              <button type="button" aria-pressed={sideTab === 'documents'} onClick={() => setSideTab('documents')} className={`flex-1 rounded-md px-2 py-1.5 transition ${sideTab === 'documents' ? 'bg-white text-brand-900 shadow-sm' : 'text-slate-500 hover:text-brand-700'}`}>{text('เอกสารล่าสุด', 'Recent documents')}</button>
+            <div className="mb-2 flex rounded-md bg-[#FFFDF7] p-1 text-xs font-bold border-2 border-black shadow-[2px_2px_0px_#000000]">
+              <button type="button" aria-pressed={sideTab === 'upcoming'} onClick={() => setSideTab('upcoming')} className={`flex-1 rounded-md px-2 py-1.5 transition border-2 ${sideTab === 'upcoming' ? 'bg-[#FFE15D] text-black border-black shadow-[2px_2px_0px_#000000] font-extrabold' : 'border-transparent text-black hover:bg-white'}`}>{text('รายการถัดไป', 'Upcoming')}</button>
+              <button type="button" aria-pressed={sideTab === 'documents'} onClick={() => setSideTab('documents')} className={`flex-1 rounded-md px-2 py-1.5 transition border-2 ${sideTab === 'documents' ? 'bg-[#FFE15D] text-black border-black shadow-[2px_2px_0px_#000000] font-extrabold' : 'border-transparent text-black hover:bg-white'}`}>{text('เอกสารล่าสุด', 'Recent documents')}</button>
             </div>
             <div className="calendar-sidebar-scroll-box max-h-[180px] lg:max-h-[220px] overflow-y-auto pr-0.5">
               {sideTab === 'upcoming' ? (
                 upcomingEntries.length ? (
                   <div className="space-y-1.5">
                     {upcomingEntries.map((entry) => (
-                      <button key={entry.id} type="button" onClick={() => openCalendarEntry(entry)} className="flex w-full items-start gap-2 rounded-md border border-slate-50 p-2 text-left hover:bg-slate-50 transition">
-                        <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${entryDotClass(entry)}`} />
+                      <button key={entry.id} type="button" onClick={() => openCalendarEntry(entry)} className="flex w-full items-start gap-2.5 rounded-md border-2 border-black bg-white p-2.5 text-left hover:bg-[#FFFBEA] transition shadow-[2px_2px_0px_#000000]">
+                        <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-sm border border-black ${entryDotClass(entry)}`} />
                         <span className="min-w-0">
-                          <span className="block truncate text-xs font-semibold text-slate-800">{entry.title}</span>
-                          <span className="text-[11px] text-slate-500">{calendarDateLabel(new Date(entry.start), language)}</span>
+                          <span className="block truncate text-xs font-bold text-black">{entry.title}</span>
+                          <span className="text-[11px] font-semibold text-black/70">{calendarDateLabel(new Date(entry.start), language)}</span>
                         </span>
                       </button>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-500 p-2">{text('ยังไม่มีรายการถัดไป', 'No upcoming items.')}</p>
+                  <p className="text-xs font-bold text-black/60 p-2 text-center">{text('ยังไม่มีรายการถัดไป', 'No upcoming items.')}</p>
                 )
               ) : recentDocumentsQuery.isLoading ? (
-                <p className="text-xs text-slate-500 p-2">{text('กำลังโหลดเอกสาร…', 'Loading documents…')}</p>
+                <p className="text-xs font-bold text-black/60 p-2">{text('กำลังโหลดเอกสาร…', 'Loading documents…')}</p>
               ) : recentDocumentsQuery.isError ? (
-                <p className="text-xs text-red-600 p-2">{text('โหลดเอกสารไม่สำเร็จ', 'Could not load documents.')}</p>
+                <p className="text-xs font-bold text-red-600 p-2">{text('โหลดเอกสารไม่สำเร็จ', 'Could not load documents.')}</p>
               ) : recentDocuments.length ? (
                 <div className="space-y-1.5">
                   {recentDocuments.map((document) => (
-                    <button key={document.id} type="button" onClick={() => openRecentDocument(document)} className="flex w-full items-start gap-2 rounded-md border border-slate-50 p-2 text-left hover:bg-slate-50 transition">
-                      <span className="mt-0.5 text-brand-600">{document.kind === 'link' ? <Link2 size={15} /> : <FileText size={15} />}</span>
+                    <button key={document.id} type="button" onClick={() => openRecentDocument(document)} className="flex w-full items-start gap-2.5 rounded-md border-2 border-black bg-white p-2.5 text-left hover:bg-[#FFFBEA] transition shadow-[2px_2px_0px_#000000]">
+                      <span className="mt-0.5 text-black">{document.kind === 'link' ? <Link2 size={15} /> : <FileText size={15} />}</span>
                       <span className="min-w-0">
                         <span className="block truncate text-xs font-semibold text-slate-800">{document.name}</span>
                         <span className="text-[11px] text-slate-500">{document.parent === 'event' ? text('การประชุม', 'Meeting') : text('งาน', 'Task')} · {calendarDateLabel(new Date(document.addedAt), language)}</span>
@@ -1616,10 +1648,25 @@ export function CalendarPage() {
                 const event = !isTask ? entry.extendedProps.row as EventRow : null
                 const isCompleted = isTask ? task?.status === 'completed' : Boolean(entry.extendedProps.isCompleted)
                 const isOverdue = Boolean(entry.extendedProps.isOverdue)
-                const Icon = isCompleted ? CheckCircle2 : (isOverdue || Boolean(entry.extendedProps.isPendingConfirmation)) ? Clock3 : isTask ? ListTodo : CalendarDays
-                const barColor = isCompleted ? 'bg-emerald-500' : isOverdue ? 'bg-rose-500' : isTask ? 'bg-amber-500' : 'bg-[#75638F]'
-                const badgeClass = isCompleted ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : isOverdue ? 'bg-rose-50 text-rose-700 border-rose-200' : isTask ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-[#F4EEF9] text-[#6B5087] border-[#E7DCF4]'
-                const badgeLabel = isTask ? text('งาน', 'Task') : text('ประชุม', 'Meeting')
+                const isPendingConfirmation = !isTask && Boolean(entry.extendedProps.isPendingConfirmation)
+                const Icon = isCompleted ? CheckCircle2 : (isOverdue || isPendingConfirmation) ? Clock3 : isTask ? ListTodo : CalendarDays
+                const barColor = isCompleted ? 'bg-[#52D17C]' : isOverdue ? 'bg-[#FF6B6B]' : isPendingConfirmation ? 'bg-[#FFA41B]' : isTask ? 'bg-[#4D77FF]' : 'bg-[#FFE15D]'
+                const badgeClass = isCompleted
+                  ? 'bg-[#52D17C] text-black border-2 border-black font-extrabold shadow-[1px_1px_0px_#000000]'
+                  : isOverdue
+                    ? 'bg-[#FF6B6B] text-white border-2 border-black font-extrabold shadow-[1px_1px_0px_#000000]'
+                    : isPendingConfirmation
+                      ? 'bg-[#FFA41B] text-black border-2 border-black font-extrabold shadow-[1px_1px_0px_#000000]'
+                      : isTask
+                        ? 'bg-[#4D77FF] text-white border-2 border-black font-extrabold shadow-[1px_1px_0px_#000000]'
+                        : 'bg-[#FFE15D] text-black border-2 border-black font-extrabold shadow-[1px_1px_0px_#000000]'
+                const badgeLabel = isCompleted
+                  ? (isTask ? text('งาน (เสร็จแล้ว)', 'Task (Done)') : text('ประชุม (เสร็จแล้ว)', 'Meeting (Done)'))
+                  : isOverdue
+                    ? text('งาน (เกินกำหนด)', 'Task (Overdue)')
+                    : isPendingConfirmation
+                      ? text('ประชุม (รอยืนยัน)', 'Meeting (Pending)')
+                      : (isTask ? text('งาน', 'Task') : text('ประชุม', 'Meeting'))
 
                 let timeStr = text('ทั้งวัน', 'All day')
                 if (!entry.allDay && entry.start) {
@@ -1636,19 +1683,19 @@ export function CalendarPage() {
                       setYearDayDialog(null)
                       openCalendarEntry(entry)
                     }}
-                    className="group flex w-full items-start gap-3 rounded-xl border border-slate-100 bg-white p-3 text-left shadow-2xs hover:border-[#75638F] hover:bg-[#FAF8FD] transition"
+                    className="group flex w-full items-start gap-3 rounded-md border-2 border-black bg-white p-3 text-left shadow-[2px_2px_0px_#000000] hover:bg-[#FFFBEA] transition"
                   >
-                    <span className={`mt-0.5 h-8 w-1.5 shrink-0 rounded-full ${barColor}`} />
+                    <span className={`mt-0.5 h-8 w-1.5 shrink-0 rounded-sm border border-black ${barColor}`} />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="font-bold tabular-nums text-xs text-slate-600 flex items-center gap-1">
-                          <Icon size={13} className="shrink-0 text-slate-500" />
+                        <span className="font-bold tabular-nums text-xs text-black flex items-center gap-1">
+                          <Icon size={13} className="shrink-0 text-black" />
                           {timeStr}
                         </span>
-                        <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold border ${badgeClass}`}>{badgeLabel}</span>
+                        <span className={`rounded-sm px-1.5 py-0.5 text-[10px] font-bold border ${badgeClass}`}>{badgeLabel}</span>
                       </div>
-                      <span className="mt-1 block truncate text-sm font-bold text-slate-800 group-hover:text-[#75638F]">{entry.title}</span>
-                      {loc && <span className="block truncate text-xs text-slate-500">{loc}</span>}
+                      <span className="mt-1 block truncate text-sm font-bold text-black group-hover:underline">{entry.title}</span>
+                      {loc && <span className="block text-xs text-black/70 font-semibold leading-snug [overflow-wrap:anywhere]">{loc}</span>}
                     </div>
                   </button>
                 )
