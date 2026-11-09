@@ -989,13 +989,14 @@ test('creating a new meeting with reminder times selected but no notification ch
 
 test('meeting tabs switch between details and rich text summary editor with toolbar', async () => {
   let renderer!: ReactTestRenderer
+  const pastEvent = { ...event, start_datetime: '2020-10-03T02:00:00.000Z' }
   try {
     act(() => {
       renderer = create(
         <LanguageProvider>
           <EventDialog
             open
-            event={event}
+            event={pastEvent}
             details={details}
             canEdit={true}
             canViewDeliveryStatus={false}
@@ -1106,6 +1107,121 @@ test('meeting summary collapsible presentation starts collapsed (false) and togg
     if (renderer) act(() => renderer.unmount())
   }
 })
+
+test('meeting summary editor is disabled for future meetings before appointment time, and enables when appointment has arrived/passed or meeting is completed', async () => {
+  let renderer!: ReactTestRenderer
+  const futureMeeting = { ...event, start_datetime: '2030-10-03T02:00:00.000Z' }
+  const pastMeeting = { ...event, start_datetime: '2020-10-03T02:00:00.000Z' }
+
+  try {
+    // 1. Future meeting: summary editor and toolbar should be disabled
+    act(() => {
+      renderer = create(
+        <LanguageProvider>
+          <EventDialog
+            open
+            event={futureMeeting}
+            details={details}
+            canEdit={true}
+            canViewDeliveryStatus={false}
+            busy={false}
+            isOccurrenceCompleted={false}
+            onClose={noop}
+            onSave={noop}
+            onDelete={noop}
+            onDeleteAttachment={noop}
+            onRetryNotification={noop}
+          />
+        </LanguageProvider>
+      )
+    })
+
+    // Details tab presentation card shows warning text that summary editing unlocks at scheduled time
+    const toggleBtn = renderer.root.findByProps({ id: 'toggle-meeting-summary-presentation' })
+    act(() => { toggleBtn.props.onClick() })
+    assert.ok(JSON.stringify(renderer.toJSON()).includes('Summary editing will unlock at the scheduled appointment time.'))
+
+    // Switch to summary tab
+    const summaryTab = renderer.root.findByProps({ id: 'tab-meeting-summary' })
+    act(() => { summaryTab.props.onClick() })
+
+    // Editor should be non-editable (contentEditable === false)
+    const editor = renderer.root.findByProps({ id: 'meeting-summary-editor' })
+    assert.equal(editor.props.contentEditable, false)
+
+    // Toolbar buttons should be disabled
+    const boldBtn = renderer.root.findByProps({ 'aria-label': 'Bold' })
+    assert.equal(boldBtn.props.disabled, true)
+
+    // Disabled banner should be visible
+    const disabledNotice = renderer.root.findByProps({ id: 'meeting-summary-disabled-notice' })
+    assert.ok(disabledNotice)
+    assert.ok(JSON.stringify(renderer.toJSON()).includes('Meeting summary will be editable once the scheduled appointment date/time has arrived or passed.'))
+
+    act(() => renderer.unmount())
+
+    // 2. Past meeting: summary editor should be enabled
+    act(() => {
+      renderer = create(
+        <LanguageProvider>
+          <EventDialog
+            open
+            event={pastMeeting}
+            details={details}
+            canEdit={true}
+            canViewDeliveryStatus={false}
+            busy={false}
+            isOccurrenceCompleted={false}
+            onClose={noop}
+            onSave={noop}
+            onDelete={noop}
+            onDeleteAttachment={noop}
+            onRetryNotification={noop}
+          />
+        </LanguageProvider>
+      )
+    })
+
+    const summaryTabPast = renderer.root.findByProps({ id: 'tab-meeting-summary' })
+    act(() => { summaryTabPast.props.onClick() })
+    const editorPast = renderer.root.findByProps({ id: 'meeting-summary-editor' })
+    assert.equal(editorPast.props.contentEditable, true)
+    const boldBtnPast = renderer.root.findByProps({ 'aria-label': 'Bold' })
+    assert.equal(boldBtnPast.props.disabled, false)
+
+    act(() => renderer.unmount())
+
+    // 3. Completed future meeting: summary editor should be enabled
+    act(() => {
+      renderer = create(
+        <LanguageProvider>
+          <EventDialog
+            open
+            event={futureMeeting}
+            details={details}
+            canEdit={true}
+            canViewDeliveryStatus={false}
+            busy={false}
+            isOccurrenceCompleted={true}
+            onClose={noop}
+            onSave={noop}
+            onDelete={noop}
+            onDeleteAttachment={noop}
+            onRetryNotification={noop}
+          />
+        </LanguageProvider>
+      )
+    })
+
+    const summaryTabCompleted = renderer.root.findByProps({ id: 'tab-meeting-summary' })
+    act(() => { summaryTabCompleted.props.onClick() })
+    const editorCompleted = renderer.root.findByProps({ id: 'meeting-summary-editor' })
+    assert.equal(editorCompleted.props.contentEditable, true)
+  } finally {
+    if (renderer) act(() => renderer.unmount())
+  }
+})
+
 
 
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlertTriangle, Bell, Bold, CalendarClock, CheckCircle2, ChevronDown, Download, ExternalLink, FileCheck, FileText, Italic, Link2, List, ListOrdered, Loader2, Mail, Paperclip, Plus, Redo, RemoveFormatting, Repeat2, Smartphone, Sparkles, Trash2, Underline, Undo, UserPlus, X } from 'lucide-react'
+import { AlertCircle, AlertTriangle, Bell, Bold, CalendarClock, CheckCircle2, ChevronDown, Download, ExternalLink, FileCheck, FileText, Italic, Link2, List, ListOrdered, Loader2, Mail, Paperclip, Plus, Redo, RemoveFormatting, Repeat2, Smartphone, Sparkles, Trash2, Underline, Undo, UserPlus, X } from 'lucide-react'
 import Swal from 'sweetalert2'
 import { useLanguage } from '../i18n/LanguageProvider'
 import type { Database } from '../lib/database.types'
@@ -246,6 +246,7 @@ export function EventDialog({
   const joinedOccurrence = Boolean(joinedEmail && details?.occurrenceGuestEmails.some((email) => email.toLowerCase() === joinedEmail))
   const joinedViewedAppointment = occurrenceStart ? joinedOccurrence : joinedSeries
   const isAppointmentPassed = isMeetingAppointmentPassed(event, occurrenceStart)
+  const isSummaryEditable = Boolean(event && canEdit && !busy && (isAppointmentPassed || isOccurrenceCompleted))
 
   const joinMeeting = async () => {
     if (!event || !onJoin || !onCheckJoinTime || checkingJoin.current) return
@@ -452,7 +453,7 @@ export function EventDialog({
   }, [open, event?.id, occurrenceStart, details?.summaryHtml, initialSummaryHtml])
 
   const applyFormat = (command: string, value: string | undefined = undefined) => {
-    if (!canEdit || busy) return
+    if (!isSummaryEditable) return
     if (summaryEditorRef.current) {
       summaryEditorRef.current.focus()
     }
@@ -469,7 +470,7 @@ export function EventDialog({
   }
 
   const insertTemplate = (title: string) => {
-    if (!canEdit || busy) return
+    if (!isSummaryEditable) return
     const editor = summaryEditorRef.current
     if (!editor) return
 
@@ -517,7 +518,7 @@ export function EventDialog({
   }
 
   const clearFormatting = () => {
-    if (!canEdit || busy) return
+    if (!isSummaryEditable) return
     if (!summaryEditorRef.current) return
     summaryEditorRef.current.focus()
 
@@ -539,7 +540,13 @@ export function EventDialog({
   }
 
   const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!canEdit || busy) return
+    if (!isSummaryEditable) {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        e.stopPropagation()
+      }
+      return
+    }
 
     // 1. Enter key handling: prevent form submit from canceling the Enter key, and insert a new paragraph/line
     if (e.key === 'Enter') {
@@ -592,7 +599,7 @@ export function EventDialog({
   }
 
   const handleSaveSummaryOnly = async () => {
-    if (!onSaveSummary || busy || isSavingSummary) return
+    if (!onSaveSummary || busy || isSavingSummary || !isSummaryEditable) return
     setIsSavingSummary(true)
     try {
       const clean = sanitizeMeetingSummaryHtml(summaryHtml)
@@ -1113,7 +1120,12 @@ export function EventDialog({
                         </p>
                       )}
                       {canEdit && (
-                        <div className="mt-2.5 text-right">
+                        <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
+                          {!isSummaryEditable && (
+                            <span className="text-xs font-medium text-amber-700">
+                              {text('สรุปการประชุมจะเปิดให้บันทึกได้เมื่อถึงกำหนดวันนัดหมาย', 'Summary editing will unlock at the scheduled appointment time.')}
+                            </span>
+                          )}
                           <button
                             type="button"
                             onClick={() => {
@@ -1121,13 +1133,17 @@ export function EventDialog({
                               setTimeout(() => {
                                 if (summaryEditorRef.current) {
                                   summaryEditorRef.current.innerHTML = summaryHtml
-                                  summaryEditorRef.current.focus()
+                                  if (isSummaryEditable) {
+                                    summaryEditorRef.current.focus()
+                                  }
                                 }
                               }, 0)
                             }}
-                            className="text-xs font-semibold text-brand-700 underline hover:text-brand-900"
+                            className="ml-auto text-xs font-semibold text-brand-700 underline hover:text-brand-900"
                           >
-                            {text('ไปที่แท็บสรุปการประชุมเพื่อแก้ไข / บันทึก', 'Go to summary tab to edit / record')}
+                            {isSummaryEditable
+                              ? text('ไปที่แท็บสรุปการประชุมเพื่อแก้ไข / บันทึก', 'Go to summary tab to edit / record')
+                              : text('ไปที่แท็บสรุปการประชุมเพื่อดูข้อมูล', 'Go to summary tab to view')}
                           </button>
                         </div>
                       )}
@@ -1857,6 +1873,23 @@ export function EventDialog({
             </span>
           </div>
 
+          {!isSummaryEditable && (
+            <div id="meeting-summary-disabled-notice" className="flex items-center gap-2.5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-900">
+              <AlertCircle size={16} className="shrink-0 text-amber-600" />
+              <span>
+                {!event
+                  ? text(
+                      'สามารถบันทึกสรุปการประชุมได้หลังจากสร้างการประชุมและถึงกำหนดวันนัดหมายแล้ว',
+                      'Meeting summary can be recorded once the meeting is created and its appointment date has arrived.'
+                    )
+                  : text(
+                      'สรุปการประชุมจะเปิดให้บันทึกได้เมื่อถึงหรือเลยเวลานัดหมายการประชุมเป็นต้นไป',
+                      'Meeting summary will be editable once the scheduled appointment date/time has arrived or passed.'
+                    )}
+              </span>
+            </div>
+          )}
+
           {/* Formatting Toolbar */}
           <div className="flex flex-wrap items-center justify-between gap-1.5 rounded-t-xl border border-b-0 border-slate-300 bg-slate-100 p-2">
             <div className="flex flex-wrap items-center gap-1">
@@ -1864,7 +1897,7 @@ export function EventDialog({
                 type="button"
                 title={text('ตัวหนา (Ctrl+B)', 'Bold (Ctrl+B)')}
                 aria-label="Bold"
-                disabled={!canEdit || busy}
+                disabled={!isSummaryEditable}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => applyFormat('bold')}
                 className={`group relative flex h-8 w-8 items-center justify-center rounded-lg border font-bold transition ${
@@ -1882,7 +1915,7 @@ export function EventDialog({
                 type="button"
                 title={text('ตัวเอียง (Ctrl+I)', 'Italic (Ctrl+I)')}
                 aria-label="Italic"
-                disabled={!canEdit || busy}
+                disabled={!isSummaryEditable}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => applyFormat('italic')}
                 className={`group relative flex h-8 w-8 items-center justify-center rounded-lg border italic transition ${
@@ -1900,7 +1933,7 @@ export function EventDialog({
                 type="button"
                 title={text('ขีดเส้นใต้ (Ctrl+U)', 'Underline (Ctrl+U)')}
                 aria-label="Underline"
-                disabled={!canEdit || busy}
+                disabled={!isSummaryEditable}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => applyFormat('underline')}
                 className={`group relative flex h-8 w-8 items-center justify-center rounded-lg border underline transition ${
@@ -1919,7 +1952,7 @@ export function EventDialog({
                 type="button"
                 title={text('รายการสัญลักษณ์ (Bullet List)', 'Bullet List')}
                 aria-label="Bullet list"
-                disabled={!canEdit || busy}
+                disabled={!isSummaryEditable}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => applyFormat('insertUnorderedList')}
                 className={`group relative flex h-8 w-8 items-center justify-center rounded-lg border transition ${
@@ -1937,7 +1970,7 @@ export function EventDialog({
                 type="button"
                 title={text('รายการลำดับเลข (Numbered List)', 'Numbered List')}
                 aria-label="Numbered list"
-                disabled={!canEdit || busy}
+                disabled={!isSummaryEditable}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => applyFormat('insertOrderedList')}
                 className={`group relative flex h-8 w-8 items-center justify-center rounded-lg border transition ${
@@ -1956,7 +1989,7 @@ export function EventDialog({
                 type="button"
                 title={text('ล้างรูปแบบข้อความ (Clear Formatting)', 'Clear Formatting')}
                 aria-label="Clear formatting"
-                disabled={!canEdit || busy}
+                disabled={!isSummaryEditable}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={clearFormatting}
                 className="group relative flex h-8 w-8 items-center justify-center rounded-lg border border-transparent text-slate-700 hover:border-slate-300 hover:bg-white active:bg-slate-200 disabled:opacity-50"
@@ -1970,7 +2003,7 @@ export function EventDialog({
                 type="button"
                 title={text('เลิกทำ (Ctrl+Z)', 'Undo (Ctrl+Z)')}
                 aria-label="Undo"
-                disabled={!canEdit || busy}
+                disabled={!isSummaryEditable}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => applyFormat('undo')}
                 className="group relative flex h-8 w-8 items-center justify-center rounded-lg border border-transparent text-slate-700 hover:border-slate-300 hover:bg-white active:bg-slate-200 disabled:opacity-50"
@@ -1984,7 +2017,7 @@ export function EventDialog({
                 type="button"
                 title={text('ทำซ้ำ (Ctrl+Y)', 'Redo (Ctrl+Y)')}
                 aria-label="Redo"
-                disabled={!canEdit || busy}
+                disabled={!isSummaryEditable}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => applyFormat('redo')}
                 className="group relative flex h-8 w-8 items-center justify-center rounded-lg border border-transparent text-slate-700 hover:border-slate-300 hover:bg-white active:bg-slate-200 disabled:opacity-50"
@@ -1997,7 +2030,7 @@ export function EventDialog({
             </div>
 
             {/* Quick Template Insert Pills */}
-            {canEdit && !busy && (
+            {isSummaryEditable && (
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-[11px] font-medium text-slate-500 select-none">{text('แม่แบบ:', 'Templates:')}</span>
                 <button
@@ -2043,7 +2076,7 @@ export function EventDialog({
           {/* Rich Text Editor with vertical resizing (ยืดหดได้) */}
           <div
             ref={summaryEditorRef}
-            contentEditable={canEdit && !busy}
+            contentEditable={isSummaryEditable}
             onInput={handleSummaryInput}
             onKeyUp={updateActiveFormats}
             onMouseUp={updateActiveFormats}
@@ -2061,7 +2094,7 @@ export function EventDialog({
             id="meeting-summary-editor"
             data-placeholder={text('พิมพ์สรุปผลการประชุม, มติที่ประชุม, หรือข้อสั่งการ (สามารถใช้แถบเครื่องมือจัดรูปแบบ หรือกดปุ่มแม่แบบด้านบนได้)...', 'Type meeting summary, resolutions, or action items (use formatting toolbar or template pills above)...')}
             aria-label={text('เนื้อหาสรุปการประชุม', 'Meeting summary content')}
-            className={`min-h-48 resize-y rounded-b-xl border border-slate-300 bg-white p-4 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500 leading-relaxed font-normal overflow-y-auto ${!canEdit ? 'bg-slate-50 cursor-not-allowed opacity-80' : ''}`}
+            className={`min-h-48 resize-y rounded-b-xl border border-slate-300 p-4 text-sm leading-relaxed font-normal overflow-y-auto focus:outline-none ${!isSummaryEditable ? 'bg-slate-50 cursor-not-allowed opacity-80 text-slate-500' : 'bg-white text-slate-900 focus:ring-2 focus:ring-brand-500'}`}
           />
 
           {event && canEdit && onSaveSummary && (
@@ -2071,8 +2104,9 @@ export function EventDialog({
               </p>
               <button
                 type="button"
-                disabled={busy || isSavingSummary}
+                disabled={busy || isSavingSummary || !isSummaryEditable}
                 onClick={handleSaveSummaryOnly}
+                title={!isSummaryEditable ? text('สรุปการประชุมจะเปิดให้บันทึกได้เมื่อถึงหรือเลยเวลานัดหมายการประชุมเป็นต้นไป', 'Meeting summary will be editable once the scheduled appointment date/time has arrived or passed.') : undefined}
                 className="btn-secondary text-sm font-semibold"
               >
                 {isSavingSummary ? <Loader2 size={15} className="animate-spin" /> : null}

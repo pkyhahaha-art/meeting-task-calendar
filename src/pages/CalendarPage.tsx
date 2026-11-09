@@ -1835,6 +1835,15 @@ export function CalendarPage() {
         onSaveSummary={selectedEvent && (selectedEventOccurrenceStart || selectedEvent.start_datetime) ? async (summaryHtml) => {
           const occStart = selectedEventOccurrenceStart || selectedEvent.start_datetime
           const isDone = isMeetingCompleted(completedMeetings, selectedEvent.id, occStart)
+          if (!isDone && !isMeetingAppointmentPassed(selectedEvent, occStart)) {
+            await Swal.fire({
+              icon: 'warning',
+              customClass: { popup: 'semantic-meeting-dialog' },
+              title: text('ยังไม่ถึงกำหนดวันนัดหมาย', 'Appointment time not reached'),
+              text: text('สรุปการประชุมจะเปิดให้บันทึกได้เมื่อถึงหรือเลยเวลานัดหมายการประชุมเป็นต้นไป', 'Meeting summary can only be saved once the scheduled appointment time has arrived or passed.'),
+            })
+            return
+          }
           try {
             await saveMeetingCompletionMutation.mutateAsync({
               eventId: selectedEvent.id,

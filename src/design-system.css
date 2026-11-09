@@ -728,6 +728,10 @@ textarea.field-input { line-height: 1.6; }
   height: 100% !important;
   min-height: 0 !important;
 }
+.calendar-page-main .calendar-fill-month .fc .fc-scroller,
+.calendar-page-main .calendar-fill-month .fc .fc-scroller-liquid-absolute {
+  overflow: hidden !important;
+}
 .calendar-page-main .calendar-fill-month .fc .fc-daygrid-body {
   height: 100% !important;
   min-height: 0 !important;
