@@ -6,8 +6,7 @@ import peaLogo from '../../ภาพประกอบUI/PEA Logo (1).png'
 
 import { useAuth } from '../auth/AuthProvider'
 import { useLanguage } from '../i18n/LanguageProvider'
-import { eventAgendaPeriods } from '../lib/eventStats'
-import { expandEvent } from '../lib/recurrence'
+import { countScheduledMeetings, eventAgendaPeriods } from '../lib/eventStats'
 import { supabase } from '../lib/supabase'
 import { useConfirm } from './ConfirmDialogProvider'
 import { LanguageToggle } from './LanguageToggle'
@@ -36,51 +35,12 @@ async function countScheduledAgenda(periods: ReturnType<typeof eventAgendaPeriod
   if (eventsRes.error) throw eventsRes.error
   if (exceptionsRes.error) throw exceptionsRes.error
 
-  const events = eventsRes.data ?? []
-  const cancelledExceptions = new Set(
-    (exceptionsRes.data ?? []).map((exc) => `${exc.event_id}:${exc.occurrence_key}`)
-  )
-
-  const countEventsBetween = (rangeStart: Date, rangeEnd: Date) => {
-    let count = 0
-    for (const evt of events) {
-      if (!evt.recurrence_rule) {
-        const start = new Date(evt.start_datetime)
-        if (start >= rangeStart && start < rangeEnd) {
-          count++
-        }
-      } else {
-        const occurrences = expandEvent(
-          {
-            id: evt.id,
-            start_datetime: evt.start_datetime,
-            end_datetime: evt.end_datetime,
-            recurrence_rule: evt.recurrence_rule,
-            recurrence_count: evt.recurrence_count,
-            recurrence_until: evt.recurrence_until,
-          },
-          rangeStart,
-          rangeEnd
-        )
-        for (const occ of occurrences) {
-          const occKey = `${evt.id}:${occ.start}`
-          if (!cancelledExceptions.has(occKey)) {
-            count++
-          }
-        }
-      }
-    }
-    return count
-  }
-
-  const todayMeetings = countEventsBetween(new Date(periods.today.start), new Date(periods.today.end))
-  const weekMeetings = countEventsBetween(new Date(periods.week.start), new Date(periods.week.end))
-  const monthMeetings = countEventsBetween(new Date(periods.month.start), new Date(periods.month.end))
+  const meetings = countScheduledMeetings(eventsRes.data ?? [], exceptionsRes.data ?? [], periods)
 
   return {
-    today: (todayTasksRes.count ?? 0) + todayMeetings,
-    week: (weekTasksRes.count ?? 0) + weekMeetings,
-    month: (monthTasksRes.count ?? 0) + monthMeetings,
+    today: (todayTasksRes.count ?? 0) + meetings.today,
+    week: (weekTasksRes.count ?? 0) + meetings.week,
+    month: (monthTasksRes.count ?? 0) + meetings.month,
   }
 }
 

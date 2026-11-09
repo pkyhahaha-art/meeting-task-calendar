@@ -1,4 +1,5 @@
 import { bangkokDate } from './eventForm'
+import { expandEvent, type RecurringEvent } from './recurrence'
 
 function shiftDay(day: string, days: number) {
   return new Date(Date.parse(`${day}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10)
@@ -50,4 +51,32 @@ export function eventAgendaPeriods(now = new Date()) {
       end: bangkokMidnight(monthEnd),
     },
   }
+}
+
+export function countScheduledMeetings(
+  events: readonly RecurringEvent[],
+  exceptions: readonly { event_id: string; occurrence_key: string }[],
+  periods: ReturnType<typeof eventAgendaPeriods>,
+) {
+  // PostgREST and recurrence expansion format the same instant differently.
+  const occurrenceKey = (eventId: string, start: string) => `${eventId}:${Date.parse(start)}`
+  const excluded = new Set(exceptions.map((exception) => occurrenceKey(exception.event_id, exception.occurrence_key)))
+  const countBetween = (period: { start: string; end: string }) => {
+    const start = new Date(period.start)
+    const end = new Date(period.end)
+    const lastIncluded = new Date(end.getTime() - 1)
+    let count = 0
+    for (const event of events) {
+      if (!event.recurrence_rule) {
+        const appointment = new Date(event.start_datetime)
+        if (appointment >= start && appointment < end) count++
+        continue
+      }
+      for (const occurrence of expandEvent(event, start, lastIncluded)) {
+        if (!excluded.has(occurrenceKey(event.id, occurrence.start))) count++
+      }
+    }
+    return count
+  }
+  return { today: countBetween(periods.today), week: countBetween(periods.week), month: countBetween(periods.month) }
 }

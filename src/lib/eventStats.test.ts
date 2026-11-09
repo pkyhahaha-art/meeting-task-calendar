@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { eventCreationPeriods, eventAgendaPeriods } from './eventStats'
+import { countScheduledMeetings, eventCreationPeriods, eventAgendaPeriods } from './eventStats'
 
 test('creation periods use Bangkok days and a Monday-start week', () => {
   const periods = eventCreationPeriods(new Date('2026-09-27T18:00:00Z')) // Monday 01:00 in Bangkok
@@ -28,4 +28,32 @@ test('agenda periods return full calendar bounds for week and month', () => {
   // Month of November 2026 starts 2026-11-01 and ends 2026-12-01
   assert.equal(periods.month.startDay, '2026-11-01')
   assert.equal(periods.month.endDay, '2026-12-01')
+})
+
+test('agenda excludes a cancelled occurrence when PostgREST uses a different timestamp format', () => {
+  const periods = eventAgendaPeriods(new Date('2026-11-30T08:00:00+07:00'))
+  const event = {
+    id: 'weekly-meeting',
+    start_datetime: '2026-11-16T02:30:00+00:00',
+    end_datetime: null,
+    recurrence_rule: 'FREQ=WEEKLY;BYDAY=MO',
+    recurrence_count: 3,
+  }
+  assert.deepEqual(countScheduledMeetings([event], [], periods), { today: 1, week: 1, month: 3 })
+  assert.deepEqual(
+    countScheduledMeetings([event], [{ event_id: event.id, occurrence_key: '2026-11-30T02:30:00+00:00' }], periods),
+    { today: 0, week: 0, month: 2 },
+  )
+})
+
+test('agenda does not count a recurring occurrence at the first instant of the next month', () => {
+  const periods = eventAgendaPeriods(new Date('2026-11-30T08:00:00+07:00'))
+  const event = {
+    id: 'daily-meeting',
+    start_datetime: '2026-11-30T00:00:00+07:00',
+    end_datetime: null,
+    recurrence_rule: 'FREQ=DAILY',
+    recurrence_count: 2,
+  }
+  assert.deepEqual(countScheduledMeetings([event], [], periods), { today: 1, week: 2, month: 1 })
 })
