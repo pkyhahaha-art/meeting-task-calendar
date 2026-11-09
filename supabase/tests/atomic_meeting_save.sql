@@ -23,7 +23,7 @@ begin
   payload:=jsonb_build_object('title','Atomic fixture','description','Original','location','Room',
     'affiliation','Fixture unit','all_day',false,'start_datetime',first_at,'end_datetime',first_at+interval '1 hour',
     'recurrence_rule','FREQ=DAILY','recurrence_until',null,'recurrence_count',3,
-    'email_notifications_enabled',true,'mobile_notifications_enabled',true);
+    'email_notifications_enabled',true,'mobile_notifications_enabled',true,'grc_category_key','S001','committee_key','C001');
   templates:=jsonb_build_array(jsonb_build_object('offset_value',0,'offset_unit','minute',
     'scheduled_at',first_at,'channel_email',true,'channel_line',true,'status','scheduled'));
   perform set_config('request.jwt.claim.sub',owner_id::text,true);

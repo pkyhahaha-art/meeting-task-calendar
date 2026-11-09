@@ -120,3 +120,72 @@ export function getMeetingColors(status: MeetingStatusKind, isOwner = false) {
   }
 }
 
+export function sanitizeMeetingSummaryHtml(input: string): string {
+  if (!input) return ''
+  if (typeof document !== 'undefined') {
+    const div = document.createElement('div')
+    div.innerHTML = input
+
+    function cleanNode(node: Node): string {
+      if (node.nodeType === Node.TEXT_NODE) {
+        return (node.textContent ?? '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+      }
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        const el = node as HTMLElement
+        const tag = el.tagName.toLowerCase()
+        const inner = Array.from(el.childNodes).map(cleanNode).join('')
+
+        if (['p', 'strong', 'b', 'em', 'i', 'u', 'ul', 'ol', 'li'].includes(tag)) {
+          return `<${tag}>${inner}</${tag}>`
+        }
+        if (tag === 'span') {
+          let wrapped = inner
+          const style = el.getAttribute('style') || ''
+          if (/font-weight:\s*(bold|[7-9]00)/i.test(style)) wrapped = `<strong>${wrapped}</strong>`
+          if (/font-style:\s*italic/i.test(style)) wrapped = `<em>${wrapped}</em>`
+          if (/text-decoration:\s*underline/i.test(style)) wrapped = `<u>${wrapped}</u>`
+          return wrapped
+        }
+        if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) {
+          return `<p><strong>${inner}</strong></p>`
+        }
+        if (tag === 'br') return '<br>'
+        if (tag === 'div') {
+          return inner ? `<p>${inner}</p>` : ''
+        }
+        return inner
+      }
+      return ''
+    }
+
+    return Array.from(div.childNodes).map(cleanNode).join('').trim()
+  }
+
+  // Regex fallback for Node/tests
+  let text = input
+    .replace(/<div[^>]*>/gi, '<p>')
+    .replace(/<\/div>/gi, '</p>')
+    .replace(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/gi, '<p><strong>$1</strong></p>')
+    .replace(/<span\b[^>]*style="[^"]*font-weight:\s*(bold|[7-9]00)[^"]*"[^>]*>(.*?)<\/span>/gi, '<strong>$2</strong>')
+    .replace(/<span\b[^>]*style="[^"]*font-style:\s*italic[^"]*"[^>]*>(.*?)<\/span>/gi, '<em>$1</em>')
+    .replace(/<span\b[^>]*style="[^"]*text-decoration:\s*underline[^"]*"[^>]*>(.*?)<\/span>/gi, '<u>$1</u>')
+  text = text.replace(/<(p|strong|b|em|i|u|ul|ol|li)\b[^>]*>/gi, '<$1>')
+  text = text.replace(/<br\b[^>]*\/?>/gi, '<br>')
+  text = text.replace(/<\/?(?!p|br|strong|b|em|i|u|ul|ol|li\b)[a-z0-9_-]+[^>]*>/gi, '')
+  return text.trim()
+}
+
+export function getMeetingSummaryVisibleText(html: string): string {
+  if (!html) return ''
+  const stripped = html.replace(/<\/?(p|br|strong|b|em|i|u|ul|ol|li)\s*\/?>/gi, '')
+  return stripped.replace(/(&nbsp;|&#0*160;|&#x0*a0;|[[:space:]]|​| )/gi, '').trim()
+}
+
+export function hasMeetingSummary(html: string): boolean {
+  return getMeetingSummaryVisibleText(html).length > 0
+}
+
+

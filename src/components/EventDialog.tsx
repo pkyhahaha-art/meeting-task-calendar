@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlertTriangle, Bell, CalendarClock, CheckCircle2, ChevronDown, Download, ExternalLink, FileText, Link2, Loader2, Mail, Paperclip, Plus, Repeat2, Smartphone, Sparkles, Trash2, UserPlus, X } from 'lucide-react'
+import { AlertTriangle, Bell, Bold, CalendarClock, CheckCircle2, ChevronDown, Download, ExternalLink, FileCheck, FileText, Italic, Link2, List, ListOrdered, Loader2, Mail, Paperclip, Plus, Redo, RemoveFormatting, Repeat2, Smartphone, Sparkles, Trash2, Underline, Undo, UserPlus, X } from 'lucide-react'
 import Swal from 'sweetalert2'
 import { useLanguage } from '../i18n/LanguageProvider'
 import type { Database } from '../lib/database.types'
@@ -35,7 +35,7 @@ import { SaveActionMenu } from './SaveActionMenu'
 import { NotificationDeliveryStatus, type DeliveryStatusRow } from './NotificationDeliveryStatus'
 import { normalizeAffiliationText, profileAffiliation } from '../lib/organization'
 import { expandEvent } from '../lib/recurrence'
-import { isMeetingAppointmentPassed } from '../lib/meetingCompletion'
+import { isMeetingAppointmentPassed, sanitizeMeetingSummaryHtml, hasMeetingSummary } from '../lib/meetingCompletion'
 
 type EventRow = Database['public']['Tables']['events']['Row']
 type ProfileRow = Database['public']['Tables']['profiles']['Row']
@@ -59,8 +59,12 @@ export type EventDetails = {
   notificationDeliveries: DeliveryStatusRow[]
   occurrenceReminders: OccurrenceReminder[]
   occurrenceNotificationDeliveries: DeliveryStatusRow[]
+  summaryHtml?: string
+  isCompleted?: boolean
 }
 export type EventDraft = Pick<EventRow, 'title' | 'description' | 'location' | 'affiliation' | 'all_day'> & {
+  grc_category_key: string | null
+  committee_key: string | null
   date: string
   start: string
   end: string
@@ -81,6 +85,8 @@ const blankDraft = (date?: string): EventDraft => {
 
   return {
     title: '',
+    grc_category_key: null,
+    committee_key: null,
     description: '',
     location: '',
     affiliation: '',
@@ -100,6 +106,26 @@ const blankDraft = (date?: string): EventDraft => {
 }
 
 const weekdayOrder: MeetingWeekday[] = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']
+
+const grcCategoryOptions = [
+  ['S001', 'Governance (G)'],
+  ['S002', 'Risk Management (R)'],
+  ['S003', 'Internal Control (IC)'],
+  ['S004', 'Compliance (C)'],
+  ['S005', 'Business Continuity Management (BCM)'],
+  ['S099', 'อื่นๆ'],
+] as const
+
+const committeeOptions = [
+  ['C001', 'คณะกรรมการ กฟภ.'],
+  ['C002', 'คณะกรรมการบริหารความเสี่ยงและควบคุมภายในของ กฟภ.'],
+  ['C003', 'คณะกรรมการตรวจสอบภายในของ กฟภ.'],
+  ['C004', 'คณะกรรมการ GRC ของ กฟภ.'],
+  ['C005', 'คณะอนุกรรมการ GRC ของสายงานยุทธศาสตร์'],
+  ['C006', 'คณะกรรมการกำกับดูแลระบบการควบคุมภายในของ กฟภ.'],
+  ['C007', 'คณะทำงาน GRC ของ ฝลส.'],
+  ['C099', 'อื่นๆ'],
+] as const
 
 
 function localTime(value: string | null) {
@@ -127,7 +153,9 @@ export function EventDialog({
   defaultAffiliation = '',
   occurrenceStart,
   isOccurrenceCompleted = false,
+  initialSummaryHtml = '',
   onToggleCompleteMeeting,
+  onSaveSummary,
   canEdit,
   canDelete = canEdit,
   canViewDeliveryStatus,
@@ -155,7 +183,9 @@ export function EventDialog({
   defaultAffiliation?: string
   occurrenceStart?: string
   isOccurrenceCompleted?: boolean
-  onToggleCompleteMeeting?: () => Promise<void>
+  initialSummaryHtml?: string
+  onToggleCompleteMeeting?: (summaryHtml?: string) => Promise<void> | void
+  onSaveSummary?: (summaryHtml: string) => Promise<void> | void
   canEdit: boolean
   canDelete?: boolean
   busy: boolean
@@ -178,6 +208,11 @@ export function EventDialog({
 }) {
   const { language, text } = useLanguage()
   const [draft, setDraft] = useState<EventDraft>(blankDraft(selectedDate))
+  const [mainTab, setMainTab] = useState<'details' | 'summary'>('details')
+  const [summaryHtml, setSummaryHtml] = useState<string>(details?.summaryHtml ?? initialSummaryHtml ?? '')
+  const [isSummaryExpanded, setIsSummaryExpanded] = useState<boolean>(false)
+  const [isSavingSummary, setIsSavingSummary] = useState<boolean>(false)
+  const summaryEditorRef = useRef<HTMLDivElement>(null)
   const [editScope, setEditScope] = useState<'series' | 'occurrence'>('series')
   const [endMode, setEndMode] = useState<'end_of_year' | 'until_date' | 'count'>('end_of_year')
   const [error, setError] = useState('')
@@ -351,6 +386,8 @@ export function EventDialog({
       event
         ? {
           title: event.title,
+          grc_category_key: event.grc_category_key ?? null,
+          committee_key: event.committee_key ?? null,
           description: useOccurrenceValues && details?.occurrenceOverride?.description !== undefined ? details.occurrenceOverride.description : event.description,
           location: useOccurrenceValues && details?.occurrenceOverride?.location !== undefined ? details.occurrenceOverride.location : event.location,
           affiliation: initialAffiliation,
@@ -370,6 +407,200 @@ export function EventDialog({
         : { ...blankDraft(selectedDate), affiliation: defaultAffiliation },
     )
   }, [event, details, selectedDate, occurrenceStart, open, defaultAffiliation, currentUserId, profiles])
+
+  const isEditingRef = useRef(false)
+  const [activeFormats, setActiveFormats] = useState({
+    bold: false,
+    italic: false,
+    underline: false,
+    bulletList: false,
+    numberedList: false,
+  })
+
+  const updateActiveFormats = () => {
+    if (typeof document === 'undefined') return
+    try {
+      setActiveFormats({
+        bold: Boolean(document.queryCommandState('bold')),
+        italic: Boolean(document.queryCommandState('italic')),
+        underline: Boolean(document.queryCommandState('underline')),
+        bulletList: Boolean(document.queryCommandState('insertUnorderedList')),
+        numberedList: Boolean(document.queryCommandState('insertOrderedList')),
+      })
+    } catch {
+      // ignore in environments without DOM queryCommandState
+    }
+  }
+
+  useEffect(() => {
+    if (!open) {
+      setSummaryHtml('')
+      setIsSummaryExpanded(false)
+      setMainTab('details')
+      if (summaryEditorRef.current) {
+        summaryEditorRef.current.innerHTML = ''
+      }
+      return
+    }
+    const val = details?.summaryHtml ?? initialSummaryHtml ?? ''
+    setSummaryHtml(val)
+    setIsSummaryExpanded(false)
+    setMainTab('details')
+    if (summaryEditorRef.current && summaryEditorRef.current.innerHTML !== val) {
+      summaryEditorRef.current.innerHTML = val
+    }
+  }, [open, event?.id, occurrenceStart, details?.summaryHtml, initialSummaryHtml])
+
+  const applyFormat = (command: string, value: string | undefined = undefined) => {
+    if (!canEdit || busy) return
+    if (summaryEditorRef.current) {
+      summaryEditorRef.current.focus()
+    }
+    try {
+      document.execCommand('styleWithCSS', false, 'false')
+      document.execCommand(command, false, value)
+    } catch {
+      // ignore
+    }
+    if (summaryEditorRef.current) {
+      setSummaryHtml(summaryEditorRef.current.innerHTML)
+    }
+    updateActiveFormats()
+  }
+
+  const insertTemplate = (title: string) => {
+    if (!canEdit || busy) return
+    const editor = summaryEditorRef.current
+    if (!editor) return
+
+    // Focus without jumping or scrolling the dialog
+    editor.focus({ preventScroll: true })
+
+    const sel = typeof window !== 'undefined' ? window.getSelection() : null
+    if (sel && sel.rangeCount > 0) {
+      if (!editor.contains(sel.anchorNode)) {
+        const range = document.createRange()
+        range.selectNodeContents(editor)
+        range.collapse(false)
+        sel.removeAllRanges()
+        sel.addRange(range)
+      }
+    }
+
+    const htmlToInsert = `<p><strong>${title}:</strong>&nbsp;</p>`
+    let inserted = false
+    try {
+      document.execCommand('styleWithCSS', false, 'false')
+      inserted = document.execCommand('insertHTML', false, htmlToInsert)
+    } catch {
+      inserted = false
+    }
+
+    if (!inserted) {
+      editor.insertAdjacentHTML('beforeend', htmlToInsert)
+    }
+
+    try {
+      const range = document.createRange()
+      range.selectNodeContents(editor)
+      range.collapse(false)
+      if (sel) {
+        sel.removeAllRanges()
+        sel.addRange(range)
+      }
+    } catch {
+      // ignore
+    }
+
+    setSummaryHtml(editor.innerHTML)
+    updateActiveFormats()
+  }
+
+  const clearFormatting = () => {
+    if (!canEdit || busy) return
+    if (!summaryEditorRef.current) return
+    summaryEditorRef.current.focus()
+
+    const sel = typeof window !== 'undefined' ? window.getSelection() : null
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
+      document.execCommand('selectAll', false)
+      document.execCommand('removeFormat', false)
+      document.execCommand('unlink', false)
+      sel?.collapseToEnd()
+    } else {
+      document.execCommand('removeFormat', false)
+      document.execCommand('unlink', false)
+    }
+
+    if (summaryEditorRef.current) {
+      setSummaryHtml(summaryEditorRef.current.innerHTML)
+    }
+    updateActiveFormats()
+  }
+
+  const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!canEdit || busy) return
+
+    // 1. Enter key handling: prevent form submit from canceling the Enter key, and insert a new paragraph/line
+    if (e.key === 'Enter') {
+      e.stopPropagation()
+      if (e.shiftKey) {
+        e.preventDefault()
+        document.execCommand('insertLineBreak')
+      } else {
+        e.preventDefault()
+        document.execCommand('insertParagraph')
+      }
+      if (summaryEditorRef.current) {
+        setSummaryHtml(summaryEditorRef.current.innerHTML)
+      }
+      updateActiveFormats()
+      return
+    }
+
+    // 2. Keyboard shortcuts (Ctrl+B, Ctrl+I, Ctrl+U, Ctrl+Z, Ctrl+Y)
+    if (e.ctrlKey || e.metaKey) {
+      if (e.key === 'b' || e.key === 'B') {
+        e.preventDefault()
+        applyFormat('bold')
+      } else if (e.key === 'i' || e.key === 'I') {
+        e.preventDefault()
+        applyFormat('italic')
+      } else if (e.key === 'u' || e.key === 'U') {
+        e.preventDefault()
+        applyFormat('underline')
+      } else if (e.key === 'z' || e.key === 'Z') {
+        if (e.shiftKey) {
+          e.preventDefault()
+          applyFormat('redo')
+        } else {
+          e.preventDefault()
+          applyFormat('undo')
+        }
+      } else if (e.key === 'y' || e.key === 'Y') {
+        e.preventDefault()
+        applyFormat('redo')
+      }
+    }
+  }
+
+  const handleSummaryInput = () => {
+    if (summaryEditorRef.current) {
+      setSummaryHtml(summaryEditorRef.current.innerHTML)
+      updateActiveFormats()
+    }
+  }
+
+  const handleSaveSummaryOnly = async () => {
+    if (!onSaveSummary || busy || isSavingSummary) return
+    setIsSavingSummary(true)
+    try {
+      const clean = sanitizeMeetingSummaryHtml(summaryHtml)
+      await onSaveSummary(clean)
+    } finally {
+      setIsSavingSummary(false)
+    }
+  }
 
   useEffect(() => {
     if (!open || affiliationEdited.current) return
@@ -536,6 +767,14 @@ export function EventDialog({
       setError(text('กรุณากรอกชื่อและเวลาเริ่ม', 'Enter a title and start time.'))
       return false
     }
+    if (!event && (!draft.grc_category_key || !draft.committee_key)) {
+      setError(!draft.grc_category_key && !draft.committee_key
+        ? text('กรุณาเลือกด้าน GRC และ Committee / Team', 'Choose a GRC category and a committee / team.')
+        : !draft.grc_category_key
+          ? text('กรุณาเลือกด้าน GRC', 'Choose a GRC category.')
+          : text('กรุณาเลือก Committee / Team', 'Choose a committee / team.'))
+      return false
+    }
     if (creationDateInPast) {
       setError(text('ไม่สามารถสร้าง Meeting ในวันที่ผ่านมาแล้ว', 'A meeting cannot be created in the past.'))
       return false
@@ -679,7 +918,7 @@ export function EventDialog({
           </div>
         </div>
 
-        <form onSubmit={submit} className="space-y-5">
+        <form onSubmit={submit} onKeyDown={(e) => { if (e.key === 'Enter' && (e.target as HTMLElement)?.id === 'meeting-summary-editor') { e.stopPropagation() } }} className="space-y-5">
           {isViewingLaterOccurrence && (
             <div className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-950">
               <p className="font-semibold">
@@ -724,12 +963,79 @@ export function EventDialog({
             </fieldset>
           )}
 
-          <fieldset disabled={!canEdit || busy || savingNew} className="space-y-5 disabled:opacity-75">
-            <section className="ui-form-section space-y-4 rounded-xl border border-slate-200 p-4">
+          {/* Tab Switcher: ข้อมูลการประชุม & สรุปการประชุม */}
+          <div role="tablist" aria-label={text('แท็บการประชุม', 'Meeting tabs')} className="flex items-center gap-2 border-b border-slate-200 pb-2">
+            <button
+              type="button"
+              role="tab"
+              id="tab-meeting-details"
+              aria-controls="tabpanel-meeting-details"
+              aria-selected={mainTab === 'details'}
+              onClick={() => setMainTab('details')}
+              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all ${
+                mainTab === 'details'
+                  ? 'bg-brand-600 text-white shadow-sm'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              <FileText size={16} />
+              <span>{text('ข้อมูลการประชุม', 'Meeting details')}</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="tab-meeting-summary"
+              aria-controls="tabpanel-meeting-summary"
+              aria-selected={mainTab === 'summary'}
+              onClick={() => {
+                setMainTab('summary')
+                setTimeout(() => {
+                  if (summaryEditorRef.current && summaryEditorRef.current.innerHTML !== summaryHtml) {
+                    summaryEditorRef.current.innerHTML = summaryHtml
+                  }
+                }, 0)
+              }}
+              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all ${
+                mainTab === 'summary'
+                  ? 'bg-brand-600 text-white shadow-sm'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              <FileCheck size={16} />
+              <span>{text('สรุปการประชุม', 'Meeting summary')}</span>
+              <span
+                className={`inline-block h-2 w-2 rounded-full shrink-0 transition-opacity ${
+                  hasMeetingSummary(summaryHtml) ? 'bg-emerald-400 opacity-100' : 'opacity-0'
+                }`}
+                title={hasMeetingSummary(summaryHtml) ? text('มีข้อมูลสรุปแล้ว', 'Summary recorded') : undefined}
+                aria-hidden={!hasMeetingSummary(summaryHtml)}
+              />
+            </button>
+          </div>
+
+          <div className={mainTab === 'details' ? 'space-y-6' : 'hidden'}>
+              <fieldset disabled={!canEdit || busy || savingNew} className="space-y-5 disabled:opacity-75">
+                <section className="ui-form-section space-y-4 rounded-xl border border-slate-200 p-4">
               <h3 className="flex items-center gap-2 font-semibold text-slate-800">
                 <FileText size={18} className="text-brand-600" />
                 {text('ข้อมูลการประชุม', 'Meeting details')}
               </h3>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="min-w-0">
+                  <label className="field-label" htmlFor="event-grc-category">{text('GRC ด้าน', 'GRC category')}{!event && ' *'}</label>
+                  <select id="event-grc-category" className="field-input" value={draft.grc_category_key ?? ''} onChange={(e) => set('grc_category_key', e.target.value || null)} disabled={isOccurrenceEdit} aria-required={!event}>
+                    <option value="">{text('เลือกด้าน GRC', 'Select a GRC category')}</option>
+                    {grcCategoryOptions.map(([key, label]) => <option key={key} value={key}>{key === 'S099' ? text(label, 'Other') : label}</option>)}
+                  </select>
+                </div>
+                <div className="min-w-0">
+                  <label className="field-label" htmlFor="event-committee">Committee / Team{!event && ' *'}</label>
+                  <select id="event-committee" className="field-input" value={draft.committee_key ?? ''} onChange={(e) => set('committee_key', e.target.value || null)} disabled={isOccurrenceEdit} aria-required={!event}>
+                    <option value="">{text('เลือก Committee / Team', 'Select a committee / team')}</option>
+                    {committeeOptions.map(([key, label]) => <option key={key} value={key}>{key === 'C099' ? text(label, 'Other') : label}</option>)}
+                  </select>
+                </div>
+              </div>
               <div>
                 <label className="field-label" htmlFor="title">{text('ชื่อการประชุม *', 'Meeting title *')}</label>
                 <input id="title" className="field-input" value={draft.title} onChange={(e) => set('title', e.target.value)} maxLength={300} disabled={isOccurrenceEdit} />
@@ -768,6 +1074,67 @@ export function EventDialog({
                 <label className="field-label" htmlFor="description">{text('รายละเอียด / วาระการประชุม', 'Details / agenda')}</label>
                 <textarea id="description" autoComplete="off" className="field-input min-h-28 resize-y" value={draft.description} onChange={(e) => set('description', e.target.value)} maxLength={10000} />
               </div>
+
+              {/* Requirement 3: หัวข้อ “สรุปการประชุม (Meeting Summary)” ถัดจากรายละเอียดการประชุม พร้อมปุ่มวงกลมสำหรับเปิด/ปิดการแสดงเนื้อหา โดยค่าเริ่มต้นเป็น false (ปิดไว้) */}
+              {event && (
+                <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/80 p-3.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 font-semibold text-slate-800 text-sm">
+                      <FileCheck size={16} className="text-brand-600" />
+                      <span>{text('สรุปการประชุม (Meeting Summary)', 'Meeting Summary')}</span>
+                      {hasMeetingSummary(summaryHtml) && (
+                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
+                          {text('บันทึกแล้ว', 'Recorded')}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      id="toggle-meeting-summary-presentation"
+                      onClick={() => setIsSummaryExpanded((prev) => !prev)}
+                      className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 shadow-sm transition hover:bg-slate-100 hover:text-slate-900"
+                      aria-expanded={isSummaryExpanded}
+                      aria-label={isSummaryExpanded ? text('ปิดการแสดงเนื้อหาสรุปการประชุม', 'Collapse summary') : text('เปิดการแสดงเนื้อหาสรุปการประชุม', 'Expand summary')}
+                      title={isSummaryExpanded ? text('ปิดการแสดงเนื้อหา', 'Collapse') : text('เปิดการแสดงเนื้อหา', 'Expand')}
+                    >
+                      <ChevronDown size={15} className={`transition-transform duration-200 ${isSummaryExpanded ? 'rotate-180' : ''}`} />
+                    </button>
+                  </div>
+                  {isSummaryExpanded && (
+                    <div className="mt-3 border-t border-slate-200 pt-3">
+                      {hasMeetingSummary(summaryHtml) ? (
+                        <div
+                          className="prose prose-sm max-w-none rounded-lg border border-slate-200 bg-white p-3.5 leading-relaxed text-slate-800 meeting-summary-content"
+                          dangerouslySetInnerHTML={{ __html: sanitizeMeetingSummaryHtml(summaryHtml) }}
+                        />
+                      ) : (
+                        <p className="text-sm italic text-slate-500">
+                          {text('ยังไม่มีการบันทึกสรุปการประชุม', 'No meeting summary recorded yet.')}
+                        </p>
+                      )}
+                      {canEdit && (
+                        <div className="mt-2.5 text-right">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMainTab('summary')
+                              setTimeout(() => {
+                                if (summaryEditorRef.current) {
+                                  summaryEditorRef.current.innerHTML = summaryHtml
+                                  summaryEditorRef.current.focus()
+                                }
+                              }, 0)
+                            }}
+                            className="text-xs font-semibold text-brand-700 underline hover:text-brand-900"
+                          >
+                            {text('ไปที่แท็บสรุปการประชุมเพื่อแก้ไข / บันทึก', 'Go to summary tab to edit / record')}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </section>
 
             {!event && (
@@ -1472,6 +1839,248 @@ export function EventDialog({
               )}
             </section>
           )}
+        </div>
+
+        <section
+          role="tabpanel"
+          id="tabpanel-meeting-summary"
+          aria-labelledby="tab-meeting-summary"
+          className={`ui-form-section space-y-4 rounded-xl border border-slate-200 p-4 ${mainTab === 'summary' ? 'block' : 'hidden'}`}
+        >
+          <div className="flex items-center justify-between">
+            <h3 className="flex items-center gap-2 font-semibold text-slate-800">
+              <FileCheck size={18} className="text-brand-600" />
+              {text('สรุปการประชุม (Meeting Summary)', 'Meeting Summary')}
+            </h3>
+            <span className="text-xs text-slate-500">
+              {text('* บังคับกรอกก่อนกดยืนยันเสร็จสิ้นการประชุม', '* Required before marking meeting as complete')}
+            </span>
+          </div>
+
+          {/* Formatting Toolbar */}
+          <div className="flex flex-wrap items-center justify-between gap-1.5 rounded-t-xl border border-b-0 border-slate-300 bg-slate-100 p-2">
+            <div className="flex flex-wrap items-center gap-1">
+              <button
+                type="button"
+                title={text('ตัวหนา (Ctrl+B)', 'Bold (Ctrl+B)')}
+                aria-label="Bold"
+                disabled={!canEdit || busy}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => applyFormat('bold')}
+                className={`group relative flex h-8 w-8 items-center justify-center rounded-lg border font-bold transition ${
+                  activeFormats.bold
+                    ? 'border-brand-500 bg-brand-600 text-white shadow-xs'
+                    : 'border-transparent text-slate-700 hover:border-slate-300 hover:bg-white active:bg-slate-200'
+                } disabled:opacity-50`}
+              >
+                <Bold size={16} />
+                <span role="tooltip" className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex items-center whitespace-nowrap rounded-md bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white shadow-xl z-30">
+                  {text('ตัวหนา (Ctrl+B)', 'Bold (Ctrl+B)')}
+                </span>
+              </button>
+              <button
+                type="button"
+                title={text('ตัวเอียง (Ctrl+I)', 'Italic (Ctrl+I)')}
+                aria-label="Italic"
+                disabled={!canEdit || busy}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => applyFormat('italic')}
+                className={`group relative flex h-8 w-8 items-center justify-center rounded-lg border italic transition ${
+                  activeFormats.italic
+                    ? 'border-brand-500 bg-brand-600 text-white shadow-xs'
+                    : 'border-transparent text-slate-700 hover:border-slate-300 hover:bg-white active:bg-slate-200'
+                } disabled:opacity-50`}
+              >
+                <Italic size={16} />
+                <span role="tooltip" className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex items-center whitespace-nowrap rounded-md bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white shadow-xl z-30">
+                  {text('ตัวเอียง (Ctrl+I)', 'Italic (Ctrl+I)')}
+                </span>
+              </button>
+              <button
+                type="button"
+                title={text('ขีดเส้นใต้ (Ctrl+U)', 'Underline (Ctrl+U)')}
+                aria-label="Underline"
+                disabled={!canEdit || busy}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => applyFormat('underline')}
+                className={`group relative flex h-8 w-8 items-center justify-center rounded-lg border underline transition ${
+                  activeFormats.underline
+                    ? 'border-brand-500 bg-brand-600 text-white shadow-xs'
+                    : 'border-transparent text-slate-700 hover:border-slate-300 hover:bg-white active:bg-slate-200'
+                } disabled:opacity-50`}
+              >
+                <Underline size={16} />
+                <span role="tooltip" className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex items-center whitespace-nowrap rounded-md bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white shadow-xl z-30">
+                  {text('ขีดเส้นใต้ (Ctrl+U)', 'Underline (Ctrl+U)')}
+                </span>
+              </button>
+              <div className="mx-1 h-5 w-px bg-slate-300" />
+              <button
+                type="button"
+                title={text('รายการสัญลักษณ์ (Bullet List)', 'Bullet List')}
+                aria-label="Bullet list"
+                disabled={!canEdit || busy}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => applyFormat('insertUnorderedList')}
+                className={`group relative flex h-8 w-8 items-center justify-center rounded-lg border transition ${
+                  activeFormats.bulletList
+                    ? 'border-brand-500 bg-brand-600 text-white shadow-xs'
+                    : 'border-transparent text-slate-700 hover:border-slate-300 hover:bg-white active:bg-slate-200'
+                } disabled:opacity-50`}
+              >
+                <List size={16} />
+                <span role="tooltip" className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex items-center whitespace-nowrap rounded-md bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white shadow-xl z-30">
+                  {text('รายการสัญลักษณ์ (Bullet List)', 'Bullet List')}
+                </span>
+              </button>
+              <button
+                type="button"
+                title={text('รายการลำดับเลข (Numbered List)', 'Numbered List')}
+                aria-label="Numbered list"
+                disabled={!canEdit || busy}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => applyFormat('insertOrderedList')}
+                className={`group relative flex h-8 w-8 items-center justify-center rounded-lg border transition ${
+                  activeFormats.numberedList
+                    ? 'border-brand-500 bg-brand-600 text-white shadow-xs'
+                    : 'border-transparent text-slate-700 hover:border-slate-300 hover:bg-white active:bg-slate-200'
+                } disabled:opacity-50`}
+              >
+                <ListOrdered size={16} />
+                <span role="tooltip" className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex items-center whitespace-nowrap rounded-md bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white shadow-xl z-30">
+                  {text('รายการลำดับเลข (Numbered List)', 'Numbered List')}
+                </span>
+              </button>
+              <div className="mx-1 h-5 w-px bg-slate-300" />
+              <button
+                type="button"
+                title={text('ล้างรูปแบบข้อความ (Clear Formatting)', 'Clear Formatting')}
+                aria-label="Clear formatting"
+                disabled={!canEdit || busy}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={clearFormatting}
+                className="group relative flex h-8 w-8 items-center justify-center rounded-lg border border-transparent text-slate-700 hover:border-slate-300 hover:bg-white active:bg-slate-200 disabled:opacity-50"
+              >
+                <RemoveFormatting size={15} />
+                <span role="tooltip" className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex items-center whitespace-nowrap rounded-md bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white shadow-xl z-30">
+                  {text('ล้างรูปแบบข้อความ (Clear Formatting)', 'Clear Formatting')}
+                </span>
+              </button>
+              <button
+                type="button"
+                title={text('เลิกทำ (Ctrl+Z)', 'Undo (Ctrl+Z)')}
+                aria-label="Undo"
+                disabled={!canEdit || busy}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => applyFormat('undo')}
+                className="group relative flex h-8 w-8 items-center justify-center rounded-lg border border-transparent text-slate-700 hover:border-slate-300 hover:bg-white active:bg-slate-200 disabled:opacity-50"
+              >
+                <Undo size={15} />
+                <span role="tooltip" className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex items-center whitespace-nowrap rounded-md bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white shadow-xl z-30">
+                  {text('เลิกทำ (Ctrl+Z)', 'Undo (Ctrl+Z)')}
+                </span>
+              </button>
+              <button
+                type="button"
+                title={text('ทำซ้ำ (Ctrl+Y)', 'Redo (Ctrl+Y)')}
+                aria-label="Redo"
+                disabled={!canEdit || busy}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => applyFormat('redo')}
+                className="group relative flex h-8 w-8 items-center justify-center rounded-lg border border-transparent text-slate-700 hover:border-slate-300 hover:bg-white active:bg-slate-200 disabled:opacity-50"
+              >
+                <Redo size={15} />
+                <span role="tooltip" className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex items-center whitespace-nowrap rounded-md bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white shadow-xl z-30">
+                  {text('ทำซ้ำ (Ctrl+Y)', 'Redo (Ctrl+Y)')}
+                </span>
+              </button>
+            </div>
+
+            {/* Quick Template Insert Pills */}
+            {canEdit && !busy && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] font-medium text-slate-500 select-none">{text('แม่แบบ:', 'Templates:')}</span>
+                <button
+                  type="button"
+                  title={text('แทรกแม่แบบ: มติที่ประชุม', 'Insert resolution template')}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => insertTemplate(text('มติที่ประชุม', 'Meeting resolution'))}
+                  className="group relative select-none rounded-md border border-brand-200 bg-brand-50 px-2 py-0.5 text-[11px] font-bold text-brand-700 transition hover:bg-brand-100 hover:border-brand-300"
+                >
+                  {text('+ มติที่ประชุม', '+ Resolution')}
+                  <span role="tooltip" className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex items-center whitespace-nowrap rounded-md bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white shadow-xl z-30">
+                    {text('แทรกแม่แบบ: มติที่ประชุม', 'Insert resolution template')}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  title={text('แทรกแม่แบบ: ข้อสั่งการ', 'Insert action items template')}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => insertTemplate(text('ข้อสั่งการ', 'Action items'))}
+                  className="group relative select-none rounded-md border border-brand-200 bg-brand-50 px-2 py-0.5 text-[11px] font-bold text-brand-700 transition hover:bg-brand-100 hover:border-brand-300"
+                >
+                  {text('+ ข้อสั่งการ', '+ Action items')}
+                  <span role="tooltip" className="pointer-events-none absolute bottom-full right-0 mb-2 hidden group-hover:flex items-center whitespace-nowrap rounded-md bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white shadow-xl z-30">
+                    {text('แทรกแม่แบบ: ข้อสั่งการ', 'Insert action items template')}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  title={text('แทรกแม่แบบ: สรุปผลการประชุม', 'Insert summary template')}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => insertTemplate(text('สรุปผลการประชุม', 'Meeting summary'))}
+                  className="group relative select-none rounded-md border border-brand-200 bg-brand-50 px-2 py-0.5 text-[11px] font-bold text-brand-700 transition hover:bg-brand-100 hover:border-brand-300"
+                >
+                  {text('+ สรุปผล', '+ Summary')}
+                  <span role="tooltip" className="pointer-events-none absolute bottom-full right-0 mb-2 hidden group-hover:flex items-center whitespace-nowrap rounded-md bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white shadow-xl z-30">
+                    {text('แทรกแม่แบบ: สรุปผลการประชุม', 'Insert summary template')}
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Rich Text Editor with vertical resizing (ยืดหดได้) */}
+          <div
+            ref={summaryEditorRef}
+            contentEditable={canEdit && !busy}
+            onInput={handleSummaryInput}
+            onKeyUp={updateActiveFormats}
+            onMouseUp={updateActiveFormats}
+            onSelect={updateActiveFormats}
+            onFocus={() => {
+              isEditingRef.current = true
+              updateActiveFormats()
+            }}
+            onBlur={() => {
+              isEditingRef.current = false
+            }}
+            onKeyDown={handleEditorKeyDown}
+            role="textbox"
+            aria-multiline="true"
+            id="meeting-summary-editor"
+            data-placeholder={text('พิมพ์สรุปผลการประชุม, มติที่ประชุม, หรือข้อสั่งการ (สามารถใช้แถบเครื่องมือจัดรูปแบบ หรือกดปุ่มแม่แบบด้านบนได้)...', 'Type meeting summary, resolutions, or action items (use formatting toolbar or template pills above)...')}
+            aria-label={text('เนื้อหาสรุปการประชุม', 'Meeting summary content')}
+            className={`min-h-48 resize-y rounded-b-xl border border-slate-300 bg-white p-4 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500 leading-relaxed font-normal overflow-y-auto ${!canEdit ? 'bg-slate-50 cursor-not-allowed opacity-80' : ''}`}
+          />
+
+          {event && canEdit && onSaveSummary && (
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200">
+              <p className="text-xs text-slate-500">
+                {text('สามารถบันทึกสรุปเก็บไว้ก่อน หรือกดปุ่ม “เสร็จสิ้นการประชุม” ด้านล่างเมื่อประชุมเสร็จสิ้น', 'You can save the summary draft now, or click "Mark meeting complete" below when done.')}
+              </p>
+              <button
+                type="button"
+                disabled={busy || isSavingSummary}
+                onClick={handleSaveSummaryOnly}
+                className="btn-secondary text-sm font-semibold"
+              >
+                {isSavingSummary ? <Loader2 size={15} className="animate-spin" /> : null}
+                {text('บันทึกสรุปการประชุม', 'Save summary')}
+              </button>
+            </div>
+          )}
+        </section>
 
           {error && <p className="form-error" role="alert">{error}</p>}
           {hasPendingMove && <p role="status" aria-live="polite" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">{pendingMoveMessage}</p>}
@@ -1502,7 +2111,7 @@ export function EventDialog({
                 >
                   <button
                     type="button"
-                    onClick={() => void onToggleCompleteMeeting()}
+                    onClick={() => void onToggleCompleteMeeting(sanitizeMeetingSummaryHtml(summaryHtml))}
                     className={`btn-secondary ${isOccurrenceCompleted ? 'border-amber-300 text-amber-800 hover:bg-amber-50' : isAppointmentPassed ? 'border-green-300 text-green-800 hover:bg-green-50' : 'border-slate-200 text-slate-400 bg-slate-50 cursor-not-allowed opacity-60'}`}
                     disabled={busy}
                     aria-disabled={!isOccurrenceCompleted && !isAppointmentPassed}

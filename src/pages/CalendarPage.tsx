@@ -47,6 +47,8 @@ import {
   isMeetingAppointmentPassed,
   getMeetingStatus,
   getMeetingColors,
+  meetingOccurrenceKey,
+  hasMeetingSummary,
 } from '../lib/meetingCompletion'
 
 type EventRow = Database['public']['Tables']['events']['Row']
@@ -114,13 +116,7 @@ export function CalendarPage() {
   const [showCompletedMeetings, setShowCompletedMeetings] = useState(true)
   const [showOverdueTasks, setShowOverdueTasks] = useState(true)
   const [showPendingConfirmationMeetings, setShowPendingConfirmationMeetings] = useState(true)
-  const [completedMeetings, setCompletedMeetings] = useState<Set<string>>(() => getStoredMeetingCompletions())
-
-  const toggleMeetingCompletion = useCallback((eventId: string, occurrenceStart: string) => {
-    const isCurrentCompleted = isMeetingCompleted(completedMeetings, eventId, occurrenceStart)
-    const updated = saveStoredMeetingCompletion(eventId, occurrenceStart, !isCurrentCompleted)
-    setCompletedMeetings(new Set(updated))
-  }, [completedMeetings])
+  const [storedMeetingCompletions, setStoredMeetingCompletions] = useState<Set<string>>(() => getStoredMeetingCompletions())
   const [sideTab, setSideTab] = useState<'upcoming' | 'documents'>('upcoming')
   const [taskSaveWarning, setTaskSaveWarning] = useState('')
   const [eventSaveWarning, setEventSaveWarning] = useState('')
@@ -249,6 +245,36 @@ export function CalendarPage() {
     queryKey: ['meeting-exceptions'],
     queryFn: () => readCalendarPages<Pick<OccurrenceRow, 'event_id' | 'occurrence_key'>>((offset) => supabase.from('event_occurrences').select('event_id,occurrence_key', { count: 'exact' }).neq('status', 'scheduled').order('id').range(offset, offset + 499)),
   })
+  const meetingCompletionsQuery = useQuery({
+    queryKey: ['meeting-completions'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('meeting_completions').select('*')
+      if (error) {
+        console.warn('Failed to load meeting completions:', error)
+        return []
+      }
+      return data ?? []
+    },
+    enabled: Boolean(user?.id),
+  })
+
+  const completedMeetings = useMemo(() => {
+    const keys = new Set(storedMeetingCompletions)
+    if (meetingCompletionsQuery.data) {
+      for (const mc of meetingCompletionsQuery.data) {
+        if (mc.completed_at) {
+          keys.add(meetingOccurrenceKey(mc.event_id, mc.occurrence_key))
+        }
+      }
+    }
+    return keys
+  }, [storedMeetingCompletions, meetingCompletionsQuery.data])
+
+  const toggleMeetingCompletion = useCallback((eventId: string, occurrenceStart: string) => {
+    const isCurrentCompleted = isMeetingCompleted(completedMeetings, eventId, occurrenceStart)
+    const updated = saveStoredMeetingCompletion(eventId, occurrenceStart, !isCurrentCompleted)
+    setStoredMeetingCompletions(new Set(updated))
+  }, [completedMeetings])
   const hasConnectedDevices = (connectedDevicesQuery.data?.length ?? 0) > 0
   const linkedEventId = useMemo(() => new URLSearchParams(locationSearch).get('event'), [locationSearch])
   const linkedTaskId = useMemo(() => new URLSearchParams(locationSearch).get('task'), [locationSearch])
@@ -360,7 +386,7 @@ export function CalendarPage() {
         if (error) throw error
         return data
       })()
-      const [guests, reminders, attachments, notificationDeliveries, occurrence, addedOccurrenceGuests, exclusions, selectedReminders, scopedAcknowledgements, documentLinks] = await Promise.all([
+      const [guests, reminders, attachments, notificationDeliveries, occurrence, addedOccurrenceGuests, exclusions, selectedReminders, scopedAcknowledgements, documentLinks, completionsResult] = await Promise.all([
         supabase.from('event_guests').select('*').eq('event_id', eventId).is('occurrence_id', null).is('revoked_at', null).returns<GuestRow[]>(),
         (() => {
           const templates = supabase.from('reminders').select('*').eq('event_id', eventId).is('occurrence_id', null)
@@ -376,6 +402,7 @@ export function CalendarPage() {
         occurrenceReminders,
         occurrenceAcknowledgements,
         supabase.from('document_links').select('*').eq('event_id', eventId).order('created_at').returns<DocumentLinkRow[]>(),
+        supabase.from('meeting_completions').select('*').eq('event_id', eventId),
       ])
       if (guests.error) throw guests.error
       if (reminders.error) throw reminders.error
@@ -415,7 +442,28 @@ export function CalendarPage() {
       const cutoffChangesAttendance = guests.data.some((guest) => !memberInOccurrence(guest))
       const hasOccurrenceChanges = Boolean(cutoffChangesAttendance || occurrenceOverride?.description !== undefined || occurrenceOverride?.location !== undefined || addedOccurrenceGuests.length || exclusions.length || occurrenceAttachments.some((file) => file.scope === 'occurrence'))
       const acknowledgementByEmail = new Map(scopedAcknowledgements.map((row) => [row.email.toLowerCase(), row.acknowledged_at]))
-      return { guestEmails: guests.data.map((guest) => guest.email), guestJoinFrom: Object.fromEntries(guests.data.filter((guest) => guest.self_join_from).map((guest) => [guest.email.toLowerCase(), guest.self_join_from!])), guestJoinUntil: Object.fromEntries(guests.data.filter((guest) => guest.self_join_until).map((guest) => [guest.email.toLowerCase(), guest.self_join_until!])), guestJoinHistory: Object.fromEntries(guests.data.map((guest) => [guest.email.toLowerCase(), guestHistory(guest)])), occurrenceGuestEmails: effectiveGuests.map((guest) => guest.email), guestAcknowledgements: Object.fromEntries(effectiveGuests.map((guest) => [guest.email.toLowerCase(), acknowledgementByEmail.get(guest.email.toLowerCase()) ?? ((guest.self_join_from || guest.self_join_until || guestHistory(guest).length) ? null : guest.acknowledged_at)])), reminderKeys: keys, attachments: attachmentViews, documentLinks: documentLinks.data ?? [], occurrenceId: occurrence?.id ?? null, occurrenceOverride, hasOccurrenceChanges, occurrenceReminders: selectedReminders, occurrenceNotificationDeliveries: notificationDeliveries.data.filter((delivery) => delivery.reminder_id && selectedReminderIds.has(delivery.reminder_id)), notificationDeliveries: notificationDeliveries.data.filter((delivery) => !delivery.reminder_id) }
+      const completionRows = completionsResult?.data ?? []
+      const activeOccKey = selectedEventOccurrenceStart || selectedEvent!.start_datetime
+      const activeCompletion = completionRows.find((c) => c.occurrence_key === activeOccKey || c.occurrence_key.startsWith(activeOccKey.slice(0, 19))) ?? completionRows[0]
+      return {
+        guestEmails: guests.data.map((guest) => guest.email),
+        guestJoinFrom: Object.fromEntries(guests.data.filter((guest) => guest.self_join_from).map((guest) => [guest.email.toLowerCase(), guest.self_join_from!])),
+        guestJoinUntil: Object.fromEntries(guests.data.filter((guest) => guest.self_join_until).map((guest) => [guest.email.toLowerCase(), guest.self_join_until!])),
+        guestJoinHistory: Object.fromEntries(guests.data.map((guest) => [guest.email.toLowerCase(), guestHistory(guest)])),
+        occurrenceGuestEmails: effectiveGuests.map((guest) => guest.email),
+        guestAcknowledgements: Object.fromEntries(effectiveGuests.map((guest) => [guest.email.toLowerCase(), acknowledgementByEmail.get(guest.email.toLowerCase()) ?? ((guest.self_join_from || guest.self_join_until || guestHistory(guest).length) ? null : guest.acknowledged_at)])),
+        reminderKeys: keys,
+        attachments: attachmentViews,
+        documentLinks: documentLinks.data ?? [],
+        occurrenceId: occurrence?.id ?? null,
+        occurrenceOverride,
+        hasOccurrenceChanges,
+        occurrenceReminders: selectedReminders,
+        occurrenceNotificationDeliveries: notificationDeliveries.data.filter((delivery) => delivery.reminder_id && selectedReminderIds.has(delivery.reminder_id)),
+        notificationDeliveries: notificationDeliveries.data.filter((delivery) => !delivery.reminder_id),
+        summaryHtml: activeCompletion?.summary_html ?? '',
+        isCompleted: Boolean(activeCompletion?.completed_at),
+      }
     },
   })
 
@@ -513,6 +561,7 @@ export function CalendarPage() {
       const startIso = toIso(draft.date, draft.start, draft.all_day)
       const payload = {
         title: draft.title.trim(), description: draft.description.trim(), location: draft.location.trim(), affiliation: draft.affiliation.trim(), all_day: draft.all_day,
+        grc_category_key: draft.grc_category_key, committee_key: draft.committee_key,
         start_datetime: startIso, end_datetime: draft.end ? toIso(draft.date, draft.end, draft.all_day) : null,
         recurrence_rule: meetingRecurrenceRule(draft.recurrence), recurrence_until: draft.recurrence.until ? endOfBangkokDay(draft.recurrence.until) : null,
         recurrence_count: draft.recurrence.count,
@@ -850,6 +899,28 @@ export function CalendarPage() {
         queryClient.invalidateQueries({ queryKey: ['event-details'] }),
         queryClient.invalidateQueries({ queryKey: ['task-details'] }),
       ])
+    },
+  })
+  const saveMeetingCompletionMutation = useMutation({
+    mutationFn: async ({ eventId, occurrenceStart, summaryHtml, completed }: {
+      eventId: string
+      occurrenceStart: string
+      summaryHtml: string
+      completed: boolean
+    }) => {
+      const { data, error } = await supabase.rpc('save_meeting_completion', {
+        target_event_id: eventId,
+        target_occurrence_start: occurrenceStart,
+        target_summary_html: summaryHtml,
+        target_completed: completed,
+      })
+      if (error) throw error
+      return data
+    },
+    onSuccess: (_, variables) => {
+      setStoredMeetingCompletions(saveStoredMeetingCompletion(variables.eventId, variables.occurrenceStart, variables.completed))
+      queryClient.invalidateQueries({ queryKey: ['meeting-completions'] })
+      queryClient.invalidateQueries({ queryKey: ['event-details', variables.eventId] })
     },
   })
   useEffect(() => {
@@ -1751,7 +1822,45 @@ export function CalendarPage() {
         onCheckJoinTime={async () => { const { data, error } = await supabase.rpc('meeting_join_server_time'); if (error || !data) throw error ?? new Error('Server time unavailable'); return new Date(data).getTime() }}
         open={eventDialog.open} event={selectedEvent} details={eventDetailsQuery.data} selectedDate={eventDialog.date} occurrenceStart={eventDialog.occurrenceStart}
         isOccurrenceCompleted={selectedEvent && (selectedEventOccurrenceStart || selectedEvent.start_datetime) ? isMeetingCompleted(completedMeetings, selectedEvent.id, selectedEventOccurrenceStart || selectedEvent.start_datetime) : false}
-        onToggleCompleteMeeting={selectedEvent && (selectedEventOccurrenceStart || selectedEvent.start_datetime) ? async () => {
+        initialSummaryHtml={
+          selectedEvent && (selectedEventOccurrenceStart || selectedEvent.start_datetime)
+            ? (eventDetailsQuery.data?.summaryHtml ??
+               meetingCompletionsQuery.data?.find((mc) =>
+                 mc.event_id === selectedEvent.id &&
+                 (mc.occurrence_key === (selectedEventOccurrenceStart || selectedEvent.start_datetime) ||
+                  mc.occurrence_key.startsWith((selectedEventOccurrenceStart || selectedEvent.start_datetime).slice(0, 19)))
+               )?.summary_html ?? '')
+            : ''
+        }
+        onSaveSummary={selectedEvent && (selectedEventOccurrenceStart || selectedEvent.start_datetime) ? async (summaryHtml) => {
+          const occStart = selectedEventOccurrenceStart || selectedEvent.start_datetime
+          const isDone = isMeetingCompleted(completedMeetings, selectedEvent.id, occStart)
+          try {
+            await saveMeetingCompletionMutation.mutateAsync({
+              eventId: selectedEvent.id,
+              occurrenceStart: occStart,
+              summaryHtml: summaryHtml || '',
+              completed: isDone,
+            })
+            await Swal.fire({
+              icon: 'success',
+              customClass: { popup: 'semantic-meeting-dialog' },
+              title: text('สำเร็จ', 'Success'),
+              text: text('บันทึกสรุปการประชุมเรียบร้อยแล้ว', 'Meeting summary saved.'),
+              timer: 1500,
+              showConfirmButton: false,
+            })
+          } catch (err) {
+            console.error('Failed to save meeting summary:', err)
+            await Swal.fire({
+              icon: 'error',
+              customClass: { popup: 'semantic-meeting-dialog' },
+              title: text('เกิดข้อผิดพลาด', 'Error'),
+              text: text('ไม่สามารถบันทึกสรุปการประชุมได้ กรุณาลองใหม่', 'Could not save meeting summary. Please try again.'),
+            })
+          }
+        } : undefined}
+        onToggleCompleteMeeting={selectedEvent && (selectedEventOccurrenceStart || selectedEvent.start_datetime) ? async (summaryHtml) => {
           const occStart = selectedEventOccurrenceStart || selectedEvent.start_datetime
           const isDone = isMeetingCompleted(completedMeetings, selectedEvent.id, occStart)
           if (!isDone && !isMeetingAppointmentPassed(selectedEvent, occStart)) {
@@ -1760,6 +1869,15 @@ export function CalendarPage() {
               customClass: { popup: 'semantic-meeting-dialog' },
               title: text('ไม่สามารถกดเสร็จสิ้นการประชุมที่ยังไม่ถึงเวลานัดหมายได้', 'Cannot complete a meeting before its scheduled appointment time.'),
               text: text('การประชุมจะสามารถกดยืนยันเสร็จสิ้นได้เมื่อถึงเวลานัดหมาย', 'You can mark the meeting complete once its scheduled appointment time arrives.'),
+            })
+            return
+          }
+          if (!isDone && !hasMeetingSummary(summaryHtml || '')) {
+            await Swal.fire({
+              icon: 'warning',
+              customClass: { popup: 'semantic-meeting-dialog' },
+              title: text('กรุณากรอกสรุปการประชุม', 'Meeting summary required'),
+              text: text('ระบบบังคับให้กรอกสรุปการประชุมก่อนกดเสร็จสิ้นการประชุม', 'You must enter a meeting summary before marking as complete.'),
             })
             return
           }
@@ -1780,12 +1898,22 @@ export function CalendarPage() {
             confirmLabel: isDone ? text('เปิดการประชุมอีกครั้ง', 'Reopen') : text('ยืนยันเสร็จสิ้น', 'Confirm complete'),
           })
           if (confirmed) {
-            toggleMeetingCompletion(selectedEvent.id, occStart)
+            try {
+              await saveMeetingCompletionMutation.mutateAsync({
+                eventId: selectedEvent.id,
+                occurrenceStart: occStart,
+                summaryHtml: summaryHtml || '',
+                completed: !isDone,
+              })
+            } catch (err) {
+              console.error('Failed to save meeting completion to database:', err)
+              toggleMeetingCompletion(selectedEvent.id, occStart)
+            }
             await Swal.fire({
               icon: 'success',
               customClass: { popup: 'semantic-meeting-dialog' },
               title: text('สำเร็จ', 'Success'),
-              text: isDone ? text('เปิดการประชุมอีกครั้งแล้ว', 'Meeting reopened.') : text('บันทึกเสร็จสิ้นการประชุมแล้ว', 'Meeting marked as complete.'),
+              text: isDone ? text('เปิดการประชุมอีกครั้งแล้ว', 'Meeting reopened.') : text('บันทึกเสร็จสิ้นการประชุมและสรุปผลแล้ว', 'Meeting marked as complete with summary saved.'),
               timer: 1500,
               showConfirmButton: false,
             })
@@ -1826,6 +1954,7 @@ export function CalendarPage() {
         onClose={() => setSummaryDialogOpen(false)}
         events={eventsQuery.data ?? []}
         cancelledAppointments={cancelledAppointments}
+        meetingCompletions={meetingCompletionsQuery.data ?? []}
       />
     </main>
   )

@@ -139,3 +139,41 @@ test('MeetingSummaryDialog renders full affiliation text without truncation', ()
   assert.ok(text.includes('กกร. (Teams)'), 'Should render complete affiliation including parenthesized detail')
 })
 
+test('per-meeting summary toggle shows editor and preview when checked or prefilled from meeting completions', () => {
+  const now = new Date()
+  const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  let renderer!: ReactTestRenderer
+  act(() => {
+    renderer = create(
+      <LanguageProvider>
+        <MeetingSummaryDialog
+          open
+          onClose={() => {}}
+          events={[{ ...mockMeeting, start_datetime: `${day}T13:30:00+07:00`, end_datetime: `${day}T14:30:00+07:00` }]}
+          meetingCompletions={[{
+            event_id: 'm-1',
+            occurrence_key: `${day}T13:30:00+07:00`,
+            summary_html: '<p>มติที่ประชุมเห็นชอบในหลักการ</p>',
+            completed_at: '2026-11-09T14:30:00Z',
+          }]}
+        />
+      </LanguageProvider>
+    )
+  })
+
+  const json = JSON.stringify(renderer.toJSON())
+  assert.ok(json.includes('มติที่ประชุมเห็นชอบในหลักการ'), 'Should render summary in preview')
+  assert.ok(json.includes('สรุปการประชุม'), 'Should render summary section')
+
+  const summaryToggle = renderer.root.findAllByType('input').find((input) => String(input.props['aria-label'] ?? '').startsWith('แสดงสรุปการประชุม '))!
+  assert.ok(summaryToggle.props.checked, 'Summary checkbox should be checked by default when summary exists')
+
+  act(() => summaryToggle.props.onChange({ target: { checked: false } }))
+  assert.ok(!JSON.stringify(renderer.toJSON()).includes('มติที่ประชุมเห็นชอบในหลักการ'), 'Unchecking hides summary from preview')
+
+  act(() => summaryToggle.props.onChange({ target: { checked: true } }))
+  assert.ok(JSON.stringify(renderer.toJSON()).includes('มติที่ประชุมเห็นชอบในหลักการ'), 'Checking restores summary in preview')
+
+  act(() => renderer.unmount())
+})
+

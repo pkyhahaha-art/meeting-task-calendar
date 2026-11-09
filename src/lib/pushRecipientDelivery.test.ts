@@ -13,6 +13,7 @@ type Options = {
   actionPayload?: boolean
   uppercaseGuest?: boolean; missingGuestRow?: boolean
   limitedGuest?: boolean
+  completion?: boolean; completedMeeting?: boolean; wrongKey?: boolean; futureMeeting?: boolean
   overdue?: boolean; expiredRound?: boolean; rescheduled?: boolean; cancelledReminder?: boolean; missingReminder?: boolean
 }
 
@@ -34,6 +35,7 @@ function service(options: Options = {}) {
     template_key: options.template ?? (options.overdue ? 'task_reminder' : options.meeting ? 'meeting_reminder' : 'task_updated'),
     payload: { entity: options.meeting ? 'meeting' : 'task', id: options.meeting ? 'meeting-1' : 'task-1',
       push_user_id: recipient, description: 'Private fixture', ...(options.scoped ? { occurrence_id: 'occurrence-1' } : {}),
+      ...(options.completion ? { occurrence_key: '2020-01-01T00:00:00Z', title: 'ประชุมทดสอบ' } : {}),
       ...(options.overdue ? { due_date: dueDate, due_time: null, reminder_key: 'overdue',
         reminder_scheduled_at: options.expiredRound ? `${dueDate}T00:00:00+07:00` : `${today}T00:00:00+07:00` } : {}),
       ...(options.actionPayload ? { title: 'แผนงาน', original_occurrence_start: '2026-10-03T02:00:00Z', new_occurrence_start: '2026-10-02T02:00:00Z' } : {}) },
@@ -87,14 +89,15 @@ function service(options: Options = {}) {
           : table === 'events' ? options.missingEntity ? null : {
             id: 'meeting-1', owner_user_id: role === 'owner' ? recipient : 'owner', title: 'Meeting',
             description: 'Private agenda', affiliation: 'ฝ่ายแผนงาน', location: 'ห้อง 7',
-            start_datetime: options.actionPayload ? '2026-10-02T02:00:00Z' : '2099-01-01T00:00:00Z', end_datetime: '2026-10-02T03:00:00Z',
+            start_datetime: options.completion ? '2020-01-01T00:00:00Z' : options.actionPayload ? '2026-10-02T02:00:00Z' : '2099-01-01T00:00:00Z', end_datetime: options.futureMeeting ? '2099-01-01T00:00:00Z' : '2020-01-01T01:00:00Z',
             status: options.status ?? 'scheduled', deleted_at: options.deleted ? '2026-10-04T00:00:00Z' : null,
-            recurrence_rule: options.legacyFirst ? 'FREQ=WEEKLY' : null,
+            recurrence_rule: options.legacyFirst || (options.completion && options.scoped) ? 'FREQ=WEEKLY' : null,
           }
           : table === 'event_occurrences' ? options.missingOccurrence ? null : {
-            id: 'occurrence-1', start_datetime: '2026-10-03T02:00:00Z', end_datetime: '2026-10-03T03:00:00Z',
+            id: 'occurrence-1', occurrence_key: options.wrongKey ? '2020-01-02T00:00:00Z' : '2020-01-01T00:00:00Z', start_datetime: '2026-10-03T02:00:00Z', end_datetime: options.futureMeeting ? '2099-01-01T00:00:00Z' : '2020-01-01T01:00:00Z',
             status: options.cancelledOccurrence ? 'cancelled' : 'scheduled', override_payload: options.actionPayload ? { description: 'Occurrence agenda', location: 'ห้อง 8' } : {},
           }
+          : table === 'meeting_completions' ? options.completedMeeting ? { completed_at: '2020-01-01T02:00:00Z' } : null
           : table === 'event_guests' ? selection.includes('self_join_from') ? [{ email: 'recipient@example.test', self_join_from: options.limitedGuest ? '2099-01-01' : null, self_join_until: null, attendance_history: [] }] : options.missingGuestRow ? [] : options.actionPayload ? [{ id: 'guest-1',
             email: options.uppercaseGuest ? ' RECIPIENT@EXAMPLE.TEST ' : 'recipient@example.test', occurrence_id: options.scoped ? 'occurrence-1' : null }] : { id: 'guest-1' }
           : table === 'attachments' ? options.actionPayload ? [

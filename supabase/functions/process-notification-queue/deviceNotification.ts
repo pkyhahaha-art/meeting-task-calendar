@@ -32,7 +32,9 @@ export function deviceNotification(deliveryId: string, title: string, payload: R
   const replaceKey = overdue ? `task-overdue:${payload.id}` : ''
   return {
     id: deliveryId, title: snapshotText(title, occurrenceNotice ? 900 : 400),
-    body: occurrenceNotice ? snapshotText(dates, 400) : limited(payload.description, 240) || 'คุณมีข้อความใหม่จากปฏิทิน PEA แตะเพื่อดูรายละเอียด',
+    body: occurrenceNotice ? snapshotText(dates, 400) : template === 'meeting_completion_reminder'
+      ? limited(`การประชุม ${String(payload.title ?? '')} เลยเวลานัดหมายแล้ว กรุณาบันทึกสรุปและกดเสร็จสิ้นการประชุม`, 400)
+      : limited(payload.description, 240) || 'คุณมีข้อความใหม่จากปฏิทิน PEA แตะเพื่อดูรายละเอียด',
     tag: replaceKey || `delivery-${deliveryId}`, url: url.href,
     ...(overdue ? { replaceKey, reminderAt: overdueAt.toISOString() } : {}),
     details: {

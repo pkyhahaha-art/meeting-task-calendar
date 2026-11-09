@@ -59,8 +59,8 @@ begin
     values(admin_id,'https://fcm.googleapis.com/admin-edit-'||admin_id,'fixture','fixture') returning id into admin_device;
   perform set_config('request.jwt.claim.sub',admin_id::text,true);
   execute 'set local role authenticated';
-  insert into public.events(owner_user_id,title,start_datetime,suppress_guest_notifications)
-    values(admin_id,'Admin own Meeting',start_at,true) returning id into own_event_id;
+  insert into public.events(owner_user_id,title,start_datetime,suppress_guest_notifications,grc_category_key,committee_key)
+    values(admin_id,'Admin own Meeting',start_at,true,'S001','C001') returning id into own_event_id;
   insert into public.tasks(creator_user_id,title,assignee_type,assignee_user_id,due_date)
     values(admin_id,'Admin own Task','internal',admin_id,(start_at at time zone 'Asia/Bangkok')::date) returning id into own_task_id;
   begin update public.events set owner_user_id=owner_id where id=own_event_id; raise exception 'Admin transferred own Meeting creator'; exception when others then

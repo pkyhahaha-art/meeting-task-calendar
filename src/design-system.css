@@ -516,7 +516,13 @@ textarea.field-input { line-height: 1.6; }
 .calendar-page-main .calendar-fill .fc .fc-today-button { padding: 6px 14px; font-weight: 800; }
 .calendar-page-main .calendar-fill .fc .fc-col-header-cell { background: #FFFBEA; border-bottom: 2.5px solid #000000; }
 .calendar-page-main .calendar-fill .fc .fc-col-header-cell-cushion { padding: 10px 4px; font-size: 13px; font-weight: 700; color: #000000; }
-.calendar-page-main .calendar-fill .fc .fc-day-today { background: #FFFDF0 !important; }
+.calendar-page-main .calendar-fill .fc .fc-day-today {
+  background: #FFF0A8 !important;
+  box-shadow: inset 0 0 0 2px #000000 !important;
+}
+.calendar-page-main .calendar-fill .fc .fc-timegrid-col.fc-day-today {
+  background: #FFF5C0 !important;
+}
 .calendar-page-main .calendar-fill .fc .fc-day-today .fc-daygrid-day-number {
   background: #FFE15D !important;
   color: #000000 !important;
@@ -698,37 +704,84 @@ textarea.field-input { line-height: 1.6; }
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
 
-/* Improve reading without changing the existing visual theme or event limits. */
-.calendar-page-main .calendar-fill-month .fc .fc-daygrid-body { height: 100% !important; }
-.calendar-page-main .calendar-fill-month .fc .fc-scrollgrid-sync-table { height: 100% !important; }
+/* Month View: Ensure all rows (including 6-week months like Nov 30) fit completely without clipping or scrollbars */
+.calendar-page-main .calendar-fill-month {
+  padding: 8px 12px 6px !important;
+}
+.calendar-page-main .calendar-fill-month .fc .fc-toolbar.fc-header-toolbar {
+  min-height: 40px !important;
+  padding: 2px 4px 6px !important;
+  margin-bottom: 2px !important;
+}
+.calendar-page-main .calendar-fill-month .fc .fc-toolbar-title {
+  font-size: 20px !important;
+}
+.calendar-page-main .calendar-fill-month .fc .fc-col-header-cell-cushion {
+  padding: 4px 2px !important;
+  font-size: 12px !important;
+}
+.calendar-page-main .calendar-fill-month .fc .fc-view-harness {
+  height: 100% !important;
+  min-height: 0 !important;
+}
+.calendar-page-main .calendar-fill-month .fc .fc-scrollgrid {
+  height: 100% !important;
+  min-height: 0 !important;
+}
+.calendar-page-main .calendar-fill-month .fc .fc-daygrid-body {
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+}
+.calendar-page-main .calendar-fill-month .fc .fc-daygrid-body-bg {
+  height: 100% !important;
+  min-height: 0 !important;
+}
+.calendar-page-main .calendar-fill-month .fc .fc-scrollgrid-sync-table {
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+}
 .calendar-page-main .calendar-fill-month .fc .fc-scrollgrid-sync-table tbody {
-  display: grid;
-  height: 100%;
-  grid-auto-rows: minmax(72px, 1fr);
+  display: grid !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  grid-auto-rows: minmax(0, 1fr) !important;
 }
 .calendar-page-main .calendar-fill-month .fc .fc-scrollgrid-sync-table tbody tr {
-  display: table;
-  width: 100%;
+  display: table !important;
+  width: 100% !important;
   height: 100% !important;
-  table-layout: fixed;
+  min-height: 0 !important;
+  table-layout: fixed !important;
 }
 .calendar-page-main .calendar-fill-month .fc .fc-daygrid-event {
-  box-sizing: border-box;
-  height: 34px !important;
-  min-height: 34px !important;
-  max-height: 34px !important;
+  box-sizing: border-box !important;
+  height: 30px !important;
+  min-height: 28px !important;
+  max-height: 32px !important;
+  margin-inline: 2px !important;
+  margin-block: 1px !important;
+  padding: 1px 4px !important;
   overflow: hidden !important;
 }
 .calendar-page-main .calendar-fill-month .fc .fc-daygrid-event .fc-event-title {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  display: -webkit-box !important;
+  -webkit-box-orient: vertical !important;
+  -webkit-line-clamp: 2 !important;
   white-space: normal !important;
   overflow: hidden !important;
-  max-height: 2.7em;
-  min-width: 0;
-  font-size: 11px !important;
-  line-height: 1.35 !important;
+  max-height: 2.5em !important;
+  min-width: 0 !important;
+  font-size: 10.5px !important;
+  line-height: 1.25 !important;
+}
+.calendar-page-main .calendar-fill-month .fc .fc-daygrid-more-link {
+  height: 15px !important;
+  line-height: 15px !important;
+  padding: 0 5px !important;
+  margin: 1px 0 !important;
+  font-size: 9.5px !important;
 }
 .calendar-page-main .calendar-fill .fc .fc-timegrid-event .fc-event-title { font-size: 11.5px !important; line-height: 1.35; }
 /* Keep the selected-date border and its shadow inside the first and last columns. */

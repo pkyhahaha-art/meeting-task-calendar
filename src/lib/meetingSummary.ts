@@ -7,6 +7,8 @@ export type EventRow = Database['public']['Tables']['events']['Row']
 export interface SummaryMeetingItem {
   id: string
   eventId: string
+  occurrenceKey?: string
+  occurrenceStart?: string
   title: string
   dateKey: string // YYYY-MM-DD
   thaiDate: string // e.g. "5 พฤศจิกายน 2569"
@@ -177,6 +179,8 @@ export function filterAndSortMeetingsForSummary(
       items.push({
         id: `summary-${event.id}-${occ.key ?? occ.start}`,
         eventId: event.id,
+        occurrenceKey: occ.key ? String(occ.key) : occ.start,
+        occurrenceStart: occ.start,
         title: event.title,
         dateKey,
         thaiDate: formatThaiFullDate(dateKey),

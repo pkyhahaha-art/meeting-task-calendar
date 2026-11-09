@@ -54,6 +54,8 @@ export interface Database {
           title: string
           description: string
           affiliation: string
+          grc_category_key?: string | null
+          committee_key?: string | null
           start_datetime: string
           end_datetime: string | null
           all_day: boolean
@@ -80,6 +82,8 @@ export interface Database {
           title: string
           description?: string
           affiliation?: string
+          grc_category_key?: string | null
+          committee_key?: string | null
           start_datetime: string
           end_datetime?: string | null
           all_day?: boolean
@@ -99,6 +103,26 @@ export interface Database {
           calendar_owner_email?: string | null
         }
         Update: Partial<Database['public']['Tables']['events']['Insert']>
+        Relationships: []
+      }
+      meeting_completions: {
+        Row: {
+          event_id: string
+          occurrence_key: string
+          summary_html: string
+          completed_at: string | null
+          updated_by: string | null
+          updated_at: string
+        }
+        Insert: {
+          event_id: string
+          occurrence_key: string
+          summary_html?: string
+          completed_at?: string | null
+          updated_by?: string | null
+          updated_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['meeting_completions']['Insert']>
         Relationships: []
       }
       event_occurrences: {
@@ -372,6 +396,19 @@ export interface Database {
           target_user_agent: string
         }
         Returns: { success: boolean; error?: string; subscription_id?: string; user_name?: string; employee_id?: string }
+      }
+      save_meeting_completion: {
+        Args: {
+          target_event_id: string
+          target_occurrence_start: string
+          target_summary_html: string
+          target_completed: boolean
+        }
+        Returns: Database['public']['Tables']['meeting_completions']['Row']
+      }
+      queue_due_meeting_completion_reminders: {
+        Args: Record<string, never>
+        Returns: number
       }
     }
     Enums: Record<string, never>

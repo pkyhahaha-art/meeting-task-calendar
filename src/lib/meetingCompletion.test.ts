@@ -7,6 +7,9 @@ import {
   isMeetingAppointmentPassed,
   getMeetingStatus,
   getMeetingColors,
+  sanitizeMeetingSummaryHtml,
+  getMeetingSummaryVisibleText,
+  hasMeetingSummary,
 } from './meetingCompletion.js'
 
 test('meetingOccurrenceKey normalizes event ID and occurrence timestamp', () => {
@@ -92,4 +95,26 @@ test('isMeetingAppointmentPassed correctly checks whether appointment has arrive
   // Past occurrence of the series
   assert.equal(isMeetingAppointmentPassed(seriesEvent, '2026-10-15T09:00:00+07:00', now), true)
 })
+
+test('sanitizeMeetingSummaryHtml preserves allowed formatting and removes disallowed attributes and tags', () => {
+  const dirty = '<p class="bold">ข้อความสรุป</p><script>alert(1)</script><div style="color:red">บรรทัดที่สอง</div><strong>สำคัญ</strong> <em>เน้น</em> <u>ขีดเส้นใต้</u><ul><li>ข้อ 1</li><li>ข้อ 2</li></ul>'
+  const sanitized = sanitizeMeetingSummaryHtml(dirty)
+  assert.ok(!sanitized.includes('script'))
+  assert.ok(!sanitized.includes('style'))
+  assert.ok(!sanitized.includes('class'))
+  assert.ok(sanitized.includes('ข้อความสรุป'))
+  assert.ok(sanitized.includes('<strong>สำคัญ</strong>'))
+  assert.ok(sanitized.includes('<em>เน้น</em>'))
+  assert.ok(sanitized.includes('<u>ขีดเส้นใต้</u>'))
+  assert.ok(sanitized.includes('<ul><li>ข้อ 1</li><li>ข้อ 2</li></ul>'))
+})
+
+test('hasMeetingSummary and getMeetingSummaryVisibleText correctly detect presence of actual text', () => {
+  assert.equal(hasMeetingSummary(''), false)
+  assert.equal(hasMeetingSummary('<p></p>'), false)
+  assert.equal(hasMeetingSummary('<p>&nbsp;   <br></p>'), false)
+  assert.equal(hasMeetingSummary('<p>สรุปการประชุมมติเห็นชอบ</p>'), true)
+  assert.equal(getMeetingSummaryVisibleText('<p><strong>สรุปผล:</strong> ผ่าน</p>'), 'สรุปผล: ผ่าน')
+})
+
 

@@ -59,6 +59,41 @@ async function currentOverdueTaskDelivery(delivery: Delivery): Promise<boolean> 
   return !Number.isNaN(round.getTime()) && round <= now && bangkokDay(round) === bangkokDay(now)
 }
 
+async function currentMeetingCompletionReminder(delivery: Delivery): Promise<boolean> {
+  if (delivery.template_key !== 'meeting_completion_reminder') return true
+  if (!delivery.event_id || delivery.recipient_type !== 'owner') return false
+  const key = text(delivery.payload.occurrence_key)
+  const keyTime = new Date(key).getTime()
+  if (!key || Number.isNaN(keyTime)) return false
+  const meeting = await supabase.from('events').select('owner_user_id,start_datetime,end_datetime,recurrence_rule,status,deleted_at')
+    .eq('id', delivery.event_id).maybeSingle()
+  if (meeting.error) throw meeting.error
+  if (!meeting.data || meeting.data.status !== 'scheduled' || meeting.data.deleted_at) return false
+  if (delivery.channel === 'push') {
+    if (text(delivery.payload.push_user_id) !== meeting.data.owner_user_id) return false
+  } else if (delivery.channel === 'email') {
+    const owner = await supabase.from('profiles').select('email,status').eq('id', meeting.data.owner_user_id).maybeSingle()
+    if (owner.error) throw owner.error
+    if (owner.data?.status !== 'active' || text(owner.data.email).toLowerCase() !== delivery.recipient_reference.trim().toLowerCase()) return false
+  } else return false
+  let end = meeting.data.end_datetime || meeting.data.start_datetime
+  if (meeting.data.recurrence_rule) {
+    const id = text(delivery.payload.occurrence_id)
+    if (!id) return false
+    const occurrence = await supabase.from('event_occurrences').select('occurrence_key,start_datetime,end_datetime,status')
+      .eq('event_id', delivery.event_id).eq('id', id).maybeSingle()
+    if (occurrence.error) throw occurrence.error
+    if (!occurrence.data || occurrence.data.status !== 'scheduled' || new Date(occurrence.data.occurrence_key).getTime() !== keyTime) return false
+    end = occurrence.data.end_datetime || occurrence.data.start_datetime
+  } else if (new Date(meeting.data.start_datetime).getTime() !== keyTime || text(delivery.payload.occurrence_id)) return false
+  const endTime = new Date(end).getTime()
+  if (Number.isNaN(endTime) || endTime > Date.now()) return false
+  const completion = await supabase.from('meeting_completions').select('completed_at')
+    .eq('event_id', delivery.event_id).eq('occurrence_key', key).maybeSingle()
+  if (completion.error) throw completion.error
+  return !completion.data?.completed_at
+}
+
 function errorMessage(error: unknown) {
   if (error instanceof Error) return error.message
   try { return JSON.stringify(error) || 'Unknown error' } catch { return String(error) }
@@ -444,7 +479,8 @@ Deno.serve(async (request) => {
   // Queue mobile/LINE first: email completes shared reminder rows.
   const { error: lineReminderError } = await supabase.rpc('queue_due_line_reminders')
   const { error: reminderError } = await supabase.rpc('queue_due_email_reminders')
-  if (recoveryError || staleReminderError || lineReminderError || reminderError) return new Response(recoveryError?.message ?? staleReminderError?.message ?? lineReminderError?.message ?? reminderError!.message, { status: 500 })
+  const { error: completionReminderError } = await supabase.rpc('queue_due_meeting_completion_reminders')
+  if (recoveryError || staleReminderError || lineReminderError || reminderError || completionReminderError) return new Response(recoveryError?.message ?? staleReminderError?.message ?? lineReminderError?.message ?? reminderError?.message ?? completionReminderError!.message, { status: 500 })
 
   const now = new Date().toISOString()
   const { data, error } = await supabase
@@ -470,6 +506,14 @@ Deno.serve(async (request) => {
         const skipped = await supabase.from('notification_deliveries').update({
           status: 'skipped', next_attempt_at: null, error_code: 'task_overdue_unavailable',
           error_message: 'This overdue round expired or the Task was closed, deleted or rescheduled.',
+        }).eq('id', delivery.id)
+        if (skipped.error) throw skipped.error
+        continue
+      }
+      if (!await currentMeetingCompletionReminder(delivery)) {
+        const skipped = await supabase.from('notification_deliveries').update({
+          status: 'skipped', next_attempt_at: null, error_code: 'meeting_completion_unavailable',
+          error_message: 'This meeting was completed, rescheduled, deleted or is no longer eligible.',
         }).eq('id', delivery.id)
         if (skipped.error) throw skipped.error
         continue

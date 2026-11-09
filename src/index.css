@@ -11,7 +11,7 @@
   font-family: 'Space Grotesk', 'IBM Plex Sans Thai Looped', system-ui, -apple-system, sans-serif;
   color: #000000;
   background: #FFFDF7;
-  font-synthesis: none;
+  font-synthesis: weight style;
   text-rendering: optimizeLegibility;
 }
 
@@ -86,11 +86,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .calendar-page-main .calendar-view-switcher { border: 2px solid #000000; background: #FFFFFF; border-radius: 6px; padding: 3px; box-shadow: 2px 2px 0px #000000; }
 .calendar-page-main .calendar-view-switcher button { border-radius: 4px; font-weight: 700; font-family: inherit; }
 .calendar-page-main .calendar-view-switcher button[aria-pressed="true"] { background: #FFE15D; color: #000000; border: 1.5px solid #000000; box-shadow: 1px 1px 0px #000000; }
-.calendar-page-main .fc .fc-day-today { background: #FFFDF0 !important; }
-.calendar-page-main .fc .fc-day-today .fc-daygrid-day-number { background: #FFE15D !important; color: #000000 !important; border: 1.5px solid #000000 !important; box-shadow: 1px 1px 0px #000000 !important; font-weight: 800; }
+.calendar-page-main .fc .fc-day-today { background: #FFF0A8 !important; }
+.calendar-page-main .fc .fc-day-today .fc-daygrid-day-number { background: #FFE15D !important; color: #000000 !important; border: 2px solid #000000 !important; box-shadow: 2px 2px 0px #000000 !important; font-weight: 800; }
 .fc .fc-toolbar-title { font-size: 1.25rem; font-weight: 800; color: #000000; letter-spacing: -0.02em; }
 .fc .fc-daygrid-day-number { color: #000000; font-variant-numeric: tabular-nums; font-weight: 700; }
-.fc .fc-day-today { background: #FFFDF0 !important; }
+.fc .fc-day-today { background: #FFF0A8 !important; }
 .fc .fc-day-today .fc-daygrid-day-frame { box-shadow: inset 0 0 0 2px #000000; }
 .fc .fc-day-today .fc-daygrid-day-number { display: flex; align-items: center; justify-content: center; width: 1.8rem; height: 1.8rem; margin: .2rem; border-radius: 4px; background: #FFE15D !important; color: #000000 !important; font-weight: 800; border: 2px solid #000000; box-shadow: 2px 2px 0px #000000; }
 .fc .fc-event { min-height: 18px; border-radius: 4px; padding: 2px 4px; cursor: pointer; font-size: .68rem; line-height: 1.2; font-weight: 700; border: 2px solid #000000 !important; box-shadow: 2px 2px 0px #000000 !important; }
@@ -131,12 +131,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .calendar-fill { overflow: hidden; }
   .calendar-fill .fc { height: 100%; }
   .calendar-fill .fc .fc-toolbar.fc-header-toolbar { min-height: 40px; margin-bottom: 4px; padding-right: 0; }
-  .calendar-fill-month .fc-scroller {
-    overflow-x: hidden !important;
-    overflow-y: auto !important;
-    scrollbar-width: thin;
-    scrollbar-color: #D8CEE3 transparent;
-  }
+  .calendar-fill-month .fc-scroller { overflow: hidden !important; }
   .calendar-fill .fc-event { min-height: 13px; font-size: .58rem; }
 }
 @media (min-width: 1024px) and (max-width: 1279px) {
@@ -473,7 +468,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .mini-calendar-date:focus-visible { outline: 2px solid #75638F; outline-offset: 1px; }
 .mini-calendar-card .fc .fc-day-today { background: transparent !important; }
 .mini-calendar-card .fc .fc-day-today .fc-daygrid-day-frame { box-shadow: none; }
-.mini-calendar-card .fc .fc-day-today .fc-daygrid-day-number { background: #F2ECF8; color: #75638F; box-shadow: none; font-weight: 700; }
+.mini-calendar-card .fc .fc-day-today .fc-daygrid-day-number { background: #FFE15D !important; color: #000000 !important; border: 1.5px solid #000000 !important; box-shadow: 1px 1px 0px #000000 !important; font-weight: 800; }
 .mini-calendar-card .fc .mini-calendar-selected .fc-daygrid-day-number { background: #75638F !important; color: white !important; font-weight: 700; }
 .mini-calendar-card .fc .fc-daygrid-day-events { display: none; }
 .mini-calendar-card .fc .fc-col-header-cell-cushion { font-size: .78rem; font-weight: 600; color: #64567A; padding: .4rem 0; }
@@ -2060,4 +2055,65 @@ body, button, input, select, textarea, .app-shell, .ui-page, .calendar-page-main
 .calendar-page-main .fc .fc-event:is(.calendar-task,.calendar-overdue) :is(.fc-event-main,.fc-event-title,.fc-event-time) {
   color: #FFFFFF !important;
   font-weight: 800 !important;
+}
+
+/* Meeting Summary Rich Text Editor & Content Display */
+#meeting-summary-editor {
+  line-height: 1.6;
+  resize: vertical !important;
+  overflow-y: auto !important;
+  min-height: 12rem;
+}
+#meeting-summary-editor:empty:before {
+  content: attr(data-placeholder);
+  color: #94a3b8;
+  pointer-events: none;
+  font-style: italic;
+}
+#meeting-summary-editor ul,
+.meeting-summary-content ul {
+  list-style-type: disc !important;
+  padding-left: 1.5rem !important;
+  margin: 0.5rem 0 !important;
+}
+#meeting-summary-editor ol,
+.meeting-summary-content ol {
+  list-style-type: decimal !important;
+  padding-left: 1.5rem !important;
+  margin: 0.5rem 0 !important;
+}
+#meeting-summary-editor li,
+.meeting-summary-content li {
+  margin: 0.25rem 0 !important;
+  display: list-item !important;
+}
+#meeting-summary-editor p,
+.meeting-summary-content p {
+  margin: 0.4rem 0 !important;
+}
+#meeting-summary-editor strong,
+#meeting-summary-editor b,
+.meeting-summary-content strong,
+.meeting-summary-content b {
+  font-weight: 700 !important;
+}
+#meeting-summary-editor,
+#meeting-summary-editor *,
+.meeting-summary-content,
+.meeting-summary-content * {
+  font-synthesis: weight style !important;
+}
+
+#meeting-summary-editor em,
+#meeting-summary-editor i,
+#meeting-summary-editor [style*="italic"],
+.meeting-summary-content em,
+.meeting-summary-content i,
+.meeting-summary-content [style*="italic"] {
+  font-style: italic !important;
+  font-synthesis: style !important;
+}
+#meeting-summary-editor u,
+.meeting-summary-content u {
+  text-decoration: underline !important;
 }

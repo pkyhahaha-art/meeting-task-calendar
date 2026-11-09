@@ -24,6 +24,81 @@ const details: EventDetails = {
 }
 const noop = async () => {}
 
+test('new meetings require both classifications before creation', async () => {
+  let renderer!: ReactTestRenderer
+  const saved: boolean[] = []
+  const originalFire = Swal.fire
+  Swal.fire = (async () => ({ isConfirmed: true })) as typeof Swal.fire
+  try {
+    act(() => { renderer = create(<LanguageProvider><EventDialog open event={null} selectedDate="2030-10-03" canEdit canViewDeliveryStatus={false} busy={false}
+      onClose={() => {}} onSave={async (_draft, notify) => { saved.push(notify) }} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>) })
+    act(() => renderer.root.findByProps({ id: 'title' }).props.onChange({ target: { value: 'New meeting' } }))
+    const category = () => renderer.root.findByProps({ id: 'event-grc-category' })
+    const committee = () => renderer.root.findByProps({ id: 'event-committee' })
+    assert.equal(category().props['aria-required'], true)
+    assert.equal(committee().props['aria-required'], true)
+    const submit = async () => { await act(async () => { renderer.root.findByType('form').props.onSubmit({ preventDefault: () => {} }); await new Promise(resolve => setImmediate(resolve)) }) }
+    await submit()
+    assert.deepEqual(saved, [])
+    assert.ok(JSON.stringify(renderer.toJSON()).includes('Choose a GRC category and a committee / team.'))
+    act(() => category().props.onChange({ target: { value: 'S001' } }))
+    await submit()
+    assert.ok(JSON.stringify(renderer.toJSON()).includes('Choose a committee / team.'))
+    act(() => { category().props.onChange({ target: { value: '' } }); committee().props.onChange({ target: { value: 'C001' } }) })
+    await submit()
+    assert.ok(JSON.stringify(renderer.toJSON()).includes('Choose a GRC category.'))
+    act(() => category().props.onChange({ target: { value: 'S001' } }))
+    await submit()
+    assert.deepEqual(saved, [true])
+  } finally { Swal.fire = originalFire; if (renderer) act(() => renderer.unmount()) }
+})
+
+test('editing a legacy meeting does not require classification', async () => {
+  let renderer!: ReactTestRenderer
+  let saved = false
+  try {
+    act(() => { renderer = create(<LanguageProvider><EventDialog open event={event} details={details} canEdit canViewDeliveryStatus={false} busy={false}
+      onClose={() => {}} onSave={async () => { saved = true }} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>) })
+    assert.equal(renderer.root.findByProps({ id: 'event-grc-category' }).props['aria-required'], false)
+    assert.equal(renderer.root.findByProps({ id: 'event-committee' }).props['aria-required'], false)
+    await act(async () => { await renderer.root.findByType(SaveActionMenu).props.onSave(false) })
+    assert.equal(saved, true)
+  } finally { if (renderer) act(() => renderer.unmount()) }
+})
+
+test('GRC and committee selections preserve keys when saving a meeting', async () => {
+  let renderer!: ReactTestRenderer
+  let saved: EventDraft | undefined
+  try {
+    act(() => { renderer = create(<LanguageProvider><EventDialog open event={{ ...event, grc_category_key: null, committee_key: null }} details={details} canEdit canViewDeliveryStatus={false} busy={false}
+      onClose={() => {}} onSave={async draft => { saved = draft }} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>) })
+    const grc = renderer.root.findByProps({ id: 'event-grc-category' })
+    const committee = renderer.root.findByProps({ id: 'event-committee' })
+    assert.equal(grc.props.value, '')
+    assert.equal(committee.props.value, '')
+    assert.deepEqual(grc.findAllByType('option').map(option => option.props.value), ['', 'S001', 'S002', 'S003', 'S004', 'S005', 'S099'])
+    assert.deepEqual(committee.findAllByType('option').map(option => option.props.value), ['', 'C001', 'C002', 'C003', 'C004', 'C005', 'C006', 'C007', 'C099'])
+    act(() => grc.props.onChange({ target: { value: 'S003' } }))
+    act(() => committee.props.onChange({ target: { value: 'C007' } }))
+    await act(async () => { await renderer.root.findByType(SaveActionMenu).props.onSave(false) })
+    assert.equal(saved?.grc_category_key, 'S003')
+    assert.equal(saved?.committee_key, 'C007')
+  } finally { if (renderer) act(() => renderer.unmount()) }
+})
+
+test('meeting classification remains visible but cannot be changed for a single occurrence', () => {
+  let renderer!: ReactTestRenderer
+  try {
+    const recurring = { ...event, recurrence_rule: 'FREQ=WEEKLY', grc_category_key: 'S002', committee_key: 'C006' }
+    act(() => { renderer = create(<LanguageProvider><EventDialog open event={recurring} details={{ ...details, occurrenceId: 'occurrence-1', hasOccurrenceChanges: true }} occurrenceStart={event.start_datetime} canEdit canViewDeliveryStatus={false} busy={false}
+      onClose={() => {}} onSave={noop} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>) })
+    assert.equal(renderer.root.findByProps({ id: 'event-grc-category' }).props.value, 'S002')
+    assert.equal(renderer.root.findByProps({ id: 'event-grc-category' }).props.disabled, true)
+    assert.equal(renderer.root.findByProps({ id: 'event-committee' }).props.value, 'C006')
+    assert.equal(renderer.root.findByProps({ id: 'event-committee' }).props.disabled, true)
+  } finally { if (renderer) act(() => renderer.unmount()) }
+})
+
 test('successful attendance confirmation closes the form; cancellation and failure keep it open', async () => {
   const fire = Swal.fire, update = Swal.update, validation = Swal.showValidationMessage
   Swal.update = (() => {}) as typeof Swal.update
@@ -826,6 +901,8 @@ test('creating a new meeting with notification channels enabled but no reminder 
     // Fill title
     const titleInput = renderer.root.findByProps({ id: 'title' })
     act(() => titleInput.props.onChange({ target: { value: 'New Test Meeting' } }))
+    act(() => renderer.root.findByProps({ id: 'event-grc-category' }).props.onChange({ target: { value: 'S001' } }))
+    act(() => renderer.root.findByProps({ id: 'event-committee' }).props.onChange({ target: { value: 'C001' } }))
 
     // Uncheck/toggle off all reminder checkboxes so reminderKeys becomes empty
     const checkedReminders = renderer.root
@@ -888,6 +965,8 @@ test('creating a new meeting with reminder times selected but no notification ch
 
     const titleInput = renderer.root.findByProps({ id: 'title' })
     act(() => titleInput.props.onChange({ target: { value: 'New Test Meeting' } }))
+    act(() => renderer.root.findByProps({ id: 'event-grc-category' }).props.onChange({ target: { value: 'S001' } }))
+    act(() => renderer.root.findByProps({ id: 'event-committee' }).props.onChange({ target: { value: 'C001' } }))
 
     // Uncheck email and line notifications
     act(() => checkbox(renderer, 'Gmail / Email').props.onChange({ target: { checked: false } }))
@@ -907,6 +986,127 @@ test('creating a new meeting with reminder times selected but no notification ch
     if (renderer) act(() => renderer.unmount())
   }
 })
+
+test('meeting tabs switch between details and rich text summary editor with toolbar', async () => {
+  let renderer!: ReactTestRenderer
+  try {
+    act(() => {
+      renderer = create(
+        <LanguageProvider>
+          <EventDialog
+            open
+            event={event}
+            details={details}
+            canEdit={true}
+            canViewDeliveryStatus={false}
+            busy={false}
+            onClose={noop}
+            onSave={noop}
+            onDelete={noop}
+            onDeleteAttachment={noop}
+            onRetryNotification={noop}
+          />
+        </LanguageProvider>
+      )
+    })
+
+    const detailsTab = renderer.root.findByProps({ id: 'tab-meeting-details' })
+    const summaryTab = renderer.root.findByProps({ id: 'tab-meeting-summary' })
+    assert.equal(detailsTab.props['aria-selected'], true)
+    assert.equal(summaryTab.props['aria-selected'], false)
+
+    // Switch to summary tab
+    act(() => { summaryTab.props.onClick() })
+    assert.equal(detailsTab.props['aria-selected'], false)
+    assert.equal(summaryTab.props['aria-selected'], true)
+
+    // Verify rich text editor and toolbar buttons
+    const editor = renderer.root.findByProps({ id: 'meeting-summary-editor' })
+    assert.ok(editor)
+    assert.equal(editor.props.contentEditable, true)
+
+    const boldBtn = renderer.root.findByProps({ 'aria-label': 'Bold' })
+    const italicBtn = renderer.root.findByProps({ 'aria-label': 'Italic' })
+    const underlineBtn = renderer.root.findByProps({ 'aria-label': 'Underline' })
+    const bulletListBtn = renderer.root.findByProps({ 'aria-label': 'Bullet list' })
+    const numListBtn = renderer.root.findByProps({ 'aria-label': 'Numbered list' })
+    assert.ok(boldBtn)
+    assert.ok(italicBtn)
+    assert.ok(underlineBtn)
+    assert.ok(bulletListBtn)
+    assert.ok(numListBtn)
+
+    const clearFormatBtn = renderer.root.findByProps({ 'aria-label': 'Clear formatting' })
+    const undoBtn = renderer.root.findByProps({ 'aria-label': 'Undo' })
+    const redoBtn = renderer.root.findByProps({ 'aria-label': 'Redo' })
+    assert.ok(clearFormatBtn)
+    assert.ok(undoBtn)
+    assert.ok(redoBtn)
+
+    // Verify keyboard shortcut handler
+    let preventDefaultCalled = false
+    act(() => {
+      editor.props.onKeyDown({
+        key: 'b',
+        ctrlKey: true,
+        preventDefault: () => { preventDefaultCalled = true },
+      })
+    })
+    assert.equal(preventDefaultCalled, true)
+
+    // Switch back to details tab
+    act(() => { detailsTab.props.onClick() })
+    assert.equal(detailsTab.props['aria-selected'], true)
+    assert.equal(summaryTab.props['aria-selected'], false)
+  } finally {
+    if (renderer) act(() => renderer.unmount())
+  }
+})
+
+test('meeting summary collapsible presentation starts collapsed (false) and toggles on circular button click', async () => {
+  let renderer!: ReactTestRenderer
+  try {
+    act(() => {
+      renderer = create(
+        <LanguageProvider>
+          <EventDialog
+            open
+            event={event}
+            details={{ ...details, summaryHtml: '<p><strong>มติที่ประชุม:</strong> เห็นชอบตามเสนอ</p>' }}
+            canEdit={true}
+            canViewDeliveryStatus={false}
+            busy={false}
+            onClose={noop}
+            onSave={noop}
+            onDelete={noop}
+            onDeleteAttachment={noop}
+            onRetryNotification={noop}
+          />
+        </LanguageProvider>
+      )
+    })
+
+    // Find circular toggle button
+    const toggleBtn = renderer.root.findByProps({ id: 'toggle-meeting-summary-presentation' })
+    assert.ok(toggleBtn)
+    // Default must be false (collapsed / closed)
+    assert.equal(toggleBtn.props['aria-expanded'], false)
+    assert.equal(JSON.stringify(renderer.toJSON()).includes('มติที่ประชุม:'), false)
+
+    // Click circular button to expand
+    act(() => { toggleBtn.props.onClick() })
+    assert.equal(toggleBtn.props['aria-expanded'], true)
+    assert.equal(JSON.stringify(renderer.toJSON()).includes('มติที่ประชุม:'), true)
+
+    // Click circular button to collapse again
+    act(() => { toggleBtn.props.onClick() })
+    assert.equal(toggleBtn.props['aria-expanded'], false)
+    assert.equal(JSON.stringify(renderer.toJSON()).includes('มติที่ประชุม:'), false)
+  } finally {
+    if (renderer) act(() => renderer.unmount())
+  }
+})
+
 
 
 

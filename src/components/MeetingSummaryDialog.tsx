@@ -23,16 +23,41 @@ import type { Database } from '../lib/database.types'
 import { useLanguage } from '../i18n/LanguageProvider'
 import {
   type EventRow,
+  type SummaryMeetingItem,
   THAI_MONTHS,
   getMonthWeeks,
   filterAndSortMeetingsForSummary,
 } from '../lib/meetingSummary'
+
+export interface MeetingCompletionItem {
+  event_id: string
+  occurrence_key: string
+  summary_html?: string | null
+  completed_at?: string | null
+}
+
+export function htmlToSummaryPlainText(html: string): string {
+  if (!html) return ''
+  return html
+    .replace(/<li\b[^>]*>/gi, '• ')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
 
 interface MeetingSummaryDialogProps {
   open: boolean
   onClose: () => void
   events: EventRow[]
   cancelledAppointments?: Set<string>
+  meetingCompletions?: MeetingCompletionItem[]
 }
 
 const ITEMS_PER_A4_PAGE = 6
@@ -42,6 +67,7 @@ export function MeetingSummaryDialog({
   onClose,
   events,
   cancelledAppointments = new Set(),
+  meetingCompletions = [],
 }: MeetingSummaryDialogProps) {
   let text = (thai: string, _english?: string) => thai
   try {
@@ -70,6 +96,26 @@ export function MeetingSummaryDialog({
   const [showDescription, setShowDescription] = useState(true)
   const [descriptionEnabled, setDescriptionEnabled] = useState<Record<string, boolean>>({})
   const [customDescriptions, setCustomDescriptions] = useState<Record<string, string>>({})
+
+  // Meeting summary toggle & per-item state
+  const [showMeetingSummary, setShowMeetingSummary] = useState(true)
+  const [summaryEnabled, setSummaryEnabled] = useState<Record<string, boolean>>({})
+  const [customSummaries, setCustomSummaries] = useState<Record<string, string>>({})
+
+  const getInitialMeetingSummary = (item: SummaryMeetingItem): string => {
+    if (!meetingCompletions || meetingCompletions.length === 0) return ''
+    const match = meetingCompletions.find((mc) => {
+      if (mc.event_id !== item.eventId) return false
+      if (item.occurrenceKey && (mc.occurrence_key === item.occurrenceKey || new Date(mc.occurrence_key).getTime() === new Date(item.occurrenceKey).getTime())) {
+        return true
+      }
+      if (item.occurrenceStart && new Date(mc.occurrence_key).getTime() === new Date(item.occurrenceStart).getTime()) {
+        return true
+      }
+      return false
+    })
+    return match?.summary_html ? htmlToSummaryPlainText(match.summary_html) : ''
+  }
 
   // Weeks available in selected month
   const monthWeeks = useMemo(() => getMonthWeeks(currentYear, selectedMonth), [currentYear, selectedMonth])
@@ -296,6 +342,18 @@ export function MeetingSummaryDialog({
           descLines.forEach((l) => lines.push(`      • ${l}`))
         }
       }
+      const initialSummary = getInitialMeetingSummary(m)
+      const isSummaryChecked = summaryEnabled[m.id] ?? Boolean(initialSummary)
+      const summary = (customSummaries[m.id] ?? initialSummary).trim()
+      if (showMeetingSummary && isSummaryChecked && summary) {
+        const sumLines = summary.split('\n').map((l) => l.trim()).filter(Boolean)
+        if (sumLines.length === 1) {
+          lines.push(`   📋 สรุปการประชุม: ${sumLines[0]}`)
+        } else if (sumLines.length > 1) {
+          lines.push(`   📋 สรุปการประชุม:`)
+          sumLines.forEach((l) => lines.push(`      • ${l}`))
+        }
+      }
       lines.push('')
     })
 
@@ -489,8 +547,8 @@ export function MeetingSummaryDialog({
                 />
               </div>
 
-              {/* Toggle description */}
-              <div className="flex items-center justify-between pt-1">
+              {/* Toggle description & meeting summary */}
+              <div className="flex flex-wrap items-center gap-4 pt-1">
                 <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-slate-700">
                   <input
                     type="checkbox"
@@ -498,7 +556,16 @@ export function MeetingSummaryDialog({
                     onChange={(e) => setShowDescription(e.target.checked)}
                     className="rounded border-slate-300 text-purple-600 focus:ring-purple-500"
                   />
-                  <span>{text('แสดงรายละเอียด (สามารถพิมพ์สรุปย่อในแต่ละรายการได้)', 'Show description (editable per item)')}</span>
+                  <span>{text('แสดงรายละเอียด', 'Show description')}</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={showMeetingSummary}
+                    onChange={(e) => setShowMeetingSummary(e.target.checked)}
+                    className="rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                  />
+                  <span>{text('แสดงสรุปการประชุม (Meeting Summary)', 'Show meeting summary')}</span>
                 </label>
               </div>
             </div>
@@ -582,29 +649,63 @@ export function MeetingSummaryDialog({
                             <span className="leading-tight break-words">{meeting.location}</span>
                           </div>
                         )}
-                        {showDescription && (
-                          <div className="mt-1.5 pt-1" onClick={(e) => e.stopPropagation()}>
-                            <label className="flex min-h-11 items-center gap-2 text-[10px] font-semibold text-purple-900 mb-0.5 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={descriptionEnabled[meeting.id] !== false}
-                                onChange={(e) => setDescriptionEnabled((previous) => ({ ...previous, [meeting.id]: e.target.checked }))}
-                                aria-label={text(`แสดงรายละเอียด ${meeting.title}`, `Show description for ${meeting.title}`)}
-                                className="h-3.5 w-3.5 shrink-0 appearance-none rounded-full border border-purple-400 checked:bg-purple-600 checked:border-purple-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600"
-                              />
-                              {text('รายละเอียด (พิมพ์แก้ไขข้อความสรุปได้ / กด Enter ขึ้นบรรทัดใหม่ได้):', 'Description (editable / Enter for new line):')}
-                            </label>
-                            {descriptionEnabled[meeting.id] !== false && (
-                            <textarea
-                              rows={2}
-                              value={customDescriptions[meeting.id] ?? meeting.description}
-                              onChange={(e) => {
-                                const val = e.target.value
-                                setCustomDescriptions((prev) => ({ ...prev, [meeting.id]: val }))
-                              }}
-                              placeholder={text('พิมพ์ข้อความสรุปย่อ (กด Enter ขึ้นบรรทัดใหม่ได้)...', 'Type short summary (Enter for new line)...')}
-                              className="w-full text-[11px] px-2 py-1.5 rounded-md border border-purple-200 bg-white focus:outline-none focus:border-purple-500 text-slate-700 shadow-sm resize-y leading-snug"
-                            />
+                        {(showDescription || showMeetingSummary) && (
+                          <div className="mt-1.5 pt-1 space-y-1.5" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex flex-wrap items-center gap-4">
+                              {showDescription && (
+                                <label className="flex min-h-8 items-center gap-1.5 text-[10px] font-semibold text-purple-900 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={descriptionEnabled[meeting.id] !== false}
+                                    onChange={(e) => setDescriptionEnabled((previous) => ({ ...previous, [meeting.id]: e.target.checked }))}
+                                    aria-label={text(`แสดงรายละเอียด ${meeting.title}`, `Show description for ${meeting.title}`)}
+                                    className="h-3.5 w-3.5 shrink-0 appearance-none rounded-full border border-purple-400 checked:bg-purple-600 checked:border-purple-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600"
+                                  />
+                                  <span>{text('รายละเอียด', 'Description')}</span>
+                                </label>
+                              )}
+                              {showMeetingSummary && (
+                                <label className="flex min-h-8 items-center gap-1.5 text-[10px] font-semibold text-purple-900 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={summaryEnabled[meeting.id] ?? Boolean(getInitialMeetingSummary(meeting))}
+                                    onChange={(e) => setSummaryEnabled((previous) => ({ ...previous, [meeting.id]: e.target.checked }))}
+                                    aria-label={text(`แสดงสรุปการประชุม ${meeting.title}`, `Show meeting summary for ${meeting.title}`)}
+                                    className="h-3.5 w-3.5 shrink-0 appearance-none rounded-full border border-purple-400 checked:bg-purple-600 checked:border-purple-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600"
+                                  />
+                                  <span>{text('สรุปการประชุม', 'Meeting Summary')}</span>
+                                </label>
+                              )}
+                            </div>
+
+                            {showDescription && descriptionEnabled[meeting.id] !== false && (
+                              <div>
+                                <textarea
+                                  rows={2}
+                                  value={customDescriptions[meeting.id] ?? meeting.description}
+                                  onChange={(e) => {
+                                    const val = e.target.value
+                                    setCustomDescriptions((prev) => ({ ...prev, [meeting.id]: val }))
+                                  }}
+                                  placeholder={text('พิมพ์ข้อความรายละเอียด (กด Enter ขึ้นบรรทัดใหม่ได้)...', 'Type description (Enter for new line)...')}
+                                  className="w-full text-[11px] px-2 py-1.5 rounded-md border border-purple-200 bg-white focus:outline-none focus:border-purple-500 text-slate-700 shadow-sm resize-y leading-snug"
+                                />
+                              </div>
+                            )}
+
+                            {showMeetingSummary && (summaryEnabled[meeting.id] ?? Boolean(getInitialMeetingSummary(meeting))) && (
+                              <div>
+                                <textarea
+                                  rows={2}
+                                  value={customSummaries[meeting.id] ?? getInitialMeetingSummary(meeting)}
+                                  onChange={(e) => {
+                                    const val = e.target.value
+                                    setCustomSummaries((prev) => ({ ...prev, [meeting.id]: val }))
+                                  }}
+                                  placeholder={text('พิมพ์ข้อความสรุปผลการประชุม / มติที่ประชุม (กด Enter ขึ้นบรรทัดใหม่ได้)...', 'Type meeting summary (Enter for new line)...')}
+                                  className="w-full text-[11px] px-2 py-1.5 rounded-md border border-purple-300 bg-purple-50/40 focus:outline-none focus:border-purple-600 text-slate-800 shadow-sm resize-y leading-snug"
+                                />
+                              </div>
                             )}
                           </div>
                         )}
@@ -815,7 +916,19 @@ export function MeetingSummaryDialog({
                                 <div className="mt-2 pt-1.5 border-t border-purple-100/70 flex items-start gap-1.5 text-[10.5px] text-slate-700 bg-purple-50/40 px-2.5 py-1.5 rounded-md min-w-0 break-words">
                                   <FileText size={11} className="shrink-0 text-purple-700 mt-0.5" />
                                   <div className="leading-relaxed font-normal text-slate-700 break-words whitespace-pre-wrap min-w-0 flex-1">
+                                    <span className="font-semibold text-purple-900">{text('รายละเอียด: ', 'Details: ')}</span>
                                     {(customDescriptions[meeting.id] ?? meeting.description).trim()}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Meeting summary row */}
+                              {showMeetingSummary && (summaryEnabled[meeting.id] ?? Boolean(getInitialMeetingSummary(meeting))) && (customSummaries[meeting.id] ?? getInitialMeetingSummary(meeting)).trim() && (
+                                <div className="mt-2 pt-1.5 border-t border-purple-100/70 flex items-start gap-1.5 text-[10.5px] text-purple-950 bg-purple-100/50 px-2.5 py-1.5 rounded-md min-w-0 break-words border border-purple-200/50">
+                                  <FileSpreadsheet size={11} className="shrink-0 text-purple-800 mt-0.5" />
+                                  <div className="leading-relaxed font-normal text-slate-800 break-words whitespace-pre-wrap min-w-0 flex-1">
+                                    <span className="font-bold text-purple-900">{text('สรุปการประชุม: ', 'Meeting Summary: ')}</span>
+                                    {(customSummaries[meeting.id] ?? getInitialMeetingSummary(meeting)).trim()}
                                   </div>
                                 </div>
                               )}
