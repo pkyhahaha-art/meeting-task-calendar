@@ -154,6 +154,12 @@ export function MeetingSummaryDialog({
     return filterAndSortMeetingsForSummary(events, activeRange.start, activeRange.end, cancelledAppointments)
   }, [events, activeRange, cancelledAppointments])
 
+  const [affiliationSearch, setAffiliationSearch] = useState('')
+  const visibleMeetings = useMemo(() => {
+    const query = affiliationSearch.trim().toLocaleLowerCase()
+    return query ? allMeetings.filter((meeting) => (meeting.affiliation ?? '').toLocaleLowerCase().includes(query)) : allMeetings
+  }, [allMeetings, affiliationSearch])
+
   // Selected meeting IDs in checklist (Default to all checked)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set(allMeetings.map((m) => m.id)))
   const [hasInteractedWithSelection, setHasInteractedWithSelection] = useState(false)
@@ -174,8 +180,8 @@ export function MeetingSummaryDialog({
 
   // Filtered list of meetings that will be displayed in preview & export
   const selectedMeetings = useMemo(() => {
-    return allMeetings.filter((m) => activeSelectedIds.has(m.id))
-  }, [allMeetings, activeSelectedIds])
+    return visibleMeetings.filter((m) => activeSelectedIds.has(m.id))
+  }, [visibleMeetings, activeSelectedIds])
 
   // Checklist handlers
   const handleToggleItem = (id: string) => {
@@ -188,12 +194,12 @@ export function MeetingSummaryDialog({
 
   const handleSelectAll = () => {
     setHasInteractedWithSelection(true)
-    setSelectedIds(new Set(allMeetings.map((m) => m.id)))
+    setSelectedIds(new Set([...activeSelectedIds, ...visibleMeetings.map((m) => m.id)]))
   }
 
   const handleDeselectAll = () => {
     setHasInteractedWithSelection(true)
-    setSelectedIds(new Set())
+    setSelectedIds(new Set([...activeSelectedIds].filter((id) => !visibleMeetings.some((m) => m.id === id))))
   }
 
   // Quick range helpers
@@ -570,13 +576,18 @@ export function MeetingSummaryDialog({
               </div>
             </div>
 
+            <div className="border-b border-slate-200 px-4 py-2">
+              <label htmlFor="summary-affiliation-search" className="mb-1 block text-xs font-bold text-slate-700">{text('ค้นหาหน่วยงาน', 'Search organization')}</label>
+              <input id="summary-affiliation-search" type="search" value={affiliationSearch} onChange={(e) => setAffiliationSearch(e.target.value)} placeholder={text('เช่น กคน.', 'Search organization')} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-purple-500 focus:outline-none" />
+            </div>
+
             {/* Checklist Header & Bulk Actions */}
             <div className="flex items-center justify-between px-4 py-2.5 bg-slate-100/90 border-b border-slate-200 text-xs">
               <div className="flex items-center gap-1.5 font-bold text-slate-700">
                 <CheckSquare size={14} className="text-purple-700" />
                 <span>
                   {text('เลือกรายการนัดหมาย', 'Select meetings')} (
-                  <span className="text-purple-700 font-extrabold">{selectedMeetings.length}</span> / {allMeetings.length})
+                  <span className="text-purple-700 font-extrabold">{selectedMeetings.length}</span> / {visibleMeetings.length})
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -600,13 +611,13 @@ export function MeetingSummaryDialog({
 
             {/* Checklist Items Scroll Container */}
             <div className="flex-1 overflow-y-auto p-3 space-y-2">
-              {allMeetings.length === 0 ? (
+              {visibleMeetings.length === 0 ? (
                 <div className="p-8 text-center text-slate-400">
                   <Calendar size={32} className="mx-auto mb-2 opacity-50" />
-                  <p className="text-xs">{text('ไม่มีรายการนัดหมายประชุมในช่วงเวลาที่เลือก', 'No meetings found in this period')}</p>
+                  <p className="text-xs">{text('ไม่พบรายการประชุมที่ตรงกับช่วงเวลาและหน่วยงาน', 'No matching meetings found')}</p>
                 </div>
               ) : (
-                allMeetings.map((meeting, index) => {
+                visibleMeetings.map((meeting, index) => {
                   const isChecked = activeSelectedIds.has(meeting.id)
                   return (
                     <div
