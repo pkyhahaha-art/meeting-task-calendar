@@ -246,7 +246,8 @@ export function EventDialog({
   const joinedOccurrence = Boolean(joinedEmail && details?.occurrenceGuestEmails.some((email) => email.toLowerCase() === joinedEmail))
   const joinedViewedAppointment = occurrenceStart ? joinedOccurrence : joinedSeries
   const isAppointmentPassed = isMeetingAppointmentPassed(event, occurrenceStart)
-  const isSummaryEditable = Boolean(event && canEdit && !busy && (isAppointmentPassed || isOccurrenceCompleted))
+  const isSummaryTabEnabled = Boolean(event && (isAppointmentPassed || isOccurrenceCompleted))
+  const isSummaryEditable = Boolean(canEdit && !busy && isSummaryTabEnabled)
 
   const joinMeeting = async () => {
     if (!event || !onJoin || !onCheckJoinTime || checkingJoin.current) return
@@ -988,36 +989,55 @@ export function EventDialog({
               <FileText size={16} />
               <span>{text('ข้อมูลการประชุม', 'Meeting details')}</span>
             </button>
-            <button
-              type="button"
-              role="tab"
-              id="tab-meeting-summary"
-              aria-controls="tabpanel-meeting-summary"
-              aria-selected={mainTab === 'summary'}
-              onClick={() => {
-                setMainTab('summary')
-                setTimeout(() => {
-                  if (summaryEditorRef.current && summaryEditorRef.current.innerHTML !== summaryHtml) {
-                    summaryEditorRef.current.innerHTML = summaryHtml
-                  }
-                }, 0)
-              }}
-              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all ${
-                mainTab === 'summary'
-                  ? 'bg-brand-600 text-white shadow-sm'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
+            <span
+              className="inline-flex"
+              title={
+                !isSummaryTabEnabled
+                  ? text('สรุปการประชุมจะเปิดให้บันทึกได้เมื่อถึงกำหนดวันนัดหมาย', 'Meeting summary will be available once the scheduled appointment date arrives')
+                  : undefined
+              }
             >
-              <FileCheck size={16} />
-              <span>{text('สรุปการประชุม', 'Meeting summary')}</span>
-              <span
-                className={`inline-block h-2 w-2 rounded-full shrink-0 transition-opacity ${
-                  hasMeetingSummary(summaryHtml) ? 'bg-emerald-400 opacity-100' : 'opacity-0'
+              <button
+                type="button"
+                role="tab"
+                id="tab-meeting-summary"
+                aria-controls="tabpanel-meeting-summary"
+                aria-selected={mainTab === 'summary'}
+                disabled={!isSummaryTabEnabled}
+                aria-disabled={!isSummaryTabEnabled}
+                title={
+                  !isSummaryTabEnabled
+                    ? text('สรุปการประชุมจะเปิดให้บันทึกได้เมื่อถึงกำหนดวันนัดหมาย', 'Meeting summary will be available once the scheduled appointment date arrives')
+                    : undefined
+                }
+                onClick={() => {
+                  if (!isSummaryTabEnabled) return
+                  setMainTab('summary')
+                  setTimeout(() => {
+                    if (summaryEditorRef.current && summaryEditorRef.current.innerHTML !== summaryHtml) {
+                      summaryEditorRef.current.innerHTML = summaryHtml
+                    }
+                  }, 0)
+                }}
+                className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all ${
+                  !isSummaryTabEnabled
+                    ? 'cursor-not-allowed opacity-50 bg-slate-100 text-slate-400 border border-slate-200'
+                    : mainTab === 'summary'
+                      ? 'bg-brand-600 text-white shadow-sm'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                 }`}
-                title={hasMeetingSummary(summaryHtml) ? text('มีข้อมูลสรุปแล้ว', 'Summary recorded') : undefined}
-                aria-hidden={!hasMeetingSummary(summaryHtml)}
-              />
-            </button>
+              >
+                <FileCheck size={16} />
+                <span>{text('สรุปการประชุม', 'Meeting summary')}</span>
+                <span
+                  className={`inline-block h-2 w-2 rounded-full shrink-0 transition-opacity ${
+                    hasMeetingSummary(summaryHtml) ? 'bg-emerald-400 opacity-100' : 'opacity-0'
+                  }`}
+                  title={hasMeetingSummary(summaryHtml) ? text('มีข้อมูลสรุปแล้ว', 'Summary recorded') : undefined}
+                  aria-hidden={!hasMeetingSummary(summaryHtml)}
+                />
+              </button>
+            </span>
           </div>
 
           <div className={mainTab === 'details' ? 'space-y-6' : 'hidden'}>
@@ -1121,29 +1141,32 @@ export function EventDialog({
                       )}
                       {canEdit && (
                         <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
-                          {!isSummaryEditable && (
+                          {!isSummaryTabEnabled && (
                             <span className="text-xs font-medium text-amber-700">
-                              {text('สรุปการประชุมจะเปิดให้บันทึกได้เมื่อถึงกำหนดวันนัดหมาย', 'Summary editing will unlock at the scheduled appointment time.')}
+                              {text('สรุปการประชุมจะเปิดให้บันทึกได้เมื่อถึงกำหนดวันนัดหมาย', 'Meeting summary will be available once the scheduled appointment date arrives')}
                             </span>
                           )}
                           <button
                             type="button"
+                            disabled={!isSummaryTabEnabled}
+                            title={!isSummaryTabEnabled ? text('สรุปการประชุมจะเปิดให้บันทึกได้เมื่อถึงกำหนดวันนัดหมาย', 'Meeting summary will be available once the scheduled appointment date arrives') : undefined}
                             onClick={() => {
+                              if (!isSummaryTabEnabled) return
                               setMainTab('summary')
                               setTimeout(() => {
                                 if (summaryEditorRef.current) {
                                   summaryEditorRef.current.innerHTML = summaryHtml
-                                  if (isSummaryEditable) {
-                                    summaryEditorRef.current.focus()
-                                  }
+                                  summaryEditorRef.current.focus()
                                 }
                               }, 0)
                             }}
-                            className="ml-auto text-xs font-semibold text-brand-700 underline hover:text-brand-900"
+                            className={`ml-auto text-xs font-semibold ${
+                              !isSummaryTabEnabled
+                                ? 'text-slate-400 cursor-not-allowed'
+                                : 'text-brand-700 underline hover:text-brand-900'
+                            }`}
                           >
-                            {isSummaryEditable
-                              ? text('ไปที่แท็บสรุปการประชุมเพื่อแก้ไข / บันทึก', 'Go to summary tab to edit / record')
-                              : text('ไปที่แท็บสรุปการประชุมเพื่อดูข้อมูล', 'Go to summary tab to view')}
+                            {text('ไปที่แท็บสรุปการประชุมเพื่อแก้ไข / บันทึก', 'Go to summary tab to edit / record')}
                           </button>
                         </div>
                       )}
@@ -1872,23 +1895,6 @@ export function EventDialog({
               {text('* บังคับกรอกก่อนกดยืนยันเสร็จสิ้นการประชุม', '* Required before marking meeting as complete')}
             </span>
           </div>
-
-          {!isSummaryEditable && (
-            <div id="meeting-summary-disabled-notice" className="flex items-center gap-2.5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-900">
-              <AlertCircle size={16} className="shrink-0 text-amber-600" />
-              <span>
-                {!event
-                  ? text(
-                      'สามารถบันทึกสรุปการประชุมได้หลังจากสร้างการประชุมและถึงกำหนดวันนัดหมายแล้ว',
-                      'Meeting summary can be recorded once the meeting is created and its appointment date has arrived.'
-                    )
-                  : text(
-                      'สรุปการประชุมจะเปิดให้บันทึกได้เมื่อถึงหรือเลยเวลานัดหมายการประชุมเป็นต้นไป',
-                      'Meeting summary will be editable once the scheduled appointment date/time has arrived or passed.'
-                    )}
-              </span>
-            </div>
-          )}
 
           {/* Formatting Toolbar */}
           <div className="flex flex-wrap items-center justify-between gap-1.5 rounded-t-xl border border-b-0 border-slate-300 bg-slate-100 p-2">

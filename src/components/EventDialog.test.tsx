@@ -1108,13 +1108,13 @@ test('meeting summary collapsible presentation starts collapsed (false) and togg
   }
 })
 
-test('meeting summary editor is disabled for future meetings before appointment time, and enables when appointment has arrived/passed or meeting is completed', async () => {
+test('tab button สรุปการประชุม is disabled before appointment date with tooltip notice and enables after appointment passes', async () => {
   let renderer!: ReactTestRenderer
   const futureMeeting = { ...event, start_datetime: '2030-10-03T02:00:00.000Z' }
   const pastMeeting = { ...event, start_datetime: '2020-10-03T02:00:00.000Z' }
 
   try {
-    // 1. Future meeting: summary editor and toolbar should be disabled
+    // 1. Future meeting: tab button "สรุปการประชุม" should be disabled with tooltip
     act(() => {
       renderer = create(
         <LanguageProvider>
@@ -1139,28 +1139,22 @@ test('meeting summary editor is disabled for future meetings before appointment 
     // Details tab presentation card shows warning text that summary editing unlocks at scheduled time
     const toggleBtn = renderer.root.findByProps({ id: 'toggle-meeting-summary-presentation' })
     act(() => { toggleBtn.props.onClick() })
-    assert.ok(JSON.stringify(renderer.toJSON()).includes('Summary editing will unlock at the scheduled appointment time.'))
+    assert.ok(JSON.stringify(renderer.toJSON()).includes('Meeting summary will be available once the scheduled appointment date arrives'))
 
-    // Switch to summary tab
+    // Tab button "สรุปการประชุม" must be disabled with tooltip notice
     const summaryTab = renderer.root.findByProps({ id: 'tab-meeting-summary' })
+    assert.equal(summaryTab.props.disabled, true)
+    assert.equal(summaryTab.props.title, 'Meeting summary will be available once the scheduled appointment date arrives')
+
+    // Clicking disabled tab button does not change tab
+    const detailsTab = renderer.root.findByProps({ id: 'tab-meeting-details' })
     act(() => { summaryTab.props.onClick() })
-
-    // Editor should be non-editable (contentEditable === false)
-    const editor = renderer.root.findByProps({ id: 'meeting-summary-editor' })
-    assert.equal(editor.props.contentEditable, false)
-
-    // Toolbar buttons should be disabled
-    const boldBtn = renderer.root.findByProps({ 'aria-label': 'Bold' })
-    assert.equal(boldBtn.props.disabled, true)
-
-    // Disabled banner should be visible
-    const disabledNotice = renderer.root.findByProps({ id: 'meeting-summary-disabled-notice' })
-    assert.ok(disabledNotice)
-    assert.ok(JSON.stringify(renderer.toJSON()).includes('Meeting summary will be editable once the scheduled appointment date/time has arrived or passed.'))
+    assert.equal(detailsTab.props['aria-selected'], true)
+    assert.equal(summaryTab.props['aria-selected'], false)
 
     act(() => renderer.unmount())
 
-    // 2. Past meeting: summary editor should be enabled
+    // 2. Past meeting: tab button "สรุปการประชุม" should be enabled
     act(() => {
       renderer = create(
         <LanguageProvider>
@@ -1183,7 +1177,10 @@ test('meeting summary editor is disabled for future meetings before appointment 
     })
 
     const summaryTabPast = renderer.root.findByProps({ id: 'tab-meeting-summary' })
+    assert.equal(summaryTabPast.props.disabled, false)
     act(() => { summaryTabPast.props.onClick() })
+    assert.equal(summaryTabPast.props['aria-selected'], true)
+
     const editorPast = renderer.root.findByProps({ id: 'meeting-summary-editor' })
     assert.equal(editorPast.props.contentEditable, true)
     const boldBtnPast = renderer.root.findByProps({ 'aria-label': 'Bold' })
@@ -1191,7 +1188,7 @@ test('meeting summary editor is disabled for future meetings before appointment 
 
     act(() => renderer.unmount())
 
-    // 3. Completed future meeting: summary editor should be enabled
+    // 3. Completed future meeting: tab button "สรุปการประชุม" should be enabled
     act(() => {
       renderer = create(
         <LanguageProvider>
@@ -1214,7 +1211,9 @@ test('meeting summary editor is disabled for future meetings before appointment 
     })
 
     const summaryTabCompleted = renderer.root.findByProps({ id: 'tab-meeting-summary' })
+    assert.equal(summaryTabCompleted.props.disabled, false)
     act(() => { summaryTabCompleted.props.onClick() })
+    assert.equal(summaryTabCompleted.props['aria-selected'], true)
     const editorCompleted = renderer.root.findByProps({ id: 'meeting-summary-editor' })
     assert.equal(editorCompleted.props.contentEditable, true)
   } finally {
