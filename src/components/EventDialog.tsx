@@ -2178,7 +2178,7 @@ export function EventDialog({
                 </span>
               )}
             </div>
-            <div className="ml-auto flex flex-wrap gap-2">
+            {mainTab === 'details' && <div className="ml-auto flex flex-wrap gap-2">
               {event && event.owner_user_id !== currentUserId && onJoin && details && <button type="button" className="btn-primary" disabled={busy} onClick={() => void joinMeeting()}><UserPlus size={17} />{text('เข้าร่วมประชุมนี้', 'Join this meeting')}</button>}
               {event && event.owner_user_id !== currentUserId && joinedViewedAppointment && <span className="inline-flex items-center rounded-xl bg-green-50 px-3 py-2 text-sm font-semibold text-green-800">{joinedSeries ? text('คุณเข้าร่วมแล้ว', 'You joined') : text('คุณเข้าร่วมนัดนี้แล้ว', 'You joined this occurrence')}</span>}
               <button type="button" onClick={onClose} className="btn-secondary">
@@ -2193,7 +2193,7 @@ export function EventDialog({
                     {text('สร้างการประชุม', 'Create meeting')}
                   </button>
                 ))}
-            </div>
+            </div>}
           </div>
         </form>
       </section>
