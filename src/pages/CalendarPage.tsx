@@ -27,6 +27,7 @@ import { bangkokDate, isPastBangkokDate, meetingRecurrenceRule, meetingReminderK
 import { appUrl } from '../lib/appUrl'
 import { canManageMeeting } from '../lib/meetingAccess'
 import { meetingSaveId, saveMeetingWithFollowUp, type MeetingSaveAttempt } from '../lib/meetingSave'
+import { planMeetingDocumentLinkChanges, requireUpdatedMeetingLink } from '../lib/meetingDocumentLinks'
 import { calendarClickedDate, calendarDayKey, calendarEntriesByDay, calendarMeetingOccurrences, calendarViewType, formatCalendarDayHeader, readCalendarPages, type CalendarView } from '../lib/calendarView'
 import {
   generateContinuousReminderDates,
@@ -587,20 +588,26 @@ export function CalendarPage() {
         if (error || !data) throw error ?? new Error('ไม่สามารถบันทึกการประชุมได้')
         return data
       }, async (savedEventId) => {
-        const validLinks = (draft.driveLinks ?? []).filter((l) => l.url.trim())
-        const { error: deleteLinksError } = await supabase.from('document_links').delete().eq('event_id', savedEventId)
-        if (deleteLinksError) console.warn('Could not clear existing drive links:', deleteLinksError.message)
-        if (validLinks.length) {
+        const changes = planMeetingDocumentLinkChanges(draft.driveLinks ?? [], draft.removedDriveLinkIds)
+        for (const link of changes.updates) {
+          const { data, error } = await supabase.from('document_links').update({ display_name: link.display_name, url: link.url }).eq('event_id', savedEventId).eq('id', link.id).select('id')
+          requireUpdatedMeetingLink(data, error)
+        }
+        if (changes.deletedIds.length) {
+          const { error } = await supabase.from('document_links').delete().eq('event_id', savedEventId).in('id', changes.deletedIds)
+          if (error) throw new Error('ลบลิงก์เอกสารไม่สำเร็จ')
+        }
+        if (changes.inserts.length) {
           const { error: insertLinksError } = await supabase.from('document_links').insert(
-            validLinks.map((link) => ({
+            changes.inserts.map((link) => ({
               event_id: savedEventId,
-              display_name: link.displayName.trim() || 'ลิงก์ Google Drive',
-              url: link.url.trim(),
+              display_name: link.display_name,
+              url: link.url,
               provider: 'google_drive' as const,
               added_by: user!.id,
             }))
           )
-          if (insertLinksError) console.warn('Could not insert drive links:', insertLinksError.message)
+          if (insertLinksError) throw new Error('เพิ่มลิงก์เอกสารไม่สำเร็จ')
         }
 
         for (const file of draft.files) {

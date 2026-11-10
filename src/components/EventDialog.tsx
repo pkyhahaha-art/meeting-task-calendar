@@ -41,7 +41,7 @@ type EventRow = Database['public']['Tables']['events']['Row']
 type ProfileRow = Database['public']['Tables']['profiles']['Row']
 type AttachmentRow = Database['public']['Tables']['attachments']['Row']
 type AttachmentView = AttachmentRow & { signedUrl: string }
-export type DriveLinkDraft = { displayName: string; url: string }
+export type DriveLinkDraft = { id?: string; displayName: string; url: string; originalDisplayName?: string; originalUrl?: string }
 export type OccurrenceReminder = Pick<Database['public']['Tables']['reminders']['Row'], 'id' | 'scheduled_at' | 'channel_email' | 'channel_line' | 'status'>
 export type EventDetails = {
   guestEmails: string[]
@@ -76,6 +76,7 @@ export type EventDraft = Pick<EventRow, 'title' | 'description' | 'location' | '
   notifyLine: boolean
   files: File[]
   driveLinks: DriveLinkDraft[]
+  removedDriveLinkIds?: string[]
 }
 
 const blankDraft = (date?: string): EventDraft => {
@@ -102,6 +103,7 @@ const blankDraft = (date?: string): EventDraft => {
     notifyLine: false,
     files: [],
     driveLinks: [],
+    removedDriveLinkIds: [],
   }
 }
 
@@ -404,7 +406,8 @@ export function EventDialog({
           notifyEmail: event.email_notifications_enabled,
           notifyLine: event.mobile_notifications_enabled,
           files: [],
-          driveLinks: details?.documentLinks?.map((l) => ({ displayName: l.display_name, url: l.url })) ?? [],
+          driveLinks: details?.documentLinks?.map((l) => ({ id: l.id, displayName: l.display_name, url: l.url, originalDisplayName: l.display_name, originalUrl: l.url })) ?? [],
+          removedDriveLinkIds: [],
         }
         : { ...blankDraft(selectedDate), affiliation: defaultAffiliation },
     )
@@ -1698,7 +1701,7 @@ export function EventDialog({
                 <div className="space-y-2 border-t border-slate-200 pt-3">
                   <h4 className="flex items-center gap-2 font-semibold text-slate-800">
                     <Link2 size={18} className="text-brand-600" />
-                    {text('ลิงก์ Google Drive', 'Google Drive links')}
+                    {text('ลิงก์เอกสาร / เว็บไซต์', 'Document / website links')}
                   </h4>
 
                   {!canEdit && (
@@ -1731,14 +1734,14 @@ export function EventDialog({
                         <div key={index} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                           <input
                             className="field-input flex-1 min-w-0"
-                            placeholder={text('ชื่อเอกสาร (เช่น โฟลเดอร์ Google Drive)', 'Document name')}
+                            placeholder={text('ชื่อเอกสารหรือเว็บไซต์', 'Document or website name')}
                             value={link.displayName}
                             onChange={(e) => setDriveLink(index, { ...link, displayName: e.target.value })}
                           />
                           <input
                             type="url"
                             className="field-input flex-[1.5] min-w-0"
-                            placeholder="https://drive.google.com/..."
+                            placeholder="https://example.com/..."
                             value={link.url}
                             onChange={(e) => setDriveLink(index, { ...link, url: e.target.value })}
                           />
@@ -1758,7 +1761,11 @@ export function EventDialog({
                             <button
                               type="button"
                               className="inline-flex items-center justify-center rounded-xl border border-slate-200 p-2 text-slate-500 hover:text-red-600 hover:bg-red-50"
-                              onClick={() => set('driveLinks', draft.driveLinks.filter((_, itemIndex) => itemIndex !== index))}
+                              onClick={() => setDraft((current) => ({
+                                ...current,
+                                driveLinks: current.driveLinks.filter((_, itemIndex) => itemIndex !== index),
+                                removedDriveLinkIds: link.id ? [...(current.removedDriveLinkIds ?? []), link.id] : current.removedDriveLinkIds,
+                              }))}
                               aria-label={text('ลบลิงก์', 'Delete link')}
                               title={text('ลบลิงก์', 'Delete link')}
                             >
@@ -1774,7 +1781,7 @@ export function EventDialog({
                           onClick={() => set('driveLinks', [...draft.driveLinks, { displayName: '', url: '' }])}
                         >
                           <Plus size={17} />
-                          {text('เพิ่มลิงก์ Google Drive', 'Add Google Drive link')}
+                          {text('เพิ่มลิงก์เอกสาร / เว็บไซต์', 'Add document / website link')}
                         </button>
                       )}
                     </>
