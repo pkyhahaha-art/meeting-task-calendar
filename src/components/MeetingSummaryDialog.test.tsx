@@ -156,7 +156,10 @@ test('summary edits update preview without mutating the meeting', () => {
   change('หน่วยงาน', 'กคน.')
   const participant = 'นาย อรรถพล สมบัติเปี่ยม (อฝ.ลส.)'
   const participantSummary = renderer.root.findAll((node) => String(node.props.id ?? '').includes('summary-participants-'))[0]
-  const participantCheckbox = participantSummary.parent.findAllByProps({ type: 'checkbox' })[0]
+  assert.ok(participantSummary)
+  const participantContainer = participantSummary.parent
+  assert.ok(participantContainer)
+  const participantCheckbox = participantContainer.findAllByProps({ type: 'checkbox' })[0]
   act(() => participantCheckbox.props.onChange({ target: { checked: true } }))
   const search = renderer.root.findByProps({ id: 'summary-affiliation-search' })
   act(() => search.props.onChange({ target: { value: 'กคน.' } }))
@@ -175,7 +178,10 @@ test('summary edits update preview without mutating the meeting', () => {
   const reopened = JSON.stringify(renderer.toJSON())
   assert.ok(reopened.includes('ผู้เกี่ยวข้องล่าสุด'))
   const reopenedParticipantSummary = renderer.root.findAll((node) => String(node.props.id ?? '').includes('summary-participants-'))[0]
-  assert.ok(reopenedParticipantSummary.parent.findAllByProps({ type: 'checkbox' }).every((checkbox) => checkbox.props.checked === false))
+  assert.ok(reopenedParticipantSummary)
+  const reopenedParticipantContainer = reopenedParticipantSummary.parent
+  assert.ok(reopenedParticipantContainer)
+  assert.ok(reopenedParticipantContainer.findAllByProps({ type: 'checkbox' }).every((checkbox) => checkbox.props.checked === false))
   assert.ok(!reopened.includes('กรุณาระบุวันที่และเวลาเริ่ม'))
   act(() => renderer.unmount())
 })

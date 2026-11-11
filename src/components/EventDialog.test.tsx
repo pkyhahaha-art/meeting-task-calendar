@@ -39,10 +39,14 @@ test('new meetings require both classifications before creation', async () => {
     assert.equal(category().props['aria-required'], true)
     assert.equal(committee().props['aria-required'], true)
     const participantSummary = renderer.root.findByProps({ id: 'event-involved-parties' })
-    const participantChoices = participantSummary.parent.findAllByProps({ type: 'checkbox' })
+    const participantContainer = participantSummary.parent
+    assert.ok(participantContainer)
+    const participantChoices = participantContainer.findAllByProps({ type: 'checkbox' })
     assert.equal(participantChoices.length, 8)
     act(() => participantChoices[0].props.onChange())
-    act(() => renderer.root.findByProps({ id: 'event-involved-parties' }).parent.findAllByProps({ type: 'checkbox' })[5].props.onChange())
+    const updatedParticipantContainer = renderer.root.findByProps({ id: 'event-involved-parties' }).parent
+    assert.ok(updatedParticipantContainer)
+    act(() => updatedParticipantContainer.findAllByProps({ type: 'checkbox' })[5].props.onChange())
     const submit = async () => { await act(async () => { renderer.root.findByType('form').props.onSubmit({ preventDefault: () => {} }); await new Promise(resolve => setImmediate(resolve)) }) }
     await submit()
     assert.deepEqual(saved, [])
