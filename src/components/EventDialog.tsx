@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { AlertCircle, AlertTriangle, Bell, Bold, CalendarClock, CheckCircle2, ChevronDown, Download, ExternalLink, FileCheck, FileText, Italic, Link2, List, ListOrdered, Loader2, Mail, Paperclip, Plus, Redo, RemoveFormatting, Repeat2, Smartphone, Sparkles, Trash2, Underline, Undo, UserPlus, X } from 'lucide-react'
+import { MeetingParticipantsDropdown } from './MeetingParticipantsDropdown'
 import Swal from 'sweetalert2'
 import { useLanguage } from '../i18n/LanguageProvider'
 import type { Database } from '../lib/database.types'
@@ -63,6 +64,7 @@ export type EventDetails = {
   isCompleted?: boolean
 }
 export type EventDraft = Pick<EventRow, 'title' | 'description' | 'location' | 'affiliation' | 'all_day'> & {
+  involved_parties: string
   grc_category_key: string | null
   committee_key: string | null
   date: string
@@ -91,6 +93,7 @@ const blankDraft = (date?: string): EventDraft => {
     description: '',
     location: '',
     affiliation: '',
+    involved_parties: '',
     all_day: false,
     date: targetDate,
     start: '09:00',
@@ -390,6 +393,7 @@ export function EventDialog({
       event
         ? {
           title: event.title,
+          involved_parties: event.involved_parties ?? '',
           grc_category_key: event.grc_category_key ?? null,
           committee_key: event.committee_key ?? null,
           description: useOccurrenceValues && details?.occurrenceOverride?.description !== undefined ? details.occurrenceOverride.description : event.description,
@@ -1070,10 +1074,17 @@ export function EventDialog({
                 <label className="field-label" htmlFor="title">{text('ชื่อการประชุม *', 'Meeting title *')}</label>
                 <input id="title" className="field-input" value={draft.title} onChange={(e) => set('title', e.target.value)} maxLength={300} disabled={isOccurrenceEdit} />
               </div>
+              <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <label className="field-label" htmlFor="event-affiliation">{text('หน่วยงาน / สังกัด', 'Department / affiliation')}</label>
                 <input id="event-affiliation" autoComplete="off" className="field-input" placeholder={text('กคน.ฝลส.', 'e.g. Department')} value={draft.affiliation} onChange={(e) => { affiliationEdited.current = true; set('affiliation', e.target.value) }} maxLength={250} disabled={isOccurrenceEdit} />
                 {!event && defaultAffiliation && <p className="mt-1 text-xs text-slate-500">{text('เติมสังกัดจากข้อมูลสมาชิกแล้ว ปรับได้ตามประชุมนี้', 'Filled from your profile. You can adjust it for this meeting.')}</p>}
+              </div>
+              <div>
+                <label className="field-label" htmlFor="event-involved-parties">{text('ผู้เข้าร่วมประชุม (ผู้บริหาร)', 'Meeting participants (Executives)')}</label>
+                <MeetingParticipantsDropdown id="event-involved-parties" value={draft.involved_parties} onChange={(value) => set('involved_parties', value)} disabled={isOccurrenceEdit} />
+                {isOccurrenceEdit && <p className="mt-1 text-xs text-slate-500">{text('แก้ไขได้จากรายการประชุมทั้งชุด', 'Edit this field on the meeting series.')}</p>}
+              </div>
               </div>
               <div>
                 <span className="field-label">{text(isViewingLaterOccurrence ? 'วันเริ่มชุดนัดหมาย' : 'วันที่นัดหมาย', isViewingLaterOccurrence ? 'Series start date' : 'Meeting date')}</span>

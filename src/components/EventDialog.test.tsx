@@ -27,16 +27,22 @@ const noop = async () => {}
 test('new meetings require both classifications before creation', async () => {
   let renderer!: ReactTestRenderer
   const saved: boolean[] = []
+  let savedDraft: EventDraft | undefined
   const originalFire = Swal.fire
   Swal.fire = (async () => ({ isConfirmed: true })) as typeof Swal.fire
   try {
     act(() => { renderer = create(<LanguageProvider><EventDialog open event={null} selectedDate="2030-10-03" canEdit canViewDeliveryStatus={false} busy={false}
-      onClose={() => {}} onSave={async (_draft, notify) => { saved.push(notify) }} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>) })
+      onClose={() => {}} onSave={async (draft, notify) => { savedDraft = draft; saved.push(notify) }} onDelete={noop} onDeleteAttachment={noop} onRetryNotification={noop} /></LanguageProvider>) })
     act(() => renderer.root.findByProps({ id: 'title' }).props.onChange({ target: { value: 'New meeting' } }))
     const category = () => renderer.root.findByProps({ id: 'event-grc-category' })
     const committee = () => renderer.root.findByProps({ id: 'event-committee' })
     assert.equal(category().props['aria-required'], true)
     assert.equal(committee().props['aria-required'], true)
+    const participantSummary = renderer.root.findByProps({ id: 'event-involved-parties' })
+    const participantChoices = participantSummary.parent.findAllByProps({ type: 'checkbox' })
+    assert.equal(participantChoices.length, 8)
+    act(() => participantChoices[0].props.onChange())
+    act(() => renderer.root.findByProps({ id: 'event-involved-parties' }).parent.findAllByProps({ type: 'checkbox' })[5].props.onChange())
     const submit = async () => { await act(async () => { renderer.root.findByType('form').props.onSubmit({ preventDefault: () => {} }); await new Promise(resolve => setImmediate(resolve)) }) }
     await submit()
     assert.deepEqual(saved, [])
@@ -50,6 +56,7 @@ test('new meetings require both classifications before creation', async () => {
     act(() => category().props.onChange({ target: { value: 'S001' } }))
     await submit()
     assert.deepEqual(saved, [true])
+    assert.equal(savedDraft?.involved_parties, 'นาย อรรถพล สมบัติเปี่ยม (อฝ.ลส.), นาย วินิจ ขันไชย (อก.กร.)')
   } finally { Swal.fire = originalFire; if (renderer) act(() => renderer.unmount()) }
 })
 

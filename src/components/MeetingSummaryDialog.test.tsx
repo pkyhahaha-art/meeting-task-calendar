@@ -82,6 +82,7 @@ test('MeetingSummaryDialog renders dialog with PEA theme header, checklist, and 
   })
 
   const text = JSON.stringify(renderer?.toJSON())
+  assert.ok(renderer?.root.findAllByType('span').some((node) => node.children.join('') === 'ผู้เข้าร่วมประชุม'), 'The info image heading should omit the parenthetical audience label')
   assert.ok(text.includes('สรุปการประชุม'), 'Should render title header')
   assert.ok(!text.includes('ผู้ครอบครองปฏิทิน'), 'Should not render owner section')
   assert.ok(!text.includes('หน่วยงานผู้รับผิดชอบ : -'), 'Should not render department section')
@@ -137,6 +138,46 @@ test('MeetingSummaryDialog renders full affiliation text without truncation', ()
 
   const text = JSON.stringify(renderer?.toJSON())
   assert.ok(text.includes('กกร. (Teams)'), 'Should render complete affiliation including parenthesized detail')
+})
+
+test('summary edits update preview without mutating the meeting', () => {
+  const meeting = { ...mockMeeting, involved_parties: 'ฝ่ายเดิม' }
+  let renderer!: ReactTestRenderer
+  act(() => { renderer = create(<LanguageProvider><MeetingSummaryDialog open onClose={() => {}} events={[meeting]} /></LanguageProvider>) })
+  const change = (name: string, value: string) => {
+    const input = renderer.root.findAllByType('input').find((node) => node.props['aria-label'] === `${name} ${meeting.title}`)!
+    act(() => input.props.onChange({ target: { value } }))
+  }
+  assert.ok(JSON.stringify(renderer.toJSON()).includes('ฝ่ายเดิม'))
+  change('วันที่', '2026-11-24')
+  change('เวลาเริ่ม', '09:15')
+  change('เวลาสิ้นสุด', '11:45')
+  change('สถานที่', 'ห้องใหม่สำหรับสรุป')
+  change('หน่วยงาน', 'กคน.')
+  const participant = 'นาย อรรถพล สมบัติเปี่ยม (อฝ.ลส.)'
+  const participantSummary = renderer.root.findAll((node) => String(node.props.id ?? '').includes('summary-participants-'))[0]
+  const participantCheckbox = participantSummary.parent.findAllByProps({ type: 'checkbox' })[0]
+  act(() => participantCheckbox.props.onChange({ target: { checked: true } }))
+  const search = renderer.root.findByProps({ id: 'summary-affiliation-search' })
+  act(() => search.props.onChange({ target: { value: 'กคน.' } }))
+  const rendered = JSON.stringify(renderer.toJSON())
+  for (const value of ['24 พฤศจิกายน 2569', '09:15 – 11:45 น.', 'ห้องใหม่สำหรับสรุป', 'กคน.', participant, 'ผู้เข้าร่วมประชุม (ผู้บริหาร)', 'อฝ.ลส.']) assert.ok(rendered.includes(value), value)
+  assert.equal(meeting.location, 'ห้อง 2ศรีวิชัย')
+  assert.equal(meeting.involved_parties, 'ฝ่ายเดิม')
+  change('เวลาสิ้นสุด', '08:00')
+  assert.ok(JSON.stringify(renderer.toJSON()).includes('ตรวจให้เวลาสิ้นสุดไม่ก่อนเวลาเริ่ม'))
+  change('เวลาสิ้นสุด', '11:45')
+  change('วันที่', '')
+  assert.ok(JSON.stringify(renderer.toJSON()).includes('กรุณาระบุวันที่และเวลาเริ่ม'))
+  act(() => renderer.update(<LanguageProvider><MeetingSummaryDialog open={false} onClose={() => {}} events={[meeting]} /></LanguageProvider>))
+  const refreshedMeeting = { ...meeting, affiliation: 'กคน.', involved_parties: 'ผู้เกี่ยวข้องล่าสุด' }
+  act(() => renderer.update(<LanguageProvider><MeetingSummaryDialog open onClose={() => {}} events={[refreshedMeeting]} /></LanguageProvider>))
+  const reopened = JSON.stringify(renderer.toJSON())
+  assert.ok(reopened.includes('ผู้เกี่ยวข้องล่าสุด'))
+  const reopenedParticipantSummary = renderer.root.findAll((node) => String(node.props.id ?? '').includes('summary-participants-'))[0]
+  assert.ok(reopenedParticipantSummary.parent.findAllByProps({ type: 'checkbox' }).every((checkbox) => checkbox.props.checked === false))
+  assert.ok(!reopened.includes('กรุณาระบุวันที่และเวลาเริ่ม'))
+  act(() => renderer.unmount())
 })
 
 test('per-meeting summary toggle shows editor and preview when checked or prefilled from meeting completions', () => {

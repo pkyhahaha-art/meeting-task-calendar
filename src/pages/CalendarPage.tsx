@@ -561,7 +561,7 @@ export function CalendarPage() {
       if (!event && isPastBangkokDate(draft.date)) throw new Error('ไม่สามารถสร้าง Meeting ในวันที่ผ่านมาแล้ว')
       const startIso = toIso(draft.date, draft.start, draft.all_day)
       const payload = {
-        title: draft.title.trim(), description: draft.description.trim(), location: draft.location.trim(), affiliation: draft.affiliation.trim(), all_day: draft.all_day,
+        title: draft.title.trim(), description: draft.description.trim(), location: draft.location.trim(), affiliation: draft.affiliation.trim(), involved_parties: (draft.involved_parties ?? '').trim(), all_day: draft.all_day,
         grc_category_key: draft.grc_category_key, committee_key: draft.committee_key,
         start_datetime: startIso, end_datetime: draft.end ? toIso(draft.date, draft.end, draft.all_day) : null,
         recurrence_rule: meetingRecurrenceRule(draft.recurrence), recurrence_until: draft.recurrence.until ? endOfBangkokDay(draft.recurrence.until) : null,

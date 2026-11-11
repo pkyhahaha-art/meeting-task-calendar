@@ -18,6 +18,7 @@ export interface SummaryMeetingItem {
   location: string
   description: string
   affiliation: string
+  involvedParties: string
   allDay: boolean
   startIso: string
   endIso?: string | null
@@ -28,6 +29,16 @@ export interface WeekOption {
   label: string
   startDate: string // YYYY-MM-DD
   endDate: string // YYYY-MM-DD
+}
+
+/** Scale a captured infographic to the PDF page width without distorting it. */
+export function summaryPdfLayout(imageWidth: number, imageHeight: number, pageWidth: number, pageHeight: number) {
+  if (![imageWidth, imageHeight, pageWidth, pageHeight].every((value) => Number.isFinite(value) && value > 0)) {
+    throw new Error('Invalid image or page dimensions')
+  }
+  const height = imageHeight * pageWidth / imageWidth
+  const pages = Math.ceil(height / pageHeight)
+  return { width: pageWidth, height, offsets: Array.from({ length: pages }, (_, index) => index === 0 ? 0 : -index * pageHeight) }
 }
 
 const THAI_MONTHS = [
@@ -190,6 +201,7 @@ export function filterAndSortMeetingsForSummary(
         location: event.location || 'ไม่ระบุสถานที่',
         description: event.description || '',
         affiliation: normalizeAffiliationText(event.affiliation) || 'กฟภ.',
+        involvedParties: (event as EventRow & { involved_parties?: string | null }).involved_parties || '',
         allDay: event.all_day,
         startIso: occ.start,
         endIso: occ.end,

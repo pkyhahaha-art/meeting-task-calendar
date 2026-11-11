@@ -7,8 +7,28 @@ import {
   getMonthWeeks,
   getCurrentCalendarWeekRange,
   filterAndSortMeetingsForSummary,
+  summaryPdfLayout,
   type EventRow,
 } from './meetingSummary'
+import { formatMeetingParticipantPositions, meetingExecutiveOptions, parseMeetingParticipants, serializeMeetingParticipants } from './meetingParticipants'
+
+test('executive participant selections preserve names while summaries show only their positions', () => {
+  const selected = serializeMeetingParticipants([meetingExecutiveOptions[0], meetingExecutiveOptions[1], meetingExecutiveOptions[5]])
+  assert.deepEqual(parseMeetingParticipants(selected), [meetingExecutiveOptions[0], meetingExecutiveOptions[1], meetingExecutiveOptions[5]])
+  assert.equal(formatMeetingParticipantPositions(selected), 'อฝ.ลส., รฝ.ลส.(ว), อก.กร.')
+  assert.equal(formatMeetingParticipantPositions('ค่าเดิม'), 'ค่าเดิม')
+})
+
+test('PDF layout preserves infographic aspect ratio and uses the image height for page count', () => {
+  const onePage = summaryPdfLayout(900, 960, 210, 297)
+  assert.equal(onePage.width, 210)
+  assert.equal(onePage.height, 224)
+  assert.deepEqual(onePage.offsets, [0])
+  const tall = summaryPdfLayout(900, 4000, 210, 297)
+  assert.ok(Math.abs(tall.height / tall.width - 4000 / 900) < 1e-10)
+  assert.deepEqual(tall.offsets, [0, -297, -594, -891])
+  assert.throws(() => summaryPdfLayout(0, 960, 210, 297))
+})
 
 test('formatThaiFullDate correctly converts YYYY-MM-DD to Thai BE full date', () => {
   assert.equal(formatThaiFullDate('2026-11-05'), '5 พฤศจิกายน 2569')

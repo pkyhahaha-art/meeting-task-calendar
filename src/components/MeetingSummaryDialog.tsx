@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import {
   Calendar,
   Clock,
@@ -16,6 +16,8 @@ import {
   Printer,
   Edit3,
 } from 'lucide-react'
+import { MeetingParticipantsDropdown } from './MeetingParticipantsDropdown'
+import { formatMeetingParticipantPositions } from '../lib/meetingParticipants'
 import Swal from 'sweetalert2'
 import { toPng } from 'html-to-image'
 import { jsPDF } from 'jspdf'
@@ -26,6 +28,8 @@ import {
   type SummaryMeetingItem,
   THAI_MONTHS,
   getMonthWeeks,
+  formatThaiFullDate,
+  summaryPdfLayout,
   filterAndSortMeetingsForSummary,
 } from '../lib/meetingSummary'
 
@@ -59,8 +63,6 @@ interface MeetingSummaryDialogProps {
   cancelledAppointments?: Set<string>
   meetingCompletions?: MeetingCompletionItem[]
 }
-
-const ITEMS_PER_A4_PAGE = 6
 
 export function MeetingSummaryDialog({
   open,
@@ -96,6 +98,8 @@ export function MeetingSummaryDialog({
   const [showDescription, setShowDescription] = useState(true)
   const [descriptionEnabled, setDescriptionEnabled] = useState<Record<string, boolean>>({})
   const [customDescriptions, setCustomDescriptions] = useState<Record<string, string>>({})
+  const [summaryEdits, setSummaryEdits] = useState<Record<string, Partial<Pick<SummaryMeetingItem, 'dateKey' | 'startTime' | 'endTime' | 'location' | 'affiliation' | 'involvedParties'>>>>({})
+  useEffect(() => { if (!open) setSummaryEdits({}) }, [open])
 
   // Meeting summary toggle & per-item state
   const [showMeetingSummary, setShowMeetingSummary] = useState(true)
@@ -157,8 +161,17 @@ export function MeetingSummaryDialog({
   const [affiliationSearch, setAffiliationSearch] = useState('')
   const visibleMeetings = useMemo(() => {
     const query = affiliationSearch.trim().toLocaleLowerCase()
-    return query ? allMeetings.filter((meeting) => (meeting.affiliation ?? '').toLocaleLowerCase().includes(query)) : allMeetings
-  }, [allMeetings, affiliationSearch])
+    return allMeetings.filter((meeting) => !query || meeting.affiliation.toLocaleLowerCase().includes(query) || (summaryEdits[meeting.id]?.affiliation ?? '').toLocaleLowerCase().includes(query)).map((meeting) => {
+      const edit = summaryEdits[meeting.id]
+      if (!edit) return meeting
+      const updated = { ...meeting, ...edit }
+      const timeEdited = edit.startTime !== undefined || edit.endTime !== undefined
+      const timeText = updated.startTime && updated.endTime ? `${updated.startTime} – ${updated.endTime} น.`
+        : updated.startTime ? `${updated.startTime} น.` : updated.endTime ? `ถึง ${updated.endTime} น.` : '–'
+      return { ...updated, thaiDate: updated.dateKey ? formatThaiFullDate(updated.dateKey) : '–',
+        timeText: timeEdited ? timeText : meeting.timeText }
+    }).sort((a, b) => a.dateKey.localeCompare(b.dateKey) || a.startTime.localeCompare(b.startTime))
+  }, [allMeetings, affiliationSearch, summaryEdits])
 
   // Selected meeting IDs in checklist (Default to all checked)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set(allMeetings.map((m) => m.id)))
@@ -182,6 +195,11 @@ export function MeetingSummaryDialog({
   const selectedMeetings = useMemo(() => {
     return visibleMeetings.filter((m) => activeSelectedIds.has(m.id))
   }, [visibleMeetings, activeSelectedIds])
+  const hasInvalidSummaryDetails = selectedMeetings.some((meeting) => {
+    const edit = summaryEdits[meeting.id]
+    const timeEdited = edit?.startTime !== undefined || edit?.endTime !== undefined
+    return !meeting.dateKey || (timeEdited && (!meeting.startTime || Boolean(meeting.endTime && meeting.endTime < meeting.startTime)))
+  })
 
   // Checklist handlers
   const handleToggleItem = (id: string) => {
@@ -228,7 +246,7 @@ export function MeetingSummaryDialog({
 
   // 1. Export as PNG
   const handleExportPng = async () => {
-    if (!previewRef.current || selectedMeetings.length === 0) return
+    if (!previewRef.current || selectedMeetings.length === 0 || hasInvalidSummaryDetails) return
     try {
       setIsExporting(true)
       const dataUrl = await toPng(previewRef.current, {
@@ -261,7 +279,7 @@ export function MeetingSummaryDialog({
 
   // 2. Export as PDF (A4 format with multi-page support)
   const handleExportPdf = async () => {
-    if (selectedMeetings.length === 0) return
+    if (!previewRef.current || selectedMeetings.length === 0 || hasInvalidSummaryDetails) return
     try {
       setIsExporting(true)
       const doc = new jsPDF({
@@ -270,39 +288,13 @@ export function MeetingSummaryDialog({
         format: 'a4',
       })
 
-      // If <= 5 items, export direct single page
-      if (previewRef.current && selectedMeetings.length <= ITEMS_PER_A4_PAGE) {
-        const dataUrl = await toPng(previewRef.current, { pixelRatio: 2, cacheBust: true })
-        const pageWidth = doc.internal.pageSize.getWidth()
-        const pageHeight = doc.internal.pageSize.getHeight()
-        doc.addImage(dataUrl, 'PNG', 0, 0, pageWidth, pageHeight, undefined, 'FAST')
-      } else if (previewRef.current) {
-        // Multi-page export: Capture full long infographic scaled nicely or split
-        const dataUrl = await toPng(previewRef.current, { pixelRatio: 2, cacheBust: true })
-        const img = new Image()
-        img.src = dataUrl
-        await new Promise((resolve) => {
-          img.onload = resolve
-        })
-
-        const pageWidth = doc.internal.pageSize.getWidth()
-        const pageHeight = doc.internal.pageSize.getHeight()
-        const imgWidth = pageWidth
-        const imgHeight = (img.height * pageWidth) / img.width
-
-        let heightLeft = imgHeight
-        let position = 0
-
-        doc.addImage(dataUrl, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST')
-        heightLeft -= pageHeight
-
-        while (heightLeft > 0) {
-          position = heightLeft - imgHeight
-          doc.addPage()
-          doc.addImage(dataUrl, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST')
-          heightLeft -= pageHeight
-        }
-      }
+      const dataUrl = await toPng(previewRef.current, { pixelRatio: 2, cacheBust: true })
+      const image = doc.getImageProperties(dataUrl)
+      const layout = summaryPdfLayout(image.width, image.height, doc.internal.pageSize.getWidth(), doc.internal.pageSize.getHeight())
+      layout.offsets.forEach((position, index) => {
+        if (index > 0) doc.addPage()
+        doc.addImage(dataUrl, 'PNG', 0, position, layout.width, layout.height, undefined, 'FAST')
+      })
 
       const fileName = `PEA-Meeting-Summary-${periodType === 'week' ? `W${selectedWeekNumber}` : 'Month'}-${selectedMonth + 1}-${currentYear + 543}.pdf`
       doc.save(fileName)
@@ -327,7 +319,7 @@ export function MeetingSummaryDialog({
 
   // 3. Copy text to clipboard
   const handleCopyText = async () => {
-    if (selectedMeetings.length === 0) return
+    if (selectedMeetings.length === 0 || hasInvalidSummaryDetails) return
     const lines = [
       `📢 สรุปการประชุม ${effectiveTitleLabel}`,
       '──────────────────────────────',
@@ -338,6 +330,7 @@ export function MeetingSummaryDialog({
       lines.push(`   📅 วันที่: ${m.thaiDate} | ⏰ เวลา: ${m.timeText}`)
       lines.push(`   📍 สถานที่: ${m.location}`)
       lines.push(`   🏢 หน่วยงาน: ${m.affiliation}`)
+      if (m.involvedParties.trim()) lines.push(`   ผู้เข้าร่วมประชุม: ${formatMeetingParticipantPositions(m.involvedParties)}`)
       const desc = (customDescriptions[m.id] ?? m.description).trim()
       if (showDescription && descriptionEnabled[m.id] !== false && desc) {
         const descLines = desc.split('\n').map((l) => l.trim()).filter(Boolean)
@@ -654,12 +647,36 @@ export function MeetingSummaryDialog({
                             {meeting.timeText}
                           </span>
                         </div>
+                        {meeting.involvedParties.trim() && <p className="text-[11px] text-slate-600"><span className="font-semibold text-purple-900">ผู้เข้าร่วมประชุม: </span>{formatMeetingParticipantPositions(meeting.involvedParties)}</p>}
                         {meeting.location && (
                           <div className="flex items-start gap-1 text-[11px] text-slate-600">
                             <MapPin size={11} className="shrink-0 text-slate-400 mt-0.5" />
                             <span className="leading-tight break-words">{meeting.location}</span>
                           </div>
                         )}
+                        <details className="mt-2 rounded-lg border border-purple-200 bg-white p-2" onClick={(e) => e.stopPropagation()}>
+                          <summary className="cursor-pointer text-xs font-semibold text-purple-800">{text('แก้ข้อมูลสำหรับสรุป', 'Edit summary details')}</summary>
+                          <p className="mt-1 text-[11px] text-slate-500">{text('การแก้ไขนี้ใช้เฉพาะสรุปและไฟล์ส่งออก', 'Changes apply only to the summary and exports.')}</p>
+                          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            {([
+                              ['dateKey', 'วันที่', 'date'], ['startTime', 'เวลาเริ่ม', 'time'], ['endTime', 'เวลาสิ้นสุด', 'time'],
+                              ['location', 'สถานที่', 'text'], ['affiliation', 'หน่วยงาน', 'text'],
+                            ] as const).map(([key, label, type]) => (
+                              <label key={key} className="min-w-0 text-[11px] font-semibold text-slate-700">
+                                {label}
+                                <input type={type} aria-label={`${label} ${meeting.title}`} value={meeting[key]}
+                                  onChange={(e) => { const value = e.target.value; setSummaryEdits((previous) => ({ ...previous, [meeting.id]: { ...previous[meeting.id], [key]: value } })) }}
+                                  className="mt-1 min-h-9 w-full min-w-0 rounded-md border border-slate-300 bg-white px-2 text-xs font-normal text-slate-900" />
+                              </label>
+                            ))}
+                            <label className="min-w-0 text-[11px] font-semibold text-slate-700">
+                              ผู้เข้าร่วมประชุม (ผู้บริหาร)
+                              <MeetingParticipantsDropdown id={`summary-participants-${meeting.id}`} value={meeting.involvedParties}
+                                onChange={(value) => setSummaryEdits((previous) => ({ ...previous, [meeting.id]: { ...previous[meeting.id], involvedParties: value } }))}
+                                compact />
+                            </label>
+                          </div>
+                        </details>
                         {(showDescription || showMeetingSummary) && (
                           <div className="mt-1.5 pt-1 space-y-1.5" onClick={(e) => e.stopPropagation()}>
                             <div className="flex flex-wrap items-center gap-4">
@@ -737,15 +754,14 @@ export function MeetingSummaryDialog({
                   {text('ตัวอย่างภาพสรุป (Live Preview)', 'Live Preview')}
                 </span>
                 <span className="text-[11px] text-slate-500">
-                  ({selectedMeetings.length} {text('รายการ', 'items')}
-                  {selectedMeetings.length <= ITEMS_PER_A4_PAGE ? text(' • พอดี 1 หน้า A4', ' • Fits 1 A4 page') : text(' • ยาวต่อเนื่อง', ' • Long infographic')})
+                  ({selectedMeetings.length} {text('รายการ', 'items')} • A4)
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={handleCopyText}
-                  disabled={selectedMeetings.length === 0}
+                  disabled={selectedMeetings.length === 0 || hasInvalidSummaryDetails}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-xs transition disabled:opacity-40"
                 >
                   {copied ? <Check size={14} className="text-green-600" /> : <Copy size={14} />}
@@ -754,7 +770,7 @@ export function MeetingSummaryDialog({
                 <button
                   type="button"
                   onClick={handleExportPng}
-                  disabled={selectedMeetings.length === 0 || isExporting}
+                  disabled={selectedMeetings.length === 0 || hasInvalidSummaryDetails || isExporting}
                   className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border border-purple-300 bg-purple-50 text-xs font-bold text-purple-800 hover:bg-purple-100 shadow-xs transition disabled:opacity-40"
                 >
                   <Download size={14} />
@@ -763,7 +779,7 @@ export function MeetingSummaryDialog({
                 <button
                   type="button"
                   onClick={handleExportPdf}
-                  disabled={selectedMeetings.length === 0 || isExporting}
+                  disabled={selectedMeetings.length === 0 || hasInvalidSummaryDetails || isExporting}
                   className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-purple-700 text-xs font-bold text-white hover:bg-purple-800 shadow-xs transition disabled:opacity-40"
                 >
                   <Printer size={14} />
@@ -772,13 +788,15 @@ export function MeetingSummaryDialog({
               </div>
             </div>
 
+            {hasInvalidSummaryDetails && <p role="alert" className="bg-amber-50 px-5 py-2 text-xs text-amber-800">กรุณาระบุวันที่และเวลาเริ่ม และตรวจให้เวลาสิ้นสุดไม่ก่อนเวลาเริ่ม ก่อนคัดลอกหรือดาวน์โหลด</p>}
+
             {/* Scrollable Preview Area */}
-            <div className="flex-1 overflow-auto p-4 flex justify-center items-start">
+            <div className="flex-1 overflow-auto p-4 flex justify-start items-start">
               {/* THE INFOGRAPHIC CANVAS / TEMPLATE CONTAINER */}
               <div
                 ref={previewRef}
                 id="pea-meeting-summary-canvas"
-                className="w-[740px] min-h-[960px] bg-gradient-to-b from-[#fbf8ff] via-[#f7f2fc] to-[#ede4f6] p-7 shadow-xl rounded-2xl border border-purple-200/80 flex flex-col justify-between font-sans relative"
+                className="w-[900px] min-h-[960px] shrink-0 bg-gradient-to-b from-[#fbf8ff] via-[#f7f2fc] to-[#ede4f6] p-7 shadow-xl rounded-2xl border border-purple-200/80 flex flex-col justify-between font-sans relative"
                 style={{
                   boxSizing: 'border-box',
                 }}
@@ -848,7 +866,7 @@ export function MeetingSummaryDialog({
 
                             {/* Card Body: 4 Columns (วันที่, เวลา, สถานที่, หน่วยงานผู้รับผิดชอบ) */}
                             <div className="px-3 py-2 bg-white">
-                              <div className="grid grid-cols-[135px_105px_minmax(0,1fr)_minmax(0,1fr)] gap-3 text-xs items-start">
+                              <div className="grid grid-cols-2 gap-3 text-xs items-start sm:grid-cols-[minmax(110px,1fr)_minmax(95px,1fr)_repeat(3,minmax(0,1fr))]">
                                 {/* Col 1: วันที่ (แสดงข้อความเต็ม ไม่ตัดคำ) */}
                                 <div className="space-y-0.5 min-w-0">
                                   <div className="flex items-center gap-1.5 text-purple-900 font-bold text-[10.5px]">
@@ -919,6 +937,10 @@ export function MeetingSummaryDialog({
                                       <span className="text-slate-400">-</span>
                                     )}
                                   </div>
+                                </div>
+                                <div className="space-y-0.5 min-w-0">
+                                  <div className="flex items-center gap-1.5 text-purple-900 font-bold text-[10.5px]"><Users size={10} /><span>ผู้เข้าร่วมประชุม</span></div>
+                                  <p className="text-[11.5px] font-medium text-slate-800 pl-4 leading-snug break-words whitespace-pre-wrap">{formatMeetingParticipantPositions(meeting.involvedParties) || '–'}</p>
                                 </div>
                               </div>
 

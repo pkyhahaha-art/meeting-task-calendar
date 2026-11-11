@@ -54,6 +54,7 @@ export interface Database {
           title: string
           description: string
           affiliation: string
+          involved_parties?: string
           grc_category_key?: string | null
           committee_key?: string | null
           start_datetime: string
@@ -82,6 +83,7 @@ export interface Database {
           title: string
           description?: string
           affiliation?: string
+          involved_parties?: string
           grc_category_key?: string | null
           committee_key?: string | null
           start_datetime: string
