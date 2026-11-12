@@ -1,5 +1,46 @@
 begin;
 -- Requires the existing four-argument Sheets importer installed in this project.
+create or replace function public.set_google_calendar_notification_defaults()
+returns trigger language plpgsql security definer set search_path = '' as $fn$
+declare
+  member_id uuid;
+begin
+  if coalesce(auth.role(), '') <> 'service_role'
+    or coalesce(current_setting('app.google_calendar_sync_notification_defaults', true), '') <> 'enabled' then
+    return new;
+  end if;
+
+  if coalesce(btrim(new.google_event_id), '') not like 'gcal-v2:%'
+    or nullif(btrim(new.calendar_owner_email), '') is null then
+    return new;
+  end if;
+
+  select p.id into member_id
+  from public.profiles p
+  where p.id = new.owner_user_id
+    and p.status = 'active'
+    and nullif(btrim(p.email), '') is not null
+    and lower(btrim(p.email)) = lower(btrim(new.calendar_owner_email));
+
+  if member_id is null then return new; end if;
+
+  new.email_notifications_enabled := true;
+  new.mobile_notifications_enabled := exists (
+    select 1 from public.mobile_push_subscriptions device
+    where device.user_id = member_id
+      and device.endpoint like 'https://%'
+      and nullif(btrim(device.p256dh), '') is not null
+      and nullif(btrim(device.auth), '') is not null
+  );
+  return new;
+end;
+$fn$;
+revoke all on function public.set_google_calendar_notification_defaults() from public, anon, authenticated;
+drop trigger if exists events_google_calendar_notification_defaults on public.events;
+create trigger events_google_calendar_notification_defaults
+  before insert on public.events
+  for each row execute function public.set_google_calendar_notification_defaults();
+
 create or replace function public.sync_google_calendar_occurrences(
   payload jsonb, sync_start timestamptz, sync_end timestamptz, active_emails text[], preview boolean
 ) returns jsonb language plpgsql security definer set search_path = '' set timezone = 'UTC' as $fn$
@@ -9,6 +50,7 @@ declare
   upsert_payload jsonb;
   deleted integer;
   month_start timestamptz;
+  previous_notification_marker text;
 begin
   month_start := date_trunc('month', now() at time zone 'Asia/Bangkok') at time zone 'Asia/Bangkok';
   if preview is null or jsonb_typeof(payload) is distinct from 'array'
@@ -74,7 +116,10 @@ begin
     select coalesce(jsonb_agg(item), '[]'::jsonb) into upsert_payload
     from jsonb_array_elements(payload) item
     where not exists (select 1 from public.events e where e.google_event_id = item->>'google_event_id' and e.status = 'cancelled');
+    previous_notification_marker := current_setting('app.google_calendar_sync_notification_defaults', true);
+    perform set_config('app.google_calendar_sync_notification_defaults', 'enabled', true);
     result := public.sync_google_calendar_events(upsert_payload, null, null, null);
+    perform set_config('app.google_calendar_sync_notification_defaults', coalesce(previous_notification_marker, ''), true);
 
     update public.events e set deleted_at = now(), updated_at = now()
     where e.google_event_id is not null and e.calendar_owner_email = any(active_emails)
