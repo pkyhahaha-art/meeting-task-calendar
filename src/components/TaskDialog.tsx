@@ -1157,7 +1157,7 @@ export function TaskDialog({
           )}
 
           {error && <p className="form-error" role="alert">{error}</p>}
-          <div className="flex flex-wrap justify-between gap-2 border-t border-slate-100 pt-4">
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-slate-100 pt-4">
             {task && canDelete ? (
               <button type="button" onClick={onDelete} className="btn-secondary border-red-200 text-red-600" disabled={busy}>
                 <Trash2 size={17} />
@@ -1166,7 +1166,7 @@ export function TaskDialog({
             ) : (
               <span />
             )}
-            <div className="ml-auto flex flex-wrap gap-2">
+            <div className="ml-auto flex flex-wrap items-center justify-end gap-3">
               <button type="button" onClick={onClose} className="btn-secondary">
                 {text('ปิด', 'Close')}
               </button>

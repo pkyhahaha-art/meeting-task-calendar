@@ -381,16 +381,16 @@ export function MeetingSummaryDialog({
     >
       <div className="relative flex flex-col w-full max-w-6xl max-h-[94vh] rounded-2xl bg-white shadow-2xl border border-purple-100 overflow-hidden">
         {/* Modal Top Bar */}
-        <div className="flex items-center justify-between border-b border-purple-100 bg-gradient-to-r from-purple-50 via-white to-purple-50/50 px-5 py-3.5">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple-700 text-white shadow-sm">
+        <div className="flex items-start justify-between gap-3 border-b border-purple-100 bg-gradient-to-r from-purple-50 via-white to-purple-50/50 px-4 py-3.5 sm:items-center sm:px-5">
+          <div className="flex min-w-0 items-start gap-2.5 sm:items-center">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-purple-700 text-white shadow-sm">
               <FileSpreadsheet size={19} />
             </div>
-            <div>
-              <h2 className="text-base font-bold text-purple-950">
+            <div className="min-w-0">
+              <h2 className="break-words text-base font-bold text-purple-950">
                 {text('สรุปการประชุม (Meeting Summary)', 'Meeting Summary')}
               </h2>
-              <p className="text-xs text-purple-700/80">
+              <p className="mt-0.5 text-xs leading-relaxed text-purple-700/80">
                 {text('คัดเลือกนัดหมาย จัดเรียงตามวันและเวลา พร้อมส่งออก PNG และ PDF สไตล์ PEA', 'Select meetings, sort by date and time, and export to PEA-themed PNG & PDF')}
               </p>
             </div>
@@ -398,7 +398,7 @@ export function MeetingSummaryDialog({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
           >
             <X size={18} />
           </button>
@@ -629,11 +629,11 @@ export function MeetingSummaryDialog({
                         {isChecked ? <CheckSquare size={17} /> : <Square size={17} className="text-slate-400" />}
                       </button>
                       <div className="flex-1 min-w-0 space-y-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <h4 className="text-xs font-bold text-slate-900 truncate">
+                        <div className="flex min-w-0 flex-col items-start gap-1">
+                          <h4 className="w-full whitespace-normal break-words text-xs font-bold leading-snug text-slate-900">
                             {index + 1}. {meeting.title}
                           </h4>
-                          <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-800">
+                          <span className="max-w-full whitespace-normal break-words rounded bg-purple-100 px-1.5 py-0.5 text-[10px] font-bold text-purple-800">
                             {meeting.affiliation}
                           </span>
                         </div>
@@ -748,21 +748,21 @@ export function MeetingSummaryDialog({
           {/* RIGHT: Live Preview & Export Container */}
           <div className="flex-1 flex flex-col min-h-0 bg-slate-200/60 overflow-hidden">
             {/* Action Bar Above Preview */}
-            <div className="flex items-center justify-between px-5 py-2.5 bg-white border-b border-slate-200">
-              <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-2 border-b border-slate-200 bg-white px-4 py-3 xl:flex-row xl:items-center xl:justify-between xl:px-5 xl:py-2.5">
+              <div className="flex min-w-0 items-center gap-2">
                 <span className="text-xs font-bold text-slate-700">
                   {text('ตัวอย่างภาพสรุป (Live Preview)', 'Live Preview')}
                 </span>
-                <span className="text-[11px] text-slate-500">
+                <span className="shrink-0 text-[11px] text-slate-500">
                   ({selectedMeetings.length} {text('รายการ', 'items')} • A4)
                 </span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-2 xl:flex xl:w-auto">
                 <button
                   type="button"
                   onClick={handleCopyText}
                   disabled={selectedMeetings.length === 0 || hasInvalidSummaryDetails}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-xs transition disabled:opacity-40"
+                  className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-bold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:opacity-40 sm:px-3 xl:w-auto"
                 >
                   {copied ? <Check size={14} className="text-green-600" /> : <Copy size={14} />}
                   <span>{copied ? text('คัดลอกแล้ว', 'Copied') : text('คัดลอกข้อความ', 'Copy Text')}</span>
@@ -771,7 +771,7 @@ export function MeetingSummaryDialog({
                   type="button"
                   onClick={handleExportPng}
                   disabled={selectedMeetings.length === 0 || hasInvalidSummaryDetails || isExporting}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border border-purple-300 bg-purple-50 text-xs font-bold text-purple-800 hover:bg-purple-100 shadow-xs transition disabled:opacity-40"
+                  className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-purple-300 bg-purple-50 px-2 py-1.5 text-xs font-bold text-purple-800 shadow-xs transition hover:bg-purple-100 disabled:opacity-40 sm:px-3 xl:w-auto"
                 >
                   <Download size={14} />
                   <span>{text('ดาวน์โหลด PNG', 'Download PNG')}</span>
@@ -780,7 +780,7 @@ export function MeetingSummaryDialog({
                   type="button"
                   onClick={handleExportPdf}
                   disabled={selectedMeetings.length === 0 || hasInvalidSummaryDetails || isExporting}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-purple-700 text-xs font-bold text-white hover:bg-purple-800 shadow-xs transition disabled:opacity-40"
+                  className="col-span-2 inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg bg-purple-700 px-2 py-1.5 text-xs font-bold text-white shadow-xs transition hover:bg-purple-800 disabled:opacity-40 sm:col-span-2 xl:col-span-1 xl:w-auto xl:px-3.5"
                 >
                   <Printer size={14} />
                   <span>{text('ดาวน์โหลด PDF (A4)', 'Download PDF (A4)')}</span>

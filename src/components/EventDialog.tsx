@@ -2143,8 +2143,8 @@ export function EventDialog({
           {error && <p className="form-error" role="alert">{error}</p>}
           {hasPendingMove && <p role="status" aria-live="polite" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">{pendingMoveMessage}</p>}
 
-          <div className="flex flex-wrap justify-between gap-2 border-t border-slate-100 pt-4">
-            <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-slate-100 pt-4">
+            <div className="flex flex-wrap items-center gap-3">
               {event && canDelete ? (
                 <button
                   type="button"
@@ -2189,7 +2189,7 @@ export function EventDialog({
                 </span>
               )}
             </div>
-            {mainTab === 'details' && <div className="ml-auto flex flex-wrap gap-2">
+            {mainTab === 'details' && <div className="ml-auto flex flex-wrap items-center justify-end gap-3">
               {event && event.owner_user_id !== currentUserId && onJoin && details && <button type="button" className="btn-primary" disabled={busy} onClick={() => void joinMeeting()}><UserPlus size={17} />{text('เข้าร่วมประชุมนี้', 'Join this meeting')}</button>}
               {event && event.owner_user_id !== currentUserId && joinedViewedAppointment && <span className="inline-flex items-center rounded-xl bg-green-50 px-3 py-2 text-sm font-semibold text-green-800">{joinedSeries ? text('คุณเข้าร่วมแล้ว', 'You joined') : text('คุณเข้าร่วมนัดนี้แล้ว', 'You joined this occurrence')}</span>}
               <button type="button" onClick={onClose} className="btn-secondary">
