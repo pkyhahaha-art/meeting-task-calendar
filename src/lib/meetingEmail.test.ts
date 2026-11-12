@@ -10,6 +10,12 @@ test('creates a hash-router link to a Meeting', () => {
   )
 })
 
+test('completion reminder clearly asks the creator to summarize and finish the meeting', () => {
+  const card = html('meeting_completion_reminder', { entity: 'meeting', title: 'ประชุม', meeting_url: 'https://example.test/#/calendar' })
+  assert.match(card, /กรุณาสรุปผลการประชุม และกดปุ่ม “เสร็จสิ้นการประชุม” เพื่อปิดนัดหมาย/)
+  assert.match(card, /href="https:\/\/example\.test\/#\/calendar"/)
+})
+
 test('renders a complete Meeting HTML card with secure document links', () => {
   const card = html('meeting_guest_added', {
     entity: 'meeting',
