@@ -59,39 +59,50 @@ async function currentOverdueTaskDelivery(delivery: Delivery): Promise<boolean> 
   return !Number.isNaN(round.getTime()) && round <= now && bangkokDay(round) === bangkokDay(now)
 }
 
-async function currentMeetingCompletionReminder(delivery: Delivery): Promise<boolean> {
-  if (delivery.template_key !== 'meeting_completion_reminder') return true
-  if (!delivery.event_id || delivery.recipient_type !== 'owner') return false
+async function currentMeetingCompletionReminder(delivery: Delivery): Promise<'ready' | 'skip' | string> {
+  if (delivery.template_key !== 'meeting_completion_reminder') return 'ready'
+  if (!delivery.event_id || delivery.recipient_type !== 'owner') return 'skip'
   const key = text(delivery.payload.occurrence_key)
   const keyTime = new Date(key).getTime()
-  if (!key || Number.isNaN(keyTime)) return false
-  const meeting = await supabase.from('events').select('owner_user_id,start_datetime,end_datetime,recurrence_rule,status,deleted_at')
+  if (!key || Number.isNaN(keyTime)) return 'skip'
+  const meeting = await supabase.from('events').select('owner_user_id,start_datetime,end_datetime,all_day,recurrence_rule,status,deleted_at,email_notifications_enabled,mobile_notifications_enabled')
     .eq('id', delivery.event_id).maybeSingle()
   if (meeting.error) throw meeting.error
-  if (!meeting.data || meeting.data.status !== 'scheduled' || meeting.data.deleted_at) return false
+  if (!meeting.data || meeting.data.status !== 'scheduled' || meeting.data.deleted_at) return 'skip'
   if (delivery.channel === 'push') {
-    if (text(delivery.payload.push_user_id) !== meeting.data.owner_user_id) return false
+    if (text(delivery.payload.push_user_id) !== meeting.data.owner_user_id) return 'skip'
   } else if (delivery.channel === 'email') {
     const owner = await supabase.from('profiles').select('email,status').eq('id', meeting.data.owner_user_id).maybeSingle()
     if (owner.error) throw owner.error
-    if (owner.data?.status !== 'active' || text(owner.data.email).toLowerCase() !== delivery.recipient_reference.trim().toLowerCase()) return false
-  } else return false
+    if (owner.data?.status !== 'active' || text(owner.data.email).trim().toLowerCase() !== delivery.recipient_reference.trim().toLowerCase()) return 'skip'
+  } else return 'skip'
+  let start = meeting.data.start_datetime
   let end = meeting.data.end_datetime || meeting.data.start_datetime
   if (meeting.data.recurrence_rule) {
     const id = text(delivery.payload.occurrence_id)
-    if (!id) return false
+    if (!id) return 'skip'
     const occurrence = await supabase.from('event_occurrences').select('occurrence_key,start_datetime,end_datetime,status')
       .eq('event_id', delivery.event_id).eq('id', id).maybeSingle()
     if (occurrence.error) throw occurrence.error
-    if (!occurrence.data || occurrence.data.status !== 'scheduled' || new Date(occurrence.data.occurrence_key).getTime() !== keyTime) return false
+    if (!occurrence.data || occurrence.data.status !== 'scheduled' || new Date(occurrence.data.occurrence_key).getTime() !== keyTime) return 'skip'
+    start = occurrence.data.start_datetime
     end = occurrence.data.end_datetime || occurrence.data.start_datetime
-  } else if (new Date(meeting.data.start_datetime).getTime() !== keyTime || text(delivery.payload.occurrence_id)) return false
+  } else if (new Date(meeting.data.start_datetime).getTime() !== keyTime || text(delivery.payload.occurrence_id)) return 'skip'
   const endTime = new Date(end).getTime()
-  if (Number.isNaN(endTime) || endTime > Date.now()) return false
+  const startTime = new Date(start).getTime()
+  if (Number.isNaN(endTime) || Number.isNaN(startTime)) return 'skip'
   const completion = await supabase.from('meeting_completions').select('completed_at')
     .eq('event_id', delivery.event_id).eq('occurrence_key', key).maybeSingle()
   if (completion.error) throw completion.error
-  return !completion.data?.completed_at
+  if (completion.data?.completed_at) return 'skip'
+  const bangkokDay = new Date(startTime + 7 * 60 * 60_000).toISOString().slice(0, 10)
+  const dueTime = meeting.data.all_day ? Math.max(endTime, Date.parse(`${bangkokDay}T17:00:00Z`)) : endTime
+  if (dueTime > Date.now()) return new Date(Math.min(dueTime, Date.now() + 60 * 60_000)).toISOString()
+  if (delivery.channel === 'email' ? !meeting.data.email_notifications_enabled : !meeting.data.mobile_notifications_enabled) {
+    return new Date(Date.now() + 60 * 60_000).toISOString()
+  }
+  delivery.payload = { ...delivery.payload, start_datetime: start, end_datetime: end, occurrence_start: start, all_day: meeting.data.all_day }
+  return 'ready'
 }
 
 function errorMessage(error: unknown) {
@@ -479,8 +490,13 @@ Deno.serve(async (request) => {
   // Queue mobile/LINE first: email completes shared reminder rows.
   const { error: lineReminderError } = await supabase.rpc('queue_due_line_reminders')
   const { error: reminderError } = await supabase.rpc('queue_due_email_reminders')
-  const { error: completionReminderError } = await supabase.rpc('queue_due_meeting_completion_reminders')
-  if (recoveryError || staleReminderError || lineReminderError || reminderError || completionReminderError) return new Response(recoveryError?.message ?? staleReminderError?.message ?? lineReminderError?.message ?? reminderError?.message ?? completionReminderError!.message, { status: 500 })
+  try {
+    const { error: completionReminderError } = await supabase.rpc('queue_due_meeting_completion_reminders')
+    if (completionReminderError) console.error('Could not queue meeting completion reminders:', completionReminderError.message)
+  } catch (error) {
+    console.error('Could not queue meeting completion reminders:', errorMessage(error))
+  }
+  if (recoveryError || staleReminderError || lineReminderError || reminderError) return new Response(recoveryError?.message ?? staleReminderError?.message ?? lineReminderError?.message ?? reminderError!.message, { status: 500 })
 
   const now = new Date().toISOString()
   const { data, error } = await supabase
@@ -510,12 +526,21 @@ Deno.serve(async (request) => {
         if (skipped.error) throw skipped.error
         continue
       }
-      if (!await currentMeetingCompletionReminder(delivery)) {
+      const meetingReminderState = await currentMeetingCompletionReminder(delivery)
+      if (meetingReminderState === 'skip') {
         const skipped = await supabase.from('notification_deliveries').update({
           status: 'skipped', next_attempt_at: null, error_code: 'meeting_completion_unavailable',
           error_message: 'This meeting was completed, rescheduled, deleted or is no longer eligible.',
         }).eq('id', delivery.id)
         if (skipped.error) throw skipped.error
+        continue
+      }
+      if (meetingReminderState !== 'ready') {
+        const deferred = await supabase.from('notification_deliveries').update({
+          status: 'retry', attempt: delivery.attempt, next_attempt_at: meetingReminderState,
+          error_code: null, error_message: null,
+        }).eq('id', delivery.id)
+        if (deferred.error) throw deferred.error
         continue
       }
       if (delivery.channel === 'push' && !await currentPushRecipient(delivery)) {

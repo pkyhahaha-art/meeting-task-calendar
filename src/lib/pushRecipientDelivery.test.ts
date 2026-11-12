@@ -14,6 +14,8 @@ type Options = {
   uppercaseGuest?: boolean; missingGuestRow?: boolean
   limitedGuest?: boolean
   completion?: boolean; completedMeeting?: boolean; wrongKey?: boolean; futureMeeting?: boolean
+  completionQueueError?: boolean; completionQueueThrows?: boolean
+  channelDisabled?: boolean; allDayToday?: boolean; movedOccurrence?: boolean
   overdue?: boolean; expiredRound?: boolean; rescheduled?: boolean; cancelledReminder?: boolean; missingReminder?: boolean
 }
 
@@ -25,6 +27,7 @@ function service(options: Options = {}) {
   const role = options.recipient ?? (options.meeting ? 'guest' : 'secondary')
   const today = new Date(Date.now() + 7 * 60 * 60_000).toISOString().slice(0, 10)
   const dueDate = new Date(Date.now() + 7 * 60 * 60_000 - 24 * 60 * 60_000).toISOString().slice(0, 10)
+  const completionStart = options.allDayToday ? `${today}T00:00:00+07:00` : '2020-01-01T00:00:00Z'
   const delivery = {
     id: 'delivery-1', event_id: options.meeting ? 'meeting-1' : null,
     task_id: options.meeting ? null : 'task-1',
@@ -35,7 +38,7 @@ function service(options: Options = {}) {
     template_key: options.template ?? (options.overdue ? 'task_reminder' : options.meeting ? 'meeting_reminder' : 'task_updated'),
     payload: { entity: options.meeting ? 'meeting' : 'task', id: options.meeting ? 'meeting-1' : 'task-1',
       push_user_id: recipient, description: 'Private fixture', ...(options.scoped ? { occurrence_id: 'occurrence-1' } : {}),
-      ...(options.completion ? { occurrence_key: '2020-01-01T00:00:00Z', title: 'ประชุมทดสอบ' } : {}),
+      ...(options.completion ? { occurrence_key: completionStart, title: 'ประชุมทดสอบ', start_datetime: '2020-01-01T00:00:00Z', end_datetime: '2020-01-01T01:00:00Z' } : {}),
       ...(options.overdue ? { due_date: dueDate, due_time: null, reminder_key: 'overdue',
         reminder_scheduled_at: options.expiredRound ? `${dueDate}T00:00:00+07:00` : `${today}T00:00:00+07:00` } : {}),
       ...(options.actionPayload ? { title: 'แผนงาน', original_occurrence_start: '2026-10-03T02:00:00Z', new_occurrence_start: '2026-10-02T02:00:00Z' } : {}) },
@@ -44,6 +47,7 @@ function service(options: Options = {}) {
   let status = options.retry ? 'retry' : 'queued'
   let errorCode: unknown = null
   let errorMessage: unknown = null
+  let nextAttemptAt: unknown = null
   const messages: unknown[] = []
   const emails: Array<{ subject: string; htmlContent: string }> = []
   let signings = 0
@@ -52,6 +56,8 @@ function service(options: Options = {}) {
   const queried: string[] = []
   const db = {
     async rpc(name: string, args?: Record<string, unknown>) {
+      if (name === 'queue_due_meeting_completion_reminders' && options.completionQueueThrows) throw new Error('Temporary queue failure')
+      if (name === 'queue_due_meeting_completion_reminders' && options.completionQueueError) return { data: null, error: { message: 'Temporary queue failure' } }
       if (name === 'meeting_mobile_guest_users') {
         guestScopes.push(args?.target_occurrence_id)
         return { data: options.removed ? [] : [{ user_id: recipient }], error: options.readError === name ? { message: 'Temporary lookup error' } : null }
@@ -70,6 +76,7 @@ function service(options: Options = {}) {
           status = String(update.status ?? status)
           errorCode = update.error_code ?? errorCode
           errorMessage = update.error_message ?? errorMessage
+          nextAttemptAt = update.next_attempt_at ?? nextAttemptAt
           return { data: { id: delivery.id }, error: null }
         }
         const data = table === 'notification_deliveries' ? [delivery]
@@ -89,12 +96,13 @@ function service(options: Options = {}) {
           : table === 'events' ? options.missingEntity ? null : {
             id: 'meeting-1', owner_user_id: role === 'owner' ? recipient : 'owner', title: 'Meeting',
             description: 'Private agenda', affiliation: 'ฝ่ายแผนงาน', location: 'ห้อง 7',
-            start_datetime: options.completion ? '2020-01-01T00:00:00Z' : options.actionPayload ? '2026-10-02T02:00:00Z' : '2099-01-01T00:00:00Z', end_datetime: options.futureMeeting ? '2099-01-01T00:00:00Z' : '2020-01-01T01:00:00Z',
+            start_datetime: options.completion ? completionStart : options.actionPayload ? '2026-10-02T02:00:00Z' : '2099-01-01T00:00:00Z', end_datetime: options.futureMeeting ? '2099-01-01T00:00:00Z' : options.allDayToday ? completionStart : '2020-01-01T01:00:00Z',
+            all_day: Boolean(options.allDayToday), email_notifications_enabled: !options.channelDisabled, mobile_notifications_enabled: !options.channelDisabled,
             status: options.status ?? 'scheduled', deleted_at: options.deleted ? '2026-10-04T00:00:00Z' : null,
             recurrence_rule: options.legacyFirst || (options.completion && options.scoped) ? 'FREQ=WEEKLY' : null,
           }
           : table === 'event_occurrences' ? options.missingOccurrence ? null : {
-            id: 'occurrence-1', occurrence_key: options.wrongKey ? '2020-01-02T00:00:00Z' : '2020-01-01T00:00:00Z', start_datetime: '2026-10-03T02:00:00Z', end_datetime: options.futureMeeting ? '2099-01-01T00:00:00Z' : '2020-01-01T01:00:00Z',
+            id: 'occurrence-1', occurrence_key: options.wrongKey ? '2020-01-02T00:00:00Z' : completionStart, start_datetime: options.movedOccurrence ? '2020-02-01T00:00:00Z' : completionStart, end_datetime: options.futureMeeting ? '2099-01-01T00:00:00Z' : options.movedOccurrence ? '2020-02-01T01:00:00Z' : '2020-01-01T01:00:00Z',
             status: options.cancelledOccurrence ? 'cancelled' : 'scheduled', override_payload: options.actionPayload ? { description: 'Occurrence agenda', location: 'ห้อง 8' } : {},
           }
           : table === 'meeting_completions' ? options.completedMeeting ? { completed_at: '2020-01-01T02:00:00Z' } : null
@@ -138,9 +146,62 @@ function service(options: Options = {}) {
   })
   return {
     async run() { const response = await handler(new Request('https://worker.example', { method: 'POST', headers: { authorization: 'Bearer unit-config' } })); return { response, body: await response.json() } },
-    state: () => ({ status, errorCode, errorMessage, messages, guestScopes, queried, emails, signings, acknowledgementTokens }),
+    state: () => ({ status, errorCode, errorMessage, nextAttemptAt, messages, guestScopes, queried, emails, signings, acknowledgementTokens }),
   }
 }
+
+test('a meeting completion queue failure does not block other notifications', async () => {
+  for (const failure of [{ completionQueueError: true }, { completionQueueThrows: true }]) {
+    const server = service({ recipient: 'creator', ...failure })
+    const { response, body } = await server.run()
+    assert.equal(response.status, 200)
+    assert.equal(body.sent, 1)
+    assert.equal(server.state().status, 'sent')
+  }
+})
+
+test('meeting completion reminders are sent only for an eligible unfinished appointment', async () => {
+  for (const channel of ['email', 'push'] as const) {
+    const base = { meeting: true, recipient: 'owner' as const, completion: true, template: 'meeting_completion_reminder', channel }
+    const eligible = service(base)
+    await eligible.run()
+    assert.equal(eligible.state().status, 'sent')
+    for (const change of [{ completedMeeting: true }, { deleted: true }, { status: 'cancelled' }, { scoped: true, cancelledOccurrence: true }, { scoped: true, wrongKey: true }]) {
+      const stale = service({ ...base, ...change })
+      await stale.run()
+      assert.equal(stale.state().status, 'skipped')
+      assert.equal(stale.state().messages.length, 0)
+    }
+    for (const change of [{ futureMeeting: true }, { channelDisabled: true }, { allDayToday: true }]) {
+      const deferred = service({ ...base, ...change })
+      await deferred.run()
+      assert.equal(deferred.state().status, 'retry')
+      assert.equal(deferred.state().messages.length, 0)
+      assert.ok(new Date(String(deferred.state().nextAttemptAt)).getTime() > Date.now())
+    }
+  }
+})
+
+test('a disabled channel can be enabled later and a moved occurrence uses current dates', async () => {
+  const options: Options = { meeting: true, recipient: 'owner', completion: true, template: 'meeting_completion_reminder', channelDisabled: true }
+  const pending = service(options)
+  await pending.run()
+  assert.equal(pending.state().status, 'retry')
+  options.channelDisabled = false
+  await pending.run()
+  assert.equal(pending.state().status, 'sent')
+
+  const moved = service({ ...options, scoped: true, movedOccurrence: true })
+  await moved.run()
+  assert.equal(moved.state().status, 'sent')
+  const message = moved.state().messages[0] as { details: { start_datetime: string; end_datetime: string } }
+  assert.equal(message.details.start_datetime, '2020-02-01T00:00:00Z')
+  assert.equal(message.details.end_datetime, '2020-02-01T01:00:00Z')
+  const movedEmail = service({ ...options, scoped: true, movedOccurrence: true, channel: 'email' })
+  await movedEmail.run()
+  assert.equal(movedEmail.state().status, 'sent')
+  assert.match(movedEmail.state().emails[0].htmlContent, /ก\.พ\./)
+})
 
 test('queued and retry Push never send to inactive, removed or re-paired recipients', async () => {
   for (const retry of [false, true]) for (const options of [
